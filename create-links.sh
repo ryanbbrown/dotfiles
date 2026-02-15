@@ -95,4 +95,14 @@ if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
     create_symlink "$SKILLS_DIR" "$CLAUDE_SKILLS_TARGET"
 fi
 
+# ====================
+# npx skills (link specific .agents/skills into skills/)
+# ====================
+VERCEL_REACT="$(pwd)/.agents/skills/vercel-react-best-practices"
+if [ -d "$VERCEL_REACT" ]; then
+    create_symlink "$VERCEL_REACT" "$SKILLS_DIR/vercel-react-best-practices"
+else
+    echo "Warning: Vercel React skill not found. Run: npx skills add vercel-labs/agent-skills -y"
+fi
+
 echo "Done!"

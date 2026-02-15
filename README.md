@@ -13,21 +13,32 @@ The `skill-creator` skill was cloned from [anthropics/skills](https://github.com
 ## Setup
 
 1. Clone this repo
-2. Edit `create-links.sh` to enable/disable linking for Claude or Codex
-3. Run `./create-links.sh`
+2. Install Vercel skills (from the repo root, so they land in `.agents/skills/`):
+   ```bash
+   npx skills add vercel-labs/agent-skills -y
+   ```
+3. Edit `create-links.sh` to enable/disable linking for Claude or Codex
+4. Run `./create-links.sh` (this also symlinks each skill from `.agents/skills/` into `skills/`)
 
-### Manual Setup Steps
-[parallel.ai](https://parallel.ai) is my current search MCP of choice, and I'm experimenting with [superpowers](https://github.com/obra/superpowers).
+### Plugins (run these in Claude Code)
 
-Add the Parallel Search MCP server:
+Install the SwiftUI Expert plugin:
+```
+/plugin marketplace add https://github.com/AvdLee/SwiftUI-Agent-Skill.git
+/plugin install swiftui-expert@swiftui-expert-skill --scope user
+```
+
+Install the Code Simplifier plugin:
+```
+/plugin install code-simplifier@claude-plugins-official --scope user
+```
+
+### MCP Servers
+
+[parallel.ai](https://parallel.ai) is my current search MCP of choice.
+
 ```bash
 claude mcp add --transport http --scope user "Parallel-search-mcp" https://search-mcp.parallel.ai/mcp
-```
-
-Install superpowers plugin (run these in Claude Code):
-```
-/plugin marketplace add obra/superpowers-marketplace
-/plugin install superpowers@superpowers-marketplace
 ```
 
 
