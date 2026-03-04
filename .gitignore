@@ -1,1 +1,5 @@
 __pycache__/
+
+# Editor-specific dirs created by npx skills installer — not needed in repo
+.claude/
+.cursor/

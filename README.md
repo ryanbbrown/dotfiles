@@ -17,8 +17,12 @@ The `skill-creator` skill was cloned from [anthropics/skills](https://github.com
    ```bash
    npx skills add vercel-labs/agent-skills -y
    ```
-3. Edit `create-links.sh` to enable/disable linking for Claude or Codex
-4. Run `./create-links.sh` (this also symlinks each skill from `.agents/skills/` into `skills/`)
+3. Clean up editor-specific dirs created by the installer (these are gitignored):
+   ```bash
+   rm -rf .claude .cursor
+   ```
+4. Edit `create-links.sh` to enable/disable linking for Claude or Codex
+5. Run `./create-links.sh` (this also symlinks each skill from `.agents/skills/` into `skills/`)
 
 ### Plugins (run these in Claude Code)
 
