@@ -1,5 +1,5 @@
 ---
-description: Spawn a new Claude session in a tmux window with full context handoff
+description: Spawn a new agent session in a tmux window with full context handoff
 argument-hint: [task description for the new session]
 ---
 
@@ -41,10 +41,15 @@ Be thorough but concise. The new session starts with zero context, so include ev
 
 ## Step 3: Spawn the new session
 
-Run this command to create a new detached tmux window with a fresh Claude session:
+Run a detached tmux window with a fresh agent session.
+
+- If you are Claude Code, use `cds`
+- If you are Codex, use `cods`
+
+Command shape:
 
 ```
-tmux new-window -d -n "<slug>" -c <project-directory> "claude --dangerously-skip-permissions 'Read the handoff file at <absolute-path-to-handoff-file> and follow the instructions in it.'"
+tmux new-window -d -n "<slug>" -c <project-directory> "<cds-or-cods> 'Read the handoff file at <absolute-path-to-handoff-file> and follow the instructions in it.'"
 ```
 
 Tell the user the handoff is complete, the handoff file path, and which tmux window name to switch to.

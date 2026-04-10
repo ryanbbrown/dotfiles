@@ -9,7 +9,7 @@
 
 # Configuration - set to true/false to enable/disable linking
 LINK_CLAUDE=true
-LINK_CODEX=false
+LINK_CODEX=true
 LINK_SKILLS=true
 
 # Source directories (run this script from the repo root)
@@ -45,6 +45,7 @@ CLAUDE_MD_TARGET="$HOME/.claude/CLAUDE.md"
 CLAUDE_SKILLS_TARGET="$HOME/.claude/skills"
 CODEX_PROMPTS_TARGET="$HOME/.codex/prompts"
 CODEX_AGENTS_TARGET="$HOME/.codex/AGENTS.md"
+CODEX_SKILLS_TARGET="$HOME/.codex/skills"
 
 # Helper function to create a symlink
 create_symlink() {
@@ -53,7 +54,10 @@ create_symlink() {
 
     if [ -L "$target" ]; then
         echo "Removing existing symlink at $target"
-        rm "$target"
+        if ! rm "$target"; then
+            echo "Warning: failed to remove existing symlink at $target"
+            return 1
+        fi
     elif [ -e "$target" ]; then
         echo "Warning: $target exists and is not a symlink. Skipping."
         return 1
@@ -61,9 +65,30 @@ create_symlink() {
 
     if [ ! -e "$target" ]; then
         mkdir -p "$(dirname "$target")"
-        ln -s "$source" "$target"
-        echo "Linked $target -> $source"
+        if ln -s "$source" "$target"; then
+            echo "Linked $target -> $source"
+        else
+            echo "Warning: failed to link $target -> $source"
+            return 1
+        fi
     fi
+}
+
+create_skill_links() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    mkdir -p "$target_dir"
+
+    for skill_path in "$source_dir"/*; do
+        if [ ! -d "$skill_path" ]; then
+            continue
+        fi
+
+        local skill_name
+        skill_name="$(basename "$skill_path")"
+        create_symlink "$skill_path" "$target_dir/$skill_name"
+    done
 }
 
 # ====================
@@ -93,6 +118,10 @@ fi
 # ====================
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
     create_symlink "$SKILLS_DIR" "$CLAUDE_SKILLS_TARGET"
+fi
+
+if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
+    create_skill_links "$SKILLS_DIR" "$CODEX_SKILLS_TARGET"
 fi
 
 # ====================

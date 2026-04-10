@@ -13,6 +13,7 @@
 
 ## Other
 - Claude is almost always running inside tmux. References to "window" mean a tmux window, with 1 pane per window.
+- When creating tmux windows: use `tmux new-window -d -n <name>` (the `-d` flag keeps it detached so it doesn't switch focus). Then send commands separately with `tmux send-keys -t <name> "command" Enter`.
 - Always run `npm install` with sandbox disabled.
 - Note that you're running in sandbox mode; if you get an unexpected error upon trying a command, it's usually because you need to disable the sandbox for that command.
 - Use uv for all python-related operations; `uv add` to install new packages, and `uv run file.py` to run files. No need to activate the venv first.
