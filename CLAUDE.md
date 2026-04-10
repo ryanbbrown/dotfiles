@@ -10,6 +10,9 @@
 - Add one-line docstrings to all TypeScript functions (e.g. `/** Description of function */`)
 - ALWAYS use existing libraries and utility functions; do NOT rewrite functions for basic language functionality
 
+## New projects
+- When creating a new project, run `~/.config/scripts/init-repo.sh` from the project root to set up the spec-driven workflow (creates .specs/, .context/, .tickets/, CLAUDE.md, .gitignore, and initializes git).
+
 ## Other
 - Claude is almost always running inside tmux. References to "window" mean a tmux window, with 1 pane per window.
 - Use uv for all python-related operations; `uv add` to install new packages, and `uv run file.py` to run files. No need to activate the venv first.
