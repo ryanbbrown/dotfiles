@@ -3,3 +3,7 @@ __pycache__/
 # Editor-specific dirs created by npx skills installer — not needed in repo
 .claude/
 .cursor/
+
+# Compiled browse binary (built from gstack submodule)
+skills/browse/dist/
+skills/gstack/
