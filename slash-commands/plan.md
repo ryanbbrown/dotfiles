@@ -1,20 +1,48 @@
----
-description: Guidelines for generating a plan before making changes
----
+Generate an implementation plan: $ARGUMENTS
 
-# Plan Style Guidelines
-Plans should be saved as .md files.
+## Input
 
-## Structure
-Start every plan with a 1–2 sentence summary explaining the goal and how the pieces fit together.
+Read the relevant spec in `.specs/` if one exists. Read any existing plans in `.context/` to avoid overlap. Explore the codebase to understand current architecture, patterns, and conventions.
 
-Then, organize and order changes into testable steps:
-- Use `##` for each verifiable step and `###` for specific files to be edited/created within that step.
-- For each file, always include the full relative path and lay out function signatures / data structures but otherwise keep it minimal; don't pre-do the work of writing all the code
-- At the end of each step, describe what verification should be performed.
+If the user provides reference code, open source examples, or research findings, incorporate them into the plan as the preferred approach.
 
-## Other Guidelines
-- Not every user request needs to be broken down into multiple H2-level steps.
-- One file can have different edits in different steps; the important part is the order/dependency and verifiability. 
-- Do NOT include fluff about effort, next steps, or "feature summaries". Stick to the structure outlined above.
-- Ask the user clarifying questions before you actually create the plan.
+## Output
+
+Write the plan to `.context/plan-<name>.md`. If a spec exists for this domain, reference it at the top.
+
+## Plan structure
+
+```
+# Plan: <Title>
+
+Spec: .specs/<domain>.md (if applicable)
+
+## Overview
+1-2 sentences: what we're building and how the pieces fit together.
+
+## Steps
+
+### 1. <Step title>
+What this step accomplishes and why.
+
+<Code snippets showing the approach, reference implementations, key API usage, or non-obvious patterns. Include file paths that will be modified.>
+
+**Verify:** <How to confirm this step works — test commands, manual checks, expected output.>
+
+### 2. <Step title>
+...
+
+## Considerations
+Tradeoffs, alternatives considered, things that could go wrong.
+```
+
+## Guidelines
+
+- Reference the spec for requirements but don't repeat them — the plan is about *how*, not *what*.
+- Include code snippets for non-trivial parts: reference implementations, tricky integrations, API usage that's hard to discover. Don't include code for straightforward work the agent can figure out.
+- Include file paths that will be modified or created.
+- Each step should be independently verifiable — describe what "working" looks like after that step.
+- Steps should be ordered by dependency. Note which steps can be done in parallel.
+- Keep it concise. The plan is a thinking tool, not documentation.
+- Ask the user clarifying questions before creating the plan.
+- Do not manually wrap lines. Write each sentence as a single line.

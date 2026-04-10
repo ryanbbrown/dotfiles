@@ -125,6 +125,22 @@ if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
 fi
 
 # ====================
+# Scripts
+# ====================
+SCRIPTS_DIR="$(pwd)/scripts"
+CLAUDE_SCRIPTS_TARGET="$HOME/.claude/scripts"
+CODEX_SCRIPTS_TARGET="$HOME/.codex/scripts"
+
+if [ -d "$SCRIPTS_DIR" ]; then
+    if [ "$LINK_CLAUDE" = true ]; then
+        create_symlink "$SCRIPTS_DIR" "$CLAUDE_SCRIPTS_TARGET"
+    fi
+    if [ "$LINK_CODEX" = true ]; then
+        create_symlink "$SCRIPTS_DIR" "$CODEX_SCRIPTS_TARGET"
+    fi
+fi
+
+# ====================
 # npx skills (link specific .agents/skills into skills/)
 # ====================
 VERCEL_REACT="$(pwd)/.agents/skills/vercel-react-best-practices"
