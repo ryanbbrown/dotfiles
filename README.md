@@ -4,11 +4,14 @@ A single repo for all global coding agent configurations. Add/modify files here 
 
 ## What Gets Linked
 
-- **Slash commands** (`slash-commands/`) → `~/.claude/commands` and `~/.codex/prompts`
+- **Slash commands** (`slash-commands/`) → `~/.claude/commands`
+- **Codex command-skills** (`slash-commands/*.md`) → generated wrappers in `.generated/codex-skills/<name>/SKILL.md`, then symlinked to `~/.codex/skills/<name>`
 - **Instructions** (`CLAUDE.md` / `AGENTS.md`) → `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
-- **Skills** (`skills/`) → `~/.claude/skills`
+- **Skills** (`skills/`) → `~/.claude/skills` and `~/.codex/skills`
 
 The `skill-creator` skill was cloned from [anthropics/skills](https://github.com/anthropics/skills.git) and modified for local use (removed packaging-related scripts + documentation). The `.upstream` file in the skill directory tracks the original source.
+
+Command files in `slash-commands/` remain the source of truth. `create-links.sh` generates Codex-compatible `SKILL.md` wrappers that keep only Codex-supported frontmatter fields.
 
 ## Setup
 
@@ -44,5 +47,3 @@ Install the Code Simplifier plugin:
 ```bash
 claude mcp add --transport http --scope user "Parallel-search-mcp" https://search-mcp.parallel.ai/mcp
 ```
-
-

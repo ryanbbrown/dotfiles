@@ -6,6 +6,9 @@
 # 1. Removes any existing symlink at the target location
 # 2. Warns and skips if a non-symlink file exists (to avoid overwriting real files)
 # 3. Creates a new symlink if the target doesn't exist
+#
+# Claude uses `slash-commands/*.md` directly.
+# Codex gets generated wrapper skill directories with real `SKILL.md` files.
 
 # Configuration - set to true/false to enable/disable linking
 LINK_CLAUDE=true
@@ -15,6 +18,7 @@ LINK_SKILLS=true
 # Source directories (run this script from the repo root)
 SLASH_COMMANDS_DIR="$(pwd)/slash-commands"
 SKILLS_DIR="$(pwd)/skills"
+GENERATED_CODEX_SKILLS_DIR="$(pwd)/.generated/codex-skills"
 
 # Source files - detect which exist
 CLAUDE_MD_FILE="$(pwd)/CLAUDE.md"
@@ -91,6 +95,128 @@ create_skill_links() {
     done
 }
 
+remove_symlink() {
+    local target="$1"
+
+    if [ -L "$target" ]; then
+        echo "Removing existing symlink at $target"
+        if ! rm "$target"; then
+            echo "Warning: failed to remove existing symlink at $target"
+            return 1
+        fi
+    fi
+}
+
+extract_frontmatter_value() {
+    local source_file="$1"
+    local key="$2"
+
+    awk -v key="$key" '
+        NR == 1 {
+            if ($0 != "---") {
+                exit
+            }
+            in_frontmatter = 1
+            next
+        }
+        in_frontmatter {
+            if ($0 == "---") {
+                exit
+            }
+            if ($0 ~ ("^" key ":[[:space:]]*")) {
+                sub("^" key ":[[:space:]]*", "", $0)
+                print $0
+                exit
+            }
+        }
+    ' "$source_file"
+}
+
+write_codex_command_skill() {
+    local source_file="$1"
+    local target_file="$2"
+    local command_name
+    local description
+
+    command_name="$(extract_frontmatter_value "$source_file" "name")"
+    description="$(extract_frontmatter_value "$source_file" "description")"
+
+    if [ -z "$command_name" ]; then
+        command_name="$(basename "$source_file" .md)"
+    fi
+
+    mkdir -p "$(dirname "$target_file")"
+
+    {
+        printf '%s\n' '---'
+        printf 'name: %s\n' "$command_name"
+        if [ -n "$description" ]; then
+            printf 'description: %s\n' "$description"
+        else
+            printf 'description: Generated from %s\n' "$(basename "$source_file")"
+        fi
+        printf '%s\n\n' '---'
+        awk '
+            BEGIN {
+                frontmatter_count = 0
+            }
+            NR == 1 && $0 == "---" {
+                frontmatter_count = 1
+                next
+            }
+            frontmatter_count == 1 {
+                if ($0 == "---") {
+                    frontmatter_count = 2
+                }
+                next
+            }
+            {
+                print
+            }
+        ' "$source_file"
+    } > "$target_file"
+}
+
+remove_path() {
+    local target="$1"
+
+    if [ -L "$target" ]; then
+        echo "Removing existing symlink at $target"
+        if ! rm "$target"; then
+            echo "Warning: failed to remove existing symlink at $target"
+            return 1
+        fi
+    elif [ -d "$target" ]; then
+        echo "Removing existing directory at $target"
+        if ! rm -rf "$target"; then
+            echo "Warning: failed to remove existing directory at $target"
+            return 1
+        fi
+    fi
+}
+
+create_codex_command_skill_links() {
+    local source_dir="$1"
+    local generated_dir="$2"
+    local target_dir="$3"
+    local command_path
+
+    rm -rf "$generated_dir"
+    mkdir -p "$generated_dir" "$target_dir"
+
+    for command_path in "$source_dir"/*.md; do
+        if [ ! -f "$command_path" ]; then
+            continue
+        fi
+
+        local command_name
+        command_name="$(basename "$command_path" .md)"
+        write_codex_command_skill "$command_path" "$generated_dir/$command_name/SKILL.md"
+        remove_path "$target_dir/$command_name"
+        create_symlink "$generated_dir/$command_name" "$target_dir/$command_name"
+    done
+}
+
 # ====================
 # Slash Commands
 # ====================
@@ -99,7 +225,8 @@ if [ "$LINK_CLAUDE" = true ]; then
 fi
 
 if [ "$LINK_CODEX" = true ]; then
-    create_symlink "$SLASH_COMMANDS_DIR" "$CODEX_PROMPTS_TARGET"
+    remove_symlink "$CODEX_PROMPTS_TARGET"
+    create_codex_command_skill_links "$SLASH_COMMANDS_DIR" "$GENERATED_CODEX_SKILLS_DIR" "$CODEX_SKILLS_TARGET"
 fi
 
 # ====================

@@ -1,4 +1,5 @@
 ---
+name: worktree-task
 description: Start work on assigned ticket in this worktree
 ---
 

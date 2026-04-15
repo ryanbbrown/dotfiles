@@ -1,3 +1,9 @@
+---
+name: spec
+description: Generate a specification document. Use when the user asks for a product spec, feature spec, requirements doc, or acceptance criteria before implementation.
+argument-hint: [feature or domain]
+---
+
 Generate a specification document for: $ARGUMENTS
 
 Read any existing .specs/ files for context. Explore the codebase enough to understand what exists today, but write the spec as the ideal state — not a description of current implementation. If the user provides additional context (a roadmap, feature list, conversation notes, etc.), use that as input but don't depend on any specific file existing.

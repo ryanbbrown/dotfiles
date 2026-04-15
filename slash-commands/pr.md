@@ -1,5 +1,6 @@
 ---
-description: Ceate a PR
+name: pr
+description: Create a pull request summary and opening plan. Use when the user wants a PR draft, PR summary, or help opening a PR.
 argument-hint: [feature-branch] [target-branch] [pr-title]
 ---
 

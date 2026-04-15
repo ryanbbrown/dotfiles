@@ -1,4 +1,5 @@
 ---
+name: handoff
 description: Spawn a new agent session in a tmux window with full context handoff
 argument-hint: [task description for the new session]
 ---
@@ -14,7 +15,7 @@ This slug is used for both the filename and the tmux window name.
 
 ## Step 2: Write the handoff document
 
-Create a handoff file at `.claude/handoffs/<timestamp>-<slug>.md` in the current project directory (create the directory if it doesn't exist). The timestamp should be in the format `YYYYMMDD-HHmmss`.
+Create a handoff file at `.context/handoffs/<timestamp>-<slug>.md` in the current project directory (create the directories if they don't exist). The timestamp should be in the format `YYYYMMDD-HHmmss`.
 
 The handoff document should contain:
 
@@ -43,13 +44,14 @@ Be thorough but concise. The new session starts with zero context, so include ev
 
 Run a detached tmux window with a fresh agent session.
 
-- If you are Claude Code, use `cds`
-- If you are Codex, use `cods`
+IMPORTANT: Shell aliases (like `cds`) do not expand in non-interactive shells. Always use the full command:
+- If you are Claude Code, use `claude --dangerously-skip-permissions`
+- If you are Codex, use `codex --search --dangerously-bypass-approvals-and-sandbox`
 
 Command shape:
 
 ```
-tmux new-window -d -n "<slug>" -c <project-directory> "<cds-or-cods> 'Read the handoff file at <absolute-path-to-handoff-file> and follow the instructions in it.'"
+tmux new-window -d -n "<slug>" -c <project-directory> "claude --dangerously-skip-permissions 'Read the handoff file at <absolute-path-to-handoff-file> and follow the instructions in it.'"
 ```
 
 Tell the user the handoff is complete, the handoff file path, and which tmux window name to switch to.
