@@ -51,7 +51,11 @@ IMPORTANT: Shell aliases (like `cds`) do not expand in non-interactive shells. A
 Command shape:
 
 ```
-tmux new-window -d -n "<slug>" -c <project-directory> "claude --dangerously-skip-permissions 'Read the handoff file at <absolute-path-to-handoff-file> and follow the instructions in it.'"
+tmux new-window -d -n "<slug>" -c <project-directory> "<agent-command> 'Read the handoff file at <absolute-path-to-handoff-file> and follow the instructions in it.'"
 ```
+
+Where `<agent-command>` is:
+- Claude Code: `claude --dangerously-skip-permissions`
+- Codex: `codex --search --dangerously-bypass-approvals-and-sandbox`
 
 Tell the user the handoff is complete, the handoff file path, and which tmux window name to switch to.
