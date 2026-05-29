@@ -1,40 +1,32 @@
 #!/bin/bash
 
-# This script symlinks slash commands, agent instructions, and skills to Claude Code and Codex.
+# Link global-agent-context instructions and skills into local agent homes.
 #
-# For each symlink, the script:
-# 1. Removes any existing symlink at the target location
-# 2. Warns and skips if a non-symlink file exists (to avoid overwriting real files)
-# 3. Creates a new symlink if the target doesn't exist
+# Canonical source:
+#   - skills/ contains reusable workflows for Claude Code and Codex.
+#   - Skills can be invoked directly in Claude with /skill-name, so legacy
+#     slash-command markdown is no longer generated into Codex wrappers.
 #
-# Claude uses `slash-commands/*.md` directly.
-# Codex gets generated wrapper skill directories with real `SKILL.md` files.
+# Claude can use a single skills directory symlink. Codex keeps ~/.codex/skills
+# as a real directory because it also contains Codex's built-in .system skills;
+# this script syncs top-level skill symlinks into that directory without
+# touching .system or other non-symlink entries.
 
-# Configuration - set to true/false to enable/disable linking
 LINK_CLAUDE=true
 LINK_CODEX=true
 LINK_SKILLS=true
 
-# Source directories (run this script from the repo root)
-SLASH_COMMANDS_DIR="$(pwd)/slash-commands"
 SKILLS_DIR="$(pwd)/skills"
-GENERATED_CODEX_SKILLS_DIR="$(pwd)/.generated/codex-skills"
-
-# Source files - detect which exist
 CLAUDE_MD_FILE="$(pwd)/CLAUDE.md"
 AGENTS_MD_FILE="$(pwd)/AGENTS.md"
 
-# Determine which source file to use for each target
 if [ -f "$CLAUDE_MD_FILE" ] && [ -f "$AGENTS_MD_FILE" ]; then
-    # Both exist: use CLAUDE.md for Claude, AGENTS.md for Codex
     CLAUDE_MD_SOURCE="$CLAUDE_MD_FILE"
     AGENTS_MD_SOURCE="$AGENTS_MD_FILE"
 elif [ -f "$CLAUDE_MD_FILE" ]; then
-    # Only CLAUDE.md exists: use it for both
     CLAUDE_MD_SOURCE="$CLAUDE_MD_FILE"
     AGENTS_MD_SOURCE="$CLAUDE_MD_FILE"
 elif [ -f "$AGENTS_MD_FILE" ]; then
-    # Only AGENTS.md exists: use it for both
     CLAUDE_MD_SOURCE="$AGENTS_MD_FILE"
     AGENTS_MD_SOURCE="$AGENTS_MD_FILE"
 else
@@ -43,7 +35,6 @@ else
     AGENTS_MD_SOURCE=""
 fi
 
-# Target paths
 CLAUDE_COMMANDS_TARGET="$HOME/.claude/commands"
 CLAUDE_MD_TARGET="$HOME/.claude/CLAUDE.md"
 CLAUDE_SKILLS_TARGET="$HOME/.claude/skills"
@@ -51,7 +42,6 @@ CODEX_PROMPTS_TARGET="$HOME/.codex/prompts"
 CODEX_AGENTS_TARGET="$HOME/.codex/AGENTS.md"
 CODEX_SKILLS_TARGET="$HOME/.codex/skills"
 
-# Helper function to create a symlink
 create_symlink() {
     local source="$1"
     local target="$2"
@@ -67,32 +57,13 @@ create_symlink() {
         return 1
     fi
 
-    if [ ! -e "$target" ]; then
-        mkdir -p "$(dirname "$target")"
-        if ln -s "$source" "$target"; then
-            echo "Linked $target -> $source"
-        else
-            echo "Warning: failed to link $target -> $source"
-            return 1
-        fi
+    mkdir -p "$(dirname "$target")"
+    if ln -s "$source" "$target"; then
+        echo "Linked $target -> $source"
+    else
+        echo "Warning: failed to link $target -> $source"
+        return 1
     fi
-}
-
-create_skill_links() {
-    local source_dir="$1"
-    local target_dir="$2"
-
-    mkdir -p "$target_dir"
-
-    for skill_path in "$source_dir"/*; do
-        if [ ! -d "$skill_path" ]; then
-            continue
-        fi
-
-        local skill_name
-        skill_name="$(basename "$skill_path")"
-        create_symlink "$skill_path" "$target_dir/$skill_name"
-    done
 }
 
 remove_symlink() {
@@ -107,77 +78,7 @@ remove_symlink() {
     fi
 }
 
-extract_frontmatter_value() {
-    local source_file="$1"
-    local key="$2"
-
-    awk -v key="$key" '
-        NR == 1 {
-            if ($0 != "---") {
-                exit
-            }
-            in_frontmatter = 1
-            next
-        }
-        in_frontmatter {
-            if ($0 == "---") {
-                exit
-            }
-            if ($0 ~ ("^" key ":[[:space:]]*")) {
-                sub("^" key ":[[:space:]]*", "", $0)
-                print $0
-                exit
-            }
-        }
-    ' "$source_file"
-}
-
-write_codex_command_skill() {
-    local source_file="$1"
-    local target_file="$2"
-    local command_name
-    local description
-
-    command_name="$(extract_frontmatter_value "$source_file" "name")"
-    description="$(extract_frontmatter_value "$source_file" "description")"
-
-    if [ -z "$command_name" ]; then
-        command_name="$(basename "$source_file" .md)"
-    fi
-
-    mkdir -p "$(dirname "$target_file")"
-
-    {
-        printf '%s\n' '---'
-        printf 'name: %s\n' "$command_name"
-        if [ -n "$description" ]; then
-            printf 'description: %s\n' "$description"
-        else
-            printf 'description: Generated from %s\n' "$(basename "$source_file")"
-        fi
-        printf '%s\n\n' '---'
-        awk '
-            BEGIN {
-                frontmatter_count = 0
-            }
-            NR == 1 && $0 == "---" {
-                frontmatter_count = 1
-                next
-            }
-            frontmatter_count == 1 {
-                if ($0 == "---") {
-                    frontmatter_count = 2
-                }
-                next
-            }
-            {
-                print
-            }
-        ' "$source_file"
-    } > "$target_file"
-}
-
-remove_path() {
+ensure_directory() {
     local target="$1"
 
     if [ -L "$target" ]; then
@@ -186,52 +87,58 @@ remove_path() {
             echo "Warning: failed to remove existing symlink at $target"
             return 1
         fi
-    elif [ -d "$target" ]; then
-        echo "Removing existing directory at $target"
-        if ! rm -rf "$target"; then
-            echo "Warning: failed to remove existing directory at $target"
-            return 1
-        fi
+    elif [ -e "$target" ] && [ ! -d "$target" ]; then
+        echo "Warning: $target exists and is not a directory. Skipping."
+        return 1
     fi
+
+    mkdir -p "$target"
 }
 
-create_codex_command_skill_links() {
+sync_codex_skill_links() {
     local source_dir="$1"
-    local generated_dir="$2"
-    local target_dir="$3"
-    local command_path
+    local target_dir="$2"
+    local skill_path
+    local skill_name
+    local target_path
+    local link_target
 
-    rm -rf "$generated_dir"
-    mkdir -p "$generated_dir" "$target_dir"
+    ensure_directory "$target_dir" || return 1
 
-    for command_path in "$source_dir"/*.md; do
-        if [ ! -f "$command_path" ]; then
+    for target_path in "$target_dir"/*; do
+        if [ ! -L "$target_path" ]; then
             continue
         fi
 
-        local command_name
-        command_name="$(basename "$command_path" .md)"
-        write_codex_command_skill "$command_path" "$generated_dir/$command_name/SKILL.md"
-        remove_path "$target_dir/$command_name"
-        create_symlink "$generated_dir/$command_name" "$target_dir/$command_name"
+        link_target="$(readlink "$target_path")"
+        case "$link_target" in
+            "$source_dir"/*|"$(pwd)/.generated/codex-skills"/*)
+                echo "Removing stale Codex skill link at $target_path"
+                rm "$target_path" || return 1
+                ;;
+        esac
+    done
+
+    for skill_path in "$source_dir"/*; do
+        if [ ! -d "$skill_path" ]; then
+            continue
+        fi
+
+        skill_name="$(basename "$skill_path")"
+        create_symlink "$skill_path" "$target_dir/$skill_name"
     done
 }
 
-# ====================
-# Slash Commands
-# ====================
+# Legacy slash-command links are intentionally removed. Claude invokes skills
+# with /skill-name, and Codex reads the same skills from ~/.codex/skills.
 if [ "$LINK_CLAUDE" = true ]; then
-    create_symlink "$SLASH_COMMANDS_DIR" "$CLAUDE_COMMANDS_TARGET"
+    remove_symlink "$CLAUDE_COMMANDS_TARGET"
 fi
 
 if [ "$LINK_CODEX" = true ]; then
     remove_symlink "$CODEX_PROMPTS_TARGET"
-    create_codex_command_skill_links "$SLASH_COMMANDS_DIR" "$GENERATED_CODEX_SKILLS_DIR" "$CODEX_SKILLS_TARGET"
 fi
 
-# ====================
-# Instructions (CLAUDE.md / AGENTS.md)
-# ====================
 if [ "$LINK_CLAUDE" = true ] && [ -n "$CLAUDE_MD_SOURCE" ]; then
     create_symlink "$CLAUDE_MD_SOURCE" "$CLAUDE_MD_TARGET"
 fi
@@ -240,20 +147,14 @@ if [ "$LINK_CODEX" = true ] && [ -n "$AGENTS_MD_SOURCE" ]; then
     create_symlink "$AGENTS_MD_SOURCE" "$CODEX_AGENTS_TARGET"
 fi
 
-# ====================
-# Skills
-# ====================
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
     create_symlink "$SKILLS_DIR" "$CLAUDE_SKILLS_TARGET"
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
-    create_skill_links "$SKILLS_DIR" "$CODEX_SKILLS_TARGET"
+    sync_codex_skill_links "$SKILLS_DIR" "$CODEX_SKILLS_TARGET"
 fi
 
-# ====================
-# npx skills (link specific .agents/skills into skills/)
-# ====================
 VERCEL_REACT="$(pwd)/.agents/skills/vercel-react-best-practices"
 if [ -d "$VERCEL_REACT" ]; then
     create_symlink "$VERCEL_REACT" "$SKILLS_DIR/vercel-react-best-practices"
