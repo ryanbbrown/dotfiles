@@ -1,7 +1,7 @@
 ---
 name: pr
 description: Create a pull request summary and opening plan. Use when the user wants a PR draft, PR summary, or help opening a PR.
-argument-hint: [feature-branch] [target-branch] [pr-title]
+argument-hint: "[feature-branch] [target-branch] [pr-title]"
 ---
 
 ## Step 1: Create PR Summary

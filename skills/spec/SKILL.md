@@ -1,7 +1,7 @@
 ---
 name: spec
 description: Generate a specification document. Use when the user asks for a product spec, feature spec, requirements doc, or acceptance criteria before implementation.
-argument-hint: [feature or domain]
+argument-hint: "[feature or domain]"
 ---
 
 Generate a specification document for: $ARGUMENTS

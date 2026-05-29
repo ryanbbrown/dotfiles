@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Generate an implementation plan. Use when the user asks for a phased plan, rollout plan, implementation plan, or step-by-step execution plan.
-argument-hint: [feature or domain]
+argument-hint: "[feature or domain]"
 ---
 
 Generate an implementation plan: $ARGUMENTS

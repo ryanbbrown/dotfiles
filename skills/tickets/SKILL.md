@@ -1,7 +1,7 @@
 ---
 name: tickets
 description: Break an implementation plan into tickets. Use when the user wants a plan converted into tracked tasks or ticket dependencies.
-argument-hint: [plan file]
+argument-hint: "[plan file]"
 ---
 
 Break a plan into tickets: $ARGUMENTS

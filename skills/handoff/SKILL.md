@@ -1,7 +1,7 @@
 ---
 name: handoff
 description: Spawn a new agent session in a tmux window with full context handoff
-argument-hint: [task description for the new session]
+argument-hint: "[task description for the new session]"
 ---
 
 ## Step 1: Derive a slug
