@@ -66,6 +66,27 @@ create_symlink() {
     fi
 }
 
+remove_path() {
+    local target="$1"
+
+    if [ -L "$target" ]; then
+        echo "Removing existing symlink at $target"
+        if ! rm "$target"; then
+            echo "Warning: failed to remove existing symlink at $target"
+            return 1
+        fi
+    elif [ -d "$target" ]; then
+        echo "Removing existing directory at $target"
+        if ! rm -rf "$target"; then
+            echo "Warning: failed to remove existing directory at $target"
+            return 1
+        fi
+    elif [ -e "$target" ]; then
+        echo "Warning: $target exists and is not a symlink or directory. Skipping."
+        return 1
+    fi
+}
+
 remove_symlink() {
     local target="$1"
 
@@ -101,7 +122,6 @@ sync_codex_skill_links() {
     local skill_path
     local skill_name
     local target_path
-    local link_target
 
     ensure_directory "$target_dir" || return 1
 
@@ -110,13 +130,8 @@ sync_codex_skill_links() {
             continue
         fi
 
-        link_target="$(readlink "$target_path")"
-        case "$link_target" in
-            "$source_dir"/*|"$(pwd)/.generated/codex-skills"/*)
-                echo "Removing stale Codex skill link at $target_path"
-                rm "$target_path" || return 1
-                ;;
-        esac
+        echo "Removing Codex skill link at $target_path"
+        rm "$target_path" || return 1
     done
 
     for skill_path in "$source_dir"/*; do
@@ -148,6 +163,7 @@ if [ "$LINK_CODEX" = true ] && [ -n "$AGENTS_MD_SOURCE" ]; then
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
+    remove_path "$CLAUDE_SKILLS_TARGET"
     create_symlink "$SKILLS_DIR" "$CLAUDE_SKILLS_TARGET"
 fi
 

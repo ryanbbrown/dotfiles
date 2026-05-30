@@ -4,3 +4,6 @@
 [submodule "mattpocock-skills"]
 	path = mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
+[submodule "agent-html-skills"]
+	path = agent-html-skills
+	url = https://github.com/f-labs-io/agent-html-skills.git

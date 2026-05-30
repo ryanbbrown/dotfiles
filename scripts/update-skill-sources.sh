@@ -7,6 +7,11 @@ cd "$repo_root" || exit 1
 submodules=(
   "gstack"
   "mattpocock-skills"
+  "agent-html-skills"
+)
+
+generated_paths=(
+  "skills/html-artifacts"
 )
 
 commit=false
@@ -77,6 +82,16 @@ for submodule in "${submodules[@]}"; do
   git submodule update --remote "$submodule" || die "failed to update $submodule"
 done
 
+if [ -x scripts/generate-html-artifacts-skill.sh ]; then
+  log "GENERATE html-artifacts skill"
+  scripts/generate-html-artifacts-skill.sh || die "failed to generate html-artifacts skill"
+fi
+
+if [ -x create-links.sh ]; then
+  log "LINK agent skills"
+  ./create-links.sh || die "failed to link agent skills"
+fi
+
 changed=()
 for submodule in "${submodules[@]}"; do
   if ! git config --file .gitmodules --get "submodule.$submodule.url" >/dev/null; then
@@ -88,8 +103,17 @@ for submodule in "${submodules[@]}"; do
   fi
 done
 
+for generated_path in "${generated_paths[@]}"; do
+  if [ -e "$generated_path" ] && {
+    ! git diff --quiet -- "$generated_path" ||
+    [ -n "$(git ls-files --others --exclude-standard -- "$generated_path")" ]
+  }; then
+    changed+=("$generated_path")
+  fi
+done
+
 if [ "${#changed[@]}" -eq 0 ]; then
-  log "No skill submodule pointer changes"
+  log "No skill source changes"
   exit 0
 fi
 
@@ -106,7 +130,7 @@ if git diff --cached --quiet -- "${changed[@]}"; then
   exit 0
 fi
 
-git commit --only -- "${changed[@]}" -m "chore: update skill submodules" || die "failed to commit skill submodule updates"
+git commit --only -- "${changed[@]}" -m "chore: update skill sources" || die "failed to commit skill source updates"
 
 if [ "$push" != true ]; then
   exit 0
