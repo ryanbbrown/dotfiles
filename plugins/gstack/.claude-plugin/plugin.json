@@ -1,0 +1,23 @@
+{
+  "name": "gstack",
+  "version": "0.1.0",
+  "description": "Selected gstack skills exposed through local global-agent-context wrappers.",
+  "author": {
+    "name": "Ryan Brown"
+  },
+  "license": "MIT",
+  "keywords": ["gstack", "browser", "qa"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "gstack",
+    "shortDescription": "Selected gstack skills",
+    "longDescription": "Selected gstack skills exposed through local wrappers while preserving auto-updating upstream sources.",
+    "developerName": "Ryan Brown",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Browse a page",
+      "Take a screenshot"
+    ]
+  }
+}

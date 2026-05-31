@@ -11,7 +11,7 @@ submodules=(
 )
 
 generated_paths=(
-  "skills/html-artifacts"
+  "plugins/html-artifacts/skills/html-artifacts"
 )
 
 commit=false

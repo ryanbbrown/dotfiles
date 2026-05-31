@@ -17,6 +17,7 @@ LINK_CODEX=true
 LINK_SKILLS=true
 
 SKILLS_DIR="$(pwd)/skills"
+PLUGINS_DIR="$(pwd)/plugins"
 CLAUDE_MD_FILE="$(pwd)/CLAUDE.md"
 AGENTS_MD_FILE="$(pwd)/AGENTS.md"
 
@@ -38,6 +39,7 @@ fi
 CLAUDE_COMMANDS_TARGET="$HOME/.claude/commands"
 CLAUDE_MD_TARGET="$HOME/.claude/CLAUDE.md"
 CLAUDE_SKILLS_TARGET="$HOME/.claude/skills"
+CLAUDE_PLUGINS_TARGET="$HOME/.claude/plugins"
 CODEX_PROMPTS_TARGET="$HOME/.codex/prompts"
 CODEX_AGENTS_TARGET="$HOME/.codex/AGENTS.md"
 CODEX_SKILLS_TARGET="$HOME/.codex/skills"
@@ -144,6 +146,28 @@ sync_codex_skill_links() {
     done
 }
 
+sync_claude_plugin_links() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local plugin_path
+    local plugin_name
+
+    if [ ! -d "$source_dir" ]; then
+        return 0
+    fi
+
+    mkdir -p "$target_dir"
+
+    for plugin_path in "$source_dir"/*; do
+        if [ ! -d "$plugin_path" ]; then
+            continue
+        fi
+
+        plugin_name="$(basename "$plugin_path")"
+        create_symlink "$plugin_path" "$target_dir/$plugin_name"
+    done
+}
+
 # Legacy slash-command links are intentionally removed. Claude invokes skills
 # with /skill-name, and Codex reads the same skills from ~/.codex/skills.
 if [ "$LINK_CLAUDE" = true ]; then
@@ -165,17 +189,11 @@ fi
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
     remove_path "$CLAUDE_SKILLS_TARGET"
     create_symlink "$SKILLS_DIR" "$CLAUDE_SKILLS_TARGET"
+    sync_claude_plugin_links "$PLUGINS_DIR" "$CLAUDE_PLUGINS_TARGET"
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
     sync_codex_skill_links "$SKILLS_DIR" "$CODEX_SKILLS_TARGET"
-fi
-
-VERCEL_REACT="$(pwd)/.agents/skills/vercel-react-best-practices"
-if [ -d "$VERCEL_REACT" ]; then
-    create_symlink "$VERCEL_REACT" "$SKILLS_DIR/vercel-react-best-practices"
-else
-    echo "Warning: Vercel React skill not found. Run: npx skills add vercel-labs/agent-skills -y"
 fi
 
 echo "Done!"

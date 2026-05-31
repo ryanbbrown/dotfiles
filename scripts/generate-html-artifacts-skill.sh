@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root" || exit 1
 
 source_root="agent-html-skills/plugins/html-skills/skills"
-target_root="skills/html-artifacts"
+target_root="plugins/html-artifacts/skills/html-artifacts"
 references_dir="$target_root/references"
 
 if [ ! -d "$source_root" ]; then
@@ -65,12 +65,12 @@ EOF_SKILL
 
 for source_file in "$source_root"/*/SKILL.md; do
   skill_name="$(basename "$(dirname "$source_file")")"
-  ln -s "../../../agent-html-skills/plugins/html-skills/skills/$skill_name/SKILL.md" "$references_dir/$skill_name.md"
+  ln -s "../../../../../agent-html-skills/plugins/html-skills/skills/$skill_name/SKILL.md" "$references_dir/$skill_name.md"
 done
 
 if [ -f "agent-html-skills/plugins/html-skills/assets/submit-handler.js" ]; then
   mkdir -p "$target_root/assets"
-  ln -s "../../../agent-html-skills/plugins/html-skills/assets/submit-handler.js" "$target_root/assets/submit-handler.js"
+  ln -s "../../../../../agent-html-skills/plugins/html-skills/assets/submit-handler.js" "$target_root/assets/submit-handler.js"
 fi
 
 echo "Generated $target_root"

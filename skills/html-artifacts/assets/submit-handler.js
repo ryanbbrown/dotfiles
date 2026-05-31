@@ -1,1 +1,0 @@
-../../../agent-html-skills/plugins/html-skills/assets/submit-handler.js

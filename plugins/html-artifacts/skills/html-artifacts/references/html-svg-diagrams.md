@@ -1,0 +1,1 @@
+../../../../../agent-html-skills/plugins/html-skills/skills/html-svg-diagrams/SKILL.md

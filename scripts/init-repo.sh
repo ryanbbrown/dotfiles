@@ -68,8 +68,8 @@ fi
 git init
 git branch -M main
 
-mkdir -p .plans .reviews
-touch .plans/.gitkeep .reviews/.gitkeep
+mkdir -p .plans .reviews .html
+touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep
 
 cat > .gitignore <<'EOF_GITIGNORE'
 .DS_Store
@@ -97,6 +97,7 @@ cat > CLAUDE.md <<'EOF_CLAUDE'
 ## Workflow
 - Plans live in `.plans/` and should be committed.
 - Multi-agent reviews live in `.reviews/` and should be committed when they capture useful decision context.
+- Generated HTML artifacts live in `.html/` and should be committed when they capture useful design, planning, or review context.
 - Keep `README.md` current with the minimum context needed to run and understand the project.
 
 ## Development
