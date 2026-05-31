@@ -353,6 +353,8 @@ run_codex() {
 }
 
 run_claude() {
+  local status
+  rm -f "$claude_out"
   (
     cd "$repo" || exit 1
     claude -p \
@@ -361,7 +363,12 @@ run_claude() {
       --disallowedTools "Edit,Write,MultiEdit,NotebookEdit" \
       --output-format text \
       "$(cat "$prompt_file")"
-  ) > "$claude_out" 2> "$logs_dir/claude.stderr"
+  ) > "$logs_dir/claude.stdout" 2> "$logs_dir/claude.stderr"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    cp "$logs_dir/claude.stdout" "$claude_out"
+  fi
+  return "$status"
 }
 
 run_droid() {
@@ -403,7 +410,13 @@ fi
 if wait_with_timeout "$claude_pid" claude "$logs_dir/claude.stderr"; then
   echo "claude: $claude_out"
 else
-  echo "claude: failed; see $logs_dir/claude.stderr" >&2
+  if [ -s "$logs_dir/claude.stderr" ]; then
+    echo "claude: failed; see $logs_dir/claude.stderr" >&2
+  elif [ -s "$logs_dir/claude.stdout" ]; then
+    echo "claude: failed; see $logs_dir/claude.stdout" >&2
+  else
+    echo "claude: failed; no output captured; see $logs_dir/claude.stderr" >&2
+  fi
   failed=1
 fi
 
