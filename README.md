@@ -26,6 +26,17 @@ The `skill-creator` skill was cloned from [anthropics/skills](https://github.com
 4. Edit `create-links.sh` to enable/disable linking for Claude or Codex
 5. Run `./create-links.sh`
 
+## New Repos
+
+Add this function to `~/.zshrc`:
+
+```bash
+unalias init-repo 2>/dev/null
+init-repo() { /Users/ryanbrown/code/global-agent-context/scripts/init-repo.sh "$@"; }
+```
+
+Run `init-repo` from an empty project directory to create a greenfield side-project repo with `.plans/`, `.reviews/`, `.html/`, agent instructions, an initial commit, and a GitHub remote.
+
 ### Plugins (run these in Claude Code)
 
 Install the SwiftUI Expert plugin:

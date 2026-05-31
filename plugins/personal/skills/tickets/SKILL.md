@@ -18,7 +18,7 @@ Read the plan file specified by the user (usually in `.plans/`). If no file is s
 2. For each step, create a ticket using `tk create` with:
    - A clear title (imperative mood, e.g. "Add title generation utility")
    - `--type`: feature, bug, task, or chore as appropriate
-   - `--description`: a short summary of what this step accomplishes, plus a reference to the plan file and step number for full context (e.g. "See .plans/plan-sessions.md, Step 3")
+   - `--description`: a short summary of what this step accomplishes, plus a reference to the plan file and step number for full context (e.g. "See .plans/01-sessions.md, Step 3")
    - `--acceptance`: concrete done criteria pulled from the plan step and/or the spec's GIVEN/WHEN/THEN scenarios
    - `--tags`: relevant domain tags (e.g. sessions, ui, backend)
 3. After creating all tickets, wire up dependencies with `tk dep <id> <dep-id>` based on the ordering in the plan. Steps that can be done in parallel should NOT have dependencies between them.

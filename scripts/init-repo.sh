@@ -95,7 +95,7 @@ cat > CLAUDE.md <<'EOF_CLAUDE'
 - Unless the user explicitly says otherwise, there are no backwards-compatibility requirements.
 
 ## Workflow
-- Plans live in `.plans/` and should be committed.
+- Plans live in `.plans/`, should be committed, and should be named with implementation-order prefixes like `01-auth.md`, `02-billing.md`, and `03-dashboard.md`.
 - Multi-agent reviews live in `.reviews/` and should be committed when they capture useful decision context.
 - Generated HTML artifacts live in `.html/` and should be committed when they capture useful design, planning, or review context.
 - Keep `README.md` current with the minimum context needed to run and understand the project.

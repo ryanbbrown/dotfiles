@@ -14,7 +14,7 @@ If the user provides reference code, open source examples, or research findings,
 
 ## Output
 
-Write the plan to `.plans/plan-<name>.md`. If a spec exists for this domain, reference it at the top.
+Write the plan to `.plans/<nn>-<name>.md`, where `<nn>` is the next two-digit implementation-order number starting at `01`. If a spec exists for this domain, reference it at the top.
 
 ## Plan structure
 
