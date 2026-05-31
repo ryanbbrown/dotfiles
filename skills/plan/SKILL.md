@@ -8,13 +8,13 @@ Generate an implementation plan: $ARGUMENTS
 
 ## Input
 
-Read the relevant spec in `.specs/` if one exists. Read any existing plans in `.context/` to avoid overlap. Explore the codebase to understand current architecture, patterns, and conventions.
+Read the relevant spec in `.specs/` if one exists. Read any existing plans in `.plans/` to avoid overlap. Explore the codebase to understand current architecture, patterns, and conventions.
 
 If the user provides reference code, open source examples, or research findings, incorporate them into the plan as the preferred approach.
 
 ## Output
 
-Write the plan to `.context/plan-<name>.md`. If a spec exists for this domain, reference it at the top.
+Write the plan to `.plans/plan-<name>.md`. If a spec exists for this domain, reference it at the top.
 
 ## Plan structure
 
