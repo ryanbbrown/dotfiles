@@ -1,22 +1,20 @@
 #!/bin/bash
 
-# Link global-agent-context instructions and skills into local agent homes.
+# Link global-agent-context instructions and plugins into local agent homes.
 #
 # Canonical source:
-#   - skills/ contains reusable workflows for Claude Code and Codex.
-#   - Skills can be invoked directly in Claude with /skill-name, so legacy
-#     slash-command markdown is no longer generated into Codex wrappers.
+#   - plugins/ contains grouped skill sources for Claude Code and Codex.
+#   - Selected upstream skills without local plugin manifests are linked from
+#     their submodule paths.
 #
-# Claude can use a single skills directory symlink. Codex keeps ~/.codex/skills
-# as a real directory because it also contains Codex's built-in .system skills;
-# this script syncs top-level skill symlinks into that directory without
-# touching .system or other non-symlink entries.
+# Codex keeps ~/.codex/skills as a real directory because it also contains
+# Codex's built-in .system skills; this script syncs skill symlinks into that
+# directory without touching .system or other non-symlink entries.
 
 LINK_CLAUDE=true
 LINK_CODEX=true
 LINK_SKILLS=true
 
-SKILLS_DIR="$(pwd)/skills"
 PLUGINS_DIR="$(pwd)/plugins"
 CLAUDE_MD_FILE="$(pwd)/CLAUDE.md"
 AGENTS_MD_FILE="$(pwd)/AGENTS.md"
@@ -119,8 +117,12 @@ ensure_directory() {
 }
 
 sync_codex_skill_links() {
-    local source_dir="$1"
-    local target_dir="$2"
+    local args=("$@")
+    local target_index=$((${#args[@]} - 1))
+    local target_dir="${args[$target_index]}"
+    unset 'args[$target_index]'
+    local source_dirs=("${args[@]}")
+    local source_dir
     local skill_path
     local skill_name
     local target_path
@@ -136,13 +138,19 @@ sync_codex_skill_links() {
         rm "$target_path" || return 1
     done
 
-    for skill_path in "$source_dir"/*; do
-        if [ ! -d "$skill_path" ]; then
+    for source_dir in "${source_dirs[@]}"; do
+        if [ ! -d "$source_dir" ]; then
             continue
         fi
 
-        skill_name="$(basename "$skill_path")"
-        create_symlink "$skill_path" "$target_dir/$skill_name"
+        for skill_path in "$source_dir"/*; do
+            if [ ! -d "$skill_path" ]; then
+                continue
+            fi
+
+            skill_name="$(basename "$skill_path")"
+            create_symlink "$skill_path" "$target_dir/$skill_name"
+        done
     done
 }
 
@@ -168,8 +176,8 @@ sync_claude_plugin_links() {
     done
 }
 
-# Legacy slash-command links are intentionally removed. Claude invokes skills
-# with /skill-name, and Codex reads the same skills from ~/.codex/skills.
+# Legacy slash-command and flat skills links are intentionally removed. Claude
+# discovers plugin roots, and Codex reads direct skill links in ~/.codex/skills.
 if [ "$LINK_CLAUDE" = true ]; then
     remove_symlink "$CLAUDE_COMMANDS_TARGET"
 fi
@@ -188,12 +196,13 @@ fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
     remove_path "$CLAUDE_SKILLS_TARGET"
-    create_symlink "$SKILLS_DIR" "$CLAUDE_SKILLS_TARGET"
     sync_claude_plugin_links "$PLUGINS_DIR" "$CLAUDE_PLUGINS_TARGET"
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
-    sync_codex_skill_links "$SKILLS_DIR" "$CODEX_SKILLS_TARGET"
+    sync_codex_skill_links \
+        "$PLUGINS_DIR"/*/skills \
+        "$CODEX_SKILLS_TARGET"
 fi
 
 echo "Done!"

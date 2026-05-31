@@ -5,12 +5,12 @@ A single repo for all global coding agent configurations. Add/modify files here 
 ## What Gets Linked
 
 - **Instructions** (`CLAUDE.md` / `AGENTS.md`) → `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
-- **Skills** (`skills/`) → `~/.claude/skills` and `~/.codex/skills`
-- **Plugins** (`plugins/`) → `~/.claude/plugins/<name>` for Claude plugin discovery; Codex skill links resolve through these plugin roots where possible so names can appear as `<plugin>:<skill>`
+- **Plugins** (`plugins/`) → `~/.claude/plugins/<name>` for Claude plugin discovery
+- **Plugin skills** (`plugins/*/skills/*`) → `~/.codex/skills/<skill-name>` with real paths under plugin roots so names can appear as `<plugin>:<skill>`
 
 The `skill-creator` skill was cloned from [anthropics/skills](https://github.com/anthropics/skills.git) and modified for local use (removed packaging-related scripts + documentation). The `.upstream` file in the skill directory tracks the original source.
 
-`plugins/` is the source organization for local and wrapped third-party skills. `skills/` is a compatibility layer of symlinks used by Claude and Codex skill discovery.
+`plugins/` is the source organization for local and wrapped third-party skills.
 
 ## Setup
 
@@ -24,7 +24,7 @@ The `skill-creator` skill was cloned from [anthropics/skills](https://github.com
    rm -rf .claude .cursor
    ```
 4. Edit `create-links.sh` to enable/disable linking for Claude or Codex
-5. Run `./create-links.sh` (this also symlinks each skill from `.agents/skills/` into `skills/`)
+5. Run `./create-links.sh`
 
 ### Plugins (run these in Claude Code)
 

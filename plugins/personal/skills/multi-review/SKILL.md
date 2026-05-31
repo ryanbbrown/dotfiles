@@ -12,13 +12,13 @@ Use this skill after the writer has implemented a feature and run the required t
 From the repository being reviewed:
 
 ```bash
-/Users/ryanbrown/code/global-agent-context/skills/multi-review/scripts/review-round.sh --feature "feature name"
+/Users/ryanbrown/code/global-agent-context/plugins/personal/skills/multi-review/scripts/review-round.sh --feature "feature name"
 ```
 
 For plan review:
 
 ```bash
-/Users/ryanbrown/code/global-agent-context/skills/multi-review/scripts/review-round.sh --feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
+/Users/ryanbrown/code/global-agent-context/plugins/personal/skills/multi-review/scripts/review-round.sh --feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
 ```
 
 Plan reviewers may inspect source and tests needed to evaluate the target plan, but must not read prior review outputs, `.reviews/`, reviewer logs, generated feedback files, or other planning documents as evidence.

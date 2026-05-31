@@ -1,0 +1,23 @@
+{
+  "name": "mattpocock-skills",
+  "version": "0.1.0",
+  "description": "Selected Matt Pocock engineering skills.",
+  "author": {
+    "name": "Matt Pocock"
+  },
+  "license": "MIT",
+  "keywords": ["architecture", "planning", "engineering"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Matt Pocock Skills",
+    "shortDescription": "Selected engineering skills",
+    "longDescription": "Selected Matt Pocock engineering skills exposed through global-agent-context.",
+    "developerName": "Matt Pocock",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Improve codebase architecture",
+      "Grill a plan with docs"
+    ]
+  }
+}
