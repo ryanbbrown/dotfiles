@@ -1,24 +1,23 @@
 {
   "name": "personal",
   "version": "0.1.0",
-  "description": "Ryan's personal coding-agent workflows and project commands.",
+  "description": "Ryan's active personal coding-agent workflows.",
   "author": {
     "name": "Ryan Brown"
   },
   "license": "MIT",
-  "keywords": ["personal", "workflow", "planning", "review"],
+  "keywords": ["personal", "workflow", "interview", "review"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Personal",
-    "shortDescription": "Personal repo workflows",
-    "longDescription": "Personal coding-agent workflows for planning, specs, reviews, tickets, handoffs, and project setup conventions.",
+    "shortDescription": "Interview and review workflows",
+    "longDescription": "Ryan's active personal coding-agent workflows: interview for shaping plans/specs through questions, and multi-review for parallel read-only feedback from multiple agents.",
     "developerName": "Ryan Brown",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
-      "Draft a plan",
-      "Run a multi-agent review",
-      "Break a plan into tickets"
+      "Interview me into a plan",
+      "Run a multi-agent review"
     ]
   }
 }
