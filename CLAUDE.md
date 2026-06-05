@@ -18,6 +18,7 @@
 ## Other
 - You are almost always running inside tmux. References to "window" mean a tmux window, with 1 pane per window.
 - Use uv for all python-related operations; `uv add` to install new packages, and `uv run file.py` to run files. No need to activate the venv first.
+- Do not use `qlmanage` for image verification or format conversion; it generates previews/thumbnails that can mislead layout QA. Use a real renderer/converter for the source format, render the full image, and inspect the full rendered image first. For SVG-to-PNG, use `rsvg-convert --output=/tmp/output.png input.svg`.
 - When committing, follow conventional commits (`fix:`, `feat:`, `chore:`, `ci:`, `docs:`, `refactor:`, `test:`). A scope may added in parentheses for additional context (e.g. `feat(parser):` ). Commit messages should be a single sentence and relatively concise.
 
 ## Think before coding
