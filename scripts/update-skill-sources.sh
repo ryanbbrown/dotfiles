@@ -8,10 +8,12 @@ submodules=(
   "gstack"
   "mattpocock-skills"
   "agent-html-skills"
+  "drawio-mcp"
 )
 
 generated_paths=(
   "plugins/html-artifacts/skills/html-artifacts"
+  "plugins/drawio/skills/drawio"
 )
 
 commit=false
@@ -87,6 +89,11 @@ if [ -x scripts/generate-html-artifacts-skill.sh ]; then
   scripts/generate-html-artifacts-skill.sh || die "failed to generate html-artifacts skill"
 fi
 
+if [ -x scripts/generate-drawio-skill.sh ]; then
+  log "GENERATE drawio skill"
+  scripts/generate-drawio-skill.sh || die "failed to generate drawio skill"
+fi
+
 if [ -x create-links.sh ]; then
   log "LINK agent skills"
   ./create-links.sh || die "failed to link agent skills"
@@ -130,7 +137,7 @@ if git diff --cached --quiet -- "${changed[@]}"; then
   exit 0
 fi
 
-git commit --only -- "${changed[@]}" -m "chore: update skill sources" || die "failed to commit skill source updates"
+git commit -m "chore: update skill sources" --only -- "${changed[@]}" || die "failed to commit skill source updates"
 
 if [ "$push" != true ]; then
   exit 0

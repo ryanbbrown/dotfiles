@@ -7,3 +7,6 @@
 [submodule "agent-html-skills"]
 	path = agent-html-skills
 	url = https://github.com/f-labs-io/agent-html-skills.git
+[submodule "drawio-mcp"]
+	path = drawio-mcp
+	url = https://github.com/jgraph/drawio-mcp

@@ -55,6 +55,8 @@ Personal skills currently kept active:
 
 Wrapped third-party skills currently kept active:
 
+- `crit:crit`
+- `drawio:drawio`
 - `gstack:browse`
 - `html-artifacts:html-artifacts`
 - `mattpocock-skills:grill-with-docs`
