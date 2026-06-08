@@ -9,6 +9,7 @@ submodules=(
   "mattpocock-skills"
   "agent-html-skills"
   "drawio-mcp"
+  "taste-skill"
 )
 
 generated_paths=(

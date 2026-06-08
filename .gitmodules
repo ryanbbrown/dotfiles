@@ -10,3 +10,6 @@
 [submodule "drawio-mcp"]
 	path = drawio-mcp
 	url = https://github.com/jgraph/drawio-mcp
+[submodule "taste-skill"]
+	path = taste-skill
+	url = https://github.com/Leonxlnx/taste-skill.git
