@@ -24,7 +24,7 @@ init-repo
 The script creates a greenfield side-project repo with:
 
 - `.plans/` for committed implementation plans, named in implementation order like `01-auth.md`, `02-billing.md`, `03-dashboard.md`
-- `.reviews/` for committed multi-agent review outputs when they capture useful decision context
+- `.reviews/` for multi-agent review outputs; gitignored by default, force-add (`git add -f`) the ones that capture useful decision context
 - `.html/` for committed generated HTML artifacts when visual explanation is useful
 - `CLAUDE.md` and `AGENTS.md` project instructions
 - a minimal `README.md`
@@ -38,32 +38,32 @@ Most planning is free-form agent work rather than an explicit skill invocation. 
 
 ### Review Work
 
-Use `personal:multi-review` when a plan or implementation needs read-only feedback from multiple agents. Review output goes under `.reviews/plans/<feature>/` or `.reviews/implementations/<feature>/`.
+Use the `multi-review` skill when a plan or implementation needs read-only feedback from multiple agents. Review output goes under `.reviews/plans/<feature>/` or `.reviews/implementations/<feature>/`. Outputs are gitignored by default; `git add -f` the ones worth keeping.
 
-Use `personal:interview` when the agent should ask questions and shape a plan/spec before writing.
+Use the `interview` skill when the agent should ask questions and shape a plan/spec before writing.
 
 ### Generate Visual Artifacts
 
-Use `html-artifacts:html-artifacts` when HTML would communicate better than markdown: diagrams, timelines, comparison matrices, design prototypes, data explorers, or visual reports. Generated files should usually live in `.html/`.
+Use the `html-artifacts` skill when HTML would communicate better than markdown: diagrams, timelines, comparison matrices, design prototypes, data explorers, or visual reports. Generated files should usually live in `.html/`.
 
 ## Active Skills
 
 Personal skills currently kept active:
 
-- `personal:interview`
-- `personal:multi-review`
+- `interview`
+- `multi-review`
 
 Wrapped third-party skills currently kept active:
 
-- `crit:crit`
-- `drawio:drawio`
-- `gstack:browse`
-- `html-artifacts:html-artifacts`
-- `mattpocock-skills:grill-with-docs`
-- `mattpocock-skills:improve-codebase-architecture`
-- `taste-skill:taste-skill`
-- `taste-skill:gpt-tasteskill`
-- `vercel:vercel-react-best-practices`
+- `browse` (gstack)
+- `crit` and `crit-cli`
+- `drawio`
+- `html-artifacts`
+- `last30days`
+- `grill-with-docs` (mattpocock-skills)
+- `improve-codebase-architecture` (mattpocock-skills)
+- `taste-skill` and `gpt-tasteskill`
+- `vercel-react-best-practices`
 
 Older personal workflows are preserved in `archive/personal-skills/` but are not linked into Claude or Codex.
 
@@ -88,10 +88,12 @@ That links:
 
 - `CLAUDE.md` -> `~/.claude/CLAUDE.md`
 - `CLAUDE.md` -> `~/.codex/AGENTS.md`
-- `plugins/*` -> `~/.claude/plugins/*`
-- `plugins/*/skills/*` -> `~/.codex/skills/*`
+- `plugins/*/skills/*` -> `~/.claude/skills/*` and `~/.codex/skills/*`
+- `gstack` -> `~/.claude/skills/gstack` (compiled browse binary + helpers)
 
-Codex's `.system` skills are preserved.
+Skills are exposed under flat names in both agents (e.g. `multi-review`, not
+`personal:multi-review`); `~/.claude/plugins` is managed by Claude Code's
+plugin system and is not touched. Codex's `.system` skills are preserved.
 
 ## Third-Party Sources
 
