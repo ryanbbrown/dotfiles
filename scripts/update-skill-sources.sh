@@ -10,6 +10,9 @@ submodules=(
   "agent-html-skills"
   "drawio-mcp"
   "taste-skill"
+  "last30days-skill"
+  "crit"
+  "vercel-agent-skills"
 )
 
 generated_paths=(
@@ -93,6 +96,11 @@ fi
 if [ -x scripts/generate-drawio-skill.sh ]; then
   log "GENERATE drawio skill"
   scripts/generate-drawio-skill.sh || die "failed to generate drawio skill"
+fi
+
+if [ -x scripts/build-gstack-browse.sh ]; then
+  log "BUILD gstack browse binary"
+  scripts/build-gstack-browse.sh || die "failed to build gstack browse binary"
 fi
 
 if [ -x create-links.sh ]; then
