@@ -37,7 +37,6 @@ fi
 CLAUDE_COMMANDS_TARGET="$HOME/.claude/commands"
 CLAUDE_MD_TARGET="$HOME/.claude/CLAUDE.md"
 CLAUDE_SKILLS_TARGET="$HOME/.claude/skills"
-CLAUDE_PLUGINS_TARGET="$HOME/.claude/plugins"
 CODEX_PROMPTS_TARGET="$HOME/.codex/prompts"
 CODEX_AGENTS_TARGET="$HOME/.codex/AGENTS.md"
 CODEX_SKILLS_TARGET="$HOME/.codex/skills"
@@ -62,27 +61,6 @@ create_symlink() {
         echo "Linked $target -> $source"
     else
         echo "Warning: failed to link $target -> $source"
-        return 1
-    fi
-}
-
-remove_path() {
-    local target="$1"
-
-    if [ -L "$target" ]; then
-        echo "Removing existing symlink at $target"
-        if ! rm "$target"; then
-            echo "Warning: failed to remove existing symlink at $target"
-            return 1
-        fi
-    elif [ -d "$target" ]; then
-        echo "Removing existing directory at $target"
-        if ! rm -rf "$target"; then
-            echo "Warning: failed to remove existing directory at $target"
-            return 1
-        fi
-    elif [ -e "$target" ]; then
-        echo "Warning: $target exists and is not a symlink or directory. Skipping."
         return 1
     fi
 }
@@ -116,7 +94,7 @@ ensure_directory() {
     mkdir -p "$target"
 }
 
-sync_codex_skill_links() {
+sync_skill_links() {
     local args=("$@")
     local target_index=$((${#args[@]} - 1))
     local target_dir="${args[$target_index]}"
@@ -134,7 +112,7 @@ sync_codex_skill_links() {
             continue
         fi
 
-        echo "Removing Codex skill link at $target_path"
+        echo "Removing skill link at $target_path"
         rm "$target_path" || return 1
     done
 
@@ -154,30 +132,9 @@ sync_codex_skill_links() {
     done
 }
 
-sync_claude_plugin_links() {
-    local source_dir="$1"
-    local target_dir="$2"
-    local plugin_path
-    local plugin_name
-
-    if [ ! -d "$source_dir" ]; then
-        return 0
-    fi
-
-    mkdir -p "$target_dir"
-
-    for plugin_path in "$source_dir"/*; do
-        if [ ! -d "$plugin_path" ]; then
-            continue
-        fi
-
-        plugin_name="$(basename "$plugin_path")"
-        create_symlink "$plugin_path" "$target_dir/$plugin_name"
-    done
-}
-
-# Legacy slash-command and flat skills links are intentionally removed. Claude
-# discovers plugin roots, and Codex reads direct skill links in ~/.codex/skills.
+# Legacy slash-command links are intentionally removed. Both Claude and Codex
+# read direct skill links in their skills directories; ~/.claude/plugins is a
+# managed directory (marketplace installs) and does NOT discover loose dirs.
 if [ "$LINK_CLAUDE" = true ]; then
     remove_symlink "$CLAUDE_COMMANDS_TARGET"
 fi
@@ -195,12 +152,16 @@ if [ "$LINK_CODEX" = true ] && [ -n "$AGENTS_MD_SOURCE" ]; then
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
-    remove_path "$CLAUDE_SKILLS_TARGET"
-    sync_claude_plugin_links "$PLUGINS_DIR" "$CLAUDE_PLUGINS_TARGET"
+    sync_skill_links \
+        "$PLUGINS_DIR"/*/skills \
+        "$CLAUDE_SKILLS_TARGET"
+    # gstack skills resolve their compiled binary and bin/ helpers via
+    # ~/.claude/skills/gstack (the canonical gstack install location).
+    create_symlink "$(pwd)/gstack" "$CLAUDE_SKILLS_TARGET/gstack"
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
-    sync_codex_skill_links \
+    sync_skill_links \
         "$PLUGINS_DIR"/*/skills \
         "$CODEX_SKILLS_TARGET"
 fi
