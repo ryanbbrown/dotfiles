@@ -13,3 +13,12 @@
 [submodule "taste-skill"]
 	path = taste-skill
 	url = https://github.com/Leonxlnx/taste-skill.git
+[submodule "last30days-skill"]
+	path = last30days-skill
+	url = https://github.com/mvanhorn/last30days-skill
+[submodule "crit"]
+	path = crit
+	url = https://github.com/tomasz-tomczyk/crit.git
+[submodule "vercel-agent-skills"]
+	path = vercel-agent-skills
+	url = https://github.com/vercel-labs/agent-skills.git
