@@ -68,10 +68,10 @@ fi
 git init
 git branch -M main
 
-mkdir -p .plans .reviews .html
+mkdir -p .plans .reviews .html .archive
 touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep
 mkdir -p .agent
-touch .agent/learnings.jsonl
+touch .agent/.gitkeep .agent/learnings.jsonl
 
 cat > .gitignore <<'EOF_GITIGNORE'
 .DS_Store
@@ -89,6 +89,8 @@ __pycache__/
 .venv/
 
 .agent/learnings.jsonl
+
+.archive/
 
 .reviews/*
 !.reviews/.gitkeep

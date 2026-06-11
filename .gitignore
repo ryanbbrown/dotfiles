@@ -7,3 +7,5 @@ __pycache__/
 # Compiled browse binary (built from gstack submodule)
 skills/browse/dist/
 .generated/
+.archive/
+.gstack/
