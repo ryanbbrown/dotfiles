@@ -1,15 +1,14 @@
 # Root Instructions
 
 ## How to interact
-- Always ask the user any necessary follow up questions about their intent before making changes.
+- Always ask the user any necessary follow up questions about their intent before making changes. (In headless runs — `claude -p`, cron — you can't ask: state your assumptions in the output and proceed.)
 - If the user interrupts you and asks a question, IMMEDIATELY ANSWER THE QUESTION. Do not use the question as a jumping-off point for additional changes.
 - In general, if the user input has a question mark, do NOT make edits. First, answer their question, reading files if necessary.
 
 ## How to write code
-- Treat this as production code with callers, history, and constraints. Ask before changing public behavior or removing code that looks unused.
-- Match the codebase's existing patterns for error handling, validation, and structure — including defensive programming where it's already in use.
-- Match the codebase's existing comment/docstring style rather than enforcing a personal preference.
-- Don't add dependencies, restructure files, or introduce new patterns without confirming first.
+- Treat this as production code with callers, history, and constraints.
+- Ask before: changing public behavior, removing code that looks unused, adding dependencies, restructuring files, or introducing new patterns.
+- Match the codebase's existing patterns for error handling, validation, structure, and comment/docstring style — including defensive programming where it's already in use. Conformance > taste; if you genuinely think a convention is harmful, surface it. Don't fork silently.
 - ALWAYS use existing libraries and utility functions; do NOT rewrite functions for basic language functionality
 
 ## Saving content to files
@@ -50,7 +49,6 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 When editing existing code:
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
@@ -77,10 +75,28 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## Use the model only for judgment calls
-Use me for: classification, drafting, summarization, extraction.
-Do NOT use me for: routing, retries, deterministic transforms.
-If code can answer, code answers.
+## Verify web UI changes visually
+
+**A web UI change is not verified until you have rendered the affected page and looked at it.**
+
+"The server is serving the updated file" or "the CSS now contains the new value" is NOT verification. After changing anything user-visible (HTML, CSS, layout, components), render and inspect.
+
+Use the gstack browse CLI below — it is the default and works headless in any terminal session. Do NOT reach for in-app/IDE browser skills first (`browser:control-in-app-browser`, `agent.browsers.get('iab')`, Claude-in-Chrome): they require a desktop surface and typically fail with "Browser is not available" in terminal sessions.
+
+```bash
+B=~/.claude/skills/gstack/browse/dist/browse   # headless Chromium, ~100ms/command
+$B goto http://localhost:3000/page
+$B screenshot /tmp/check.png                   # full page; add --selector .x for one element
+$B console                                     # JS errors?
+```
+
+Then Read the screenshot and confirm the intended change is actually visible. For visual tweaks (sizes, spacing, colors), screenshot before AND after and compare. Use `$B viewport WxH` for responsive checks. If browse is unavailable, fall back to a Playwright script — but a screenshot you actually looked at is still required.
+
+## Use an LLM only for judgment calls
+When building LLM-powered code:
+- Use a model for: classification, drafting, summarization, extraction.
+- Do NOT use it for: routing, retries, deterministic transforms.
+- If code can answer, code answers.
 
 ## Surface conflicts, don't average them
 If two patterns contradict, pick one (more recent / more tested).
@@ -94,10 +110,6 @@ Before adding code, read exports, immediate callers, shared utilities.
 ## Tests verify intent, not just behavior
 Tests must encode WHY behavior matters, not just WHAT it does.
 A test that can't fail when business logic changes is wrong.
-
-## Match the codebase's conventions
-Conformance > taste inside the codebase.
-If you genuinely think a convention is harmful, surface it. Don't fork silently.
 
 ## Fail loud
 "Completed" is wrong if anything was skipped silently.
