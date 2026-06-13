@@ -230,7 +230,7 @@ preflight() {
     claude -p \
       --permission-mode dontAsk \
       --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
-      --disallowedTools "Edit,Write,MultiEdit,NotebookEdit" \
+      --disallowedTools "Edit,Write,NotebookEdit" \
       --output-format text \
       "Reply with exactly: ok. Do not run tools."
   ) > "$logs_dir/claude.preflight.stdout" 2> "$logs_dir/claude.preflight.stderr" &
@@ -360,7 +360,7 @@ run_claude() {
     claude -p \
       --permission-mode dontAsk \
       --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
-      --disallowedTools "Edit,Write,MultiEdit,NotebookEdit" \
+      --disallowedTools "Edit,Write,NotebookEdit" \
       --output-format text \
       "$(cat "$prompt_file")"
   ) > "$logs_dir/claude.stdout" 2> "$logs_dir/claude.stderr"
