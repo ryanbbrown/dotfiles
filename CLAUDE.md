@@ -49,6 +49,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 When editing existing code:
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
+- Line-length limits do not apply to Markdown prose. Do not split a single Markdown paragraph or list item across multiple lines unless the content structure requires it.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
