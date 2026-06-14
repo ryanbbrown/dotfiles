@@ -3,13 +3,16 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: init-repo.sh [--private|--public] [GITHUB_REPO]
+Usage: init-repo.sh [--private|--public] [--behavior] [GITHUB_REPO]
 
 Initializes a new greenfield side-project repo in the current empty directory,
 creates the matching GitHub repo with gh, and pushes the initial commit.
 
 GITHUB_REPO defaults to the current directory name. Pass owner/name to create
 the repo under a specific owner or organization.
+
+Options:
+  --behavior  Create docs/behavior.md for durable behavior contracts.
 USAGE
 }
 
@@ -23,6 +26,7 @@ need_cmd() {
 }
 
 repo_visibility="--private"
+include_behavior=false
 github_repo=""
 
 while [ "$#" -gt 0 ]; do
@@ -33,6 +37,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --public)
       repo_visibility="--public"
+      shift
+      ;;
+    --behavior)
+      include_behavior=true
       shift
       ;;
     -h|--help)
@@ -73,6 +81,34 @@ touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep
 mkdir -p .agent
 touch .agent/.gitkeep .agent/learnings.jsonl
 
+if [ "$include_behavior" = true ]; then
+  mkdir -p docs
+  cat > docs/behavior.md <<'EOF_BEHAVIOR'
+# Behavior
+
+This file records durable product behavior so plan reviews can check the intended behavior contract before implementation.
+
+<!--
+## Feature Name
+
+### Purpose
+
+One short paragraph describing the behavior from the user or system perspective.
+
+### Requirements
+
+Use an uppercase, readable requirement prefix from the section name, such as `BACKGROUND-1` or `TOOL-APPROVAL-1`.
+
+- FEATURE-1: A concrete externally meaningful behavior.
+- FEATURE-2: A behavior constraint, including any important exclusion or boundary.
+
+### Scenarios
+
+Use this section only when ordering, lifecycle, concurrency, retries, streaming, cancellation, or multi-actor behavior matters.
+-->
+EOF_BEHAVIOR
+fi
+
 cat > .gitignore <<'EOF_GITIGNORE'
 .DS_Store
 .env
@@ -108,7 +144,19 @@ cat > CLAUDE.md <<'EOF_CLAUDE'
 - Multi-agent reviews live in `.reviews/`; the directory is kept with `.gitkeep`, but review outputs are ignored by default.
 - Generated HTML artifacts live in `.html/` and should be committed when they capture useful design, planning, or review context.
 - Keep `README.md` current with the minimum context needed to run and understand the project.
+EOF_CLAUDE
 
+if [ "$include_behavior" = true ]; then
+  cat >> CLAUDE.md <<'EOF_CLAUDE'
+## Behavior Contracts
+Update `docs/behavior.md` after the plan review cycle and before implementation for any nontrivial change that affects durable product behavior. Follow the structure in that file. Usually this means adding a new section, but review existing behavior sections and update affected requirements when the planned implementation changes or clarifies them. Edit only affected sections; avoid wording churn.
+
+Do not update `docs/behavior.md` for pure refactors, internal cleanup, renames, file moves, dependency updates, or implementation-only API changes unless they change the product behavior described there. If the intended behavior cannot be stated clearly, stop and clarify before implementation.
+
+EOF_CLAUDE
+fi
+
+cat >> CLAUDE.md <<'EOF_CLAUDE'
 ## Project Learnings
 Agents should capture durable project learnings when they discover a non-obvious pattern, pitfall, user preference, architecture constraint, tool behavior, or workflow fix that would save future agents time.
 

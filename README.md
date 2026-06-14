@@ -21,11 +21,18 @@ From an empty project directory:
 init-repo
 ```
 
+For durable app, agent-workflow, or package behavior that should be reviewed as a product contract:
+
+```bash
+init-repo --behavior
+```
+
 The script creates a greenfield side-project repo with:
 
 - `.plans/` for committed implementation plans, named in implementation order like `01-auth.md`, `02-billing.md`, `03-dashboard.md`
 - `.reviews/` for multi-agent review outputs; gitignored by default, force-add (`git add -f`) the ones that capture useful decision context
 - `.html/` for committed generated HTML artifacts when visual explanation is useful
+- optional `docs/behavior.md` for durable product behavior contracts
 - `CLAUDE.md` and `AGENTS.md` project instructions
 - a minimal `README.md`
 - an initial commit and GitHub remote via `gh repo create`
