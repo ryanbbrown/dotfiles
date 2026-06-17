@@ -50,6 +50,7 @@ When editing existing code:
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
 - Line-length limits do not apply to Markdown prose. Do not split a single Markdown paragraph or list item across multiple lines unless the content structure requires it.
+- When editing plans or docs and told to remove something, remove mention of it entirely. Do not keep historical references such as "we don't need X because Y"; the final artifact should describe only the current state.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
@@ -98,6 +99,11 @@ When building LLM-powered code:
 - Use a model for: classification, drafting, summarization, extraction.
 - Do NOT use it for: routing, retries, deterministic transforms.
 - If code can answer, code answers.
+
+## Building agents
+When building agents:
+- Do NOT apply turn limits by default. If a limit is genuinely needed, make it very generous for the task at hand — it should only catch runaway edge cases that go on far longer than they should, never cut off complex runs that genuinely need lots of turns.
+- Give the agent the tools it needs to complete the task at hand. Don't be overly restrictive with the toolset.
 
 ## Surface conflicts, don't average them
 If two patterns contradict, pick one (more recent / more tested).

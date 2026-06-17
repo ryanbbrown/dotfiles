@@ -13,6 +13,8 @@ Add this function to `~/.zshrc`:
 ```bash
 unalias init-repo 2>/dev/null
 init-repo() { /Users/ryanbrown/code/global-agent-context/scripts/init-repo.sh "$@"; }
+unalias adapt-repo 2>/dev/null
+adapt-repo() { /Users/ryanbrown/code/global-agent-context/scripts/adapt-repo.sh "$@"; }
 ```
 
 From an empty project directory:
@@ -36,6 +38,23 @@ The script creates a greenfield side-project repo with:
 - `CLAUDE.md` and `AGENTS.md` project instructions
 - a minimal `README.md`
 - an initial commit and GitHub remote via `gh repo create`
+
+### Adapt An Existing Repo
+
+From an existing git repo that should not receive Ryan-specific workflow files:
+
+```bash
+adapt-repo
+```
+
+The script creates the local workflow directories and adds local-only ignore rules to `.git/info/exclude`, leaving the repo's tracked `.gitignore` untouched. `.plans/` is intentionally not ignored so implementation plans are visible while working; remove it before merging upstream if the target repo should not receive planning artifacts.
+
+It writes:
+
+- `CLAUDE.local.md` with local workflow instructions for Claude Code, including an `@AGENTS.md` import when the repo has `AGENTS.md` but no `CLAUDE.md`
+- `AGENTS.override.md` with the repo's current `AGENTS.md` instructions, or `CLAUDE.md` if there is no `AGENTS.md`, followed by the same local workflow instructions for Codex
+
+Both files are ignored locally. Rerun with `--force` to replace existing local instruction files.
 
 ### Plan Work
 
@@ -80,6 +99,7 @@ Older personal workflows are preserved in `archive/personal-skills/` but are not
 - `plugins/` is the active source tree for skills and plugin manifests.
 - `archive/` preserves retired personal skills.
 - `scripts/init-repo.sh` creates new side-project repositories.
+- `scripts/adapt-repo.sh` adds local workflow files to existing repositories without changing tracked project files.
 - `scripts/update-skill-sources.sh` updates third-party submodules, regenerates wrapped skills, reruns links, and can commit/push known source updates from cron.
 - `create-links.sh` links this repo into local Claude/Codex homes.
 
