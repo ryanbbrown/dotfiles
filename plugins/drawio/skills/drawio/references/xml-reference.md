@@ -38,6 +38,8 @@ Pick a `(col, row)` for each node. Don't think about centers, gaps, or overlap �
 - **Use proper draw.io shapes and connectors** — choose the semantically correct shape for each element (e.g., `shape=cylinder3` for databases and tanks, `rhombus` for decisions, `shape=mxgraph.pid2valves.*` for valves in P&IDs). draw.io has extensive shape libraries; prefer domain-appropriate shapes over generic rectangles.
 - **Decide whether to search for shapes** — before generating a diagram, decide if it needs domain-specific shapes from draw.io's extended libraries. **Skip `search_shapes`** for standard diagram types that use basic geometric shapes: flowcharts, UML (class, sequence, state, activity), ERD, org charts, mind maps, Venn diagrams, timelines, wireframes, and any diagram using only rectangles, diamonds, circles, cylinders, and arrows. Also skip if the user explicitly asks to use basic/simple shapes or says not to search. **Use `search_shapes`** when the diagram requires industry-specific or branded icons: cloud architecture (AWS, Azure, GCP), network topology (Cisco, rack equipment), P&ID (valves, instruments, vessels), electrical/circuit diagrams, Kubernetes, BPMN with specific task types, or any domain where the user expects realistic/standardized symbols rather than labeled boxes.
 - **Match the language of labels to the user's language** — if the user writes in German, French, Japanese, etc., all diagram labels, titles, and annotations should be in that same language.
+- **Group related nodes, and surface a hub when edges converge** — put nodes that belong together inside a container or swimlane, and keep external actors (users, files, third-party systems) outside implementation containers. When many edges converge on one area or cross several groups, route them through a single hub/gateway node (a registry, broker, event log, …) instead of drawing every low-level dependency across the canvas — fewer crossings, clearer contract.
+- **Encode secondary detail in node text, not edges** — draw an edge only when the relationship itself carries meaning; push incidental detail into the node label so the connector layer stays readable.
 
 ## Common styles
 
@@ -120,15 +122,15 @@ HTML in attribute values must be **XML-escaped**: `<` → `&lt;`, `>` → `&gt;`
 </mxCell>
 ```
 
-**Edge routing is automatic.** After the diagram renders, the viewer runs an ELK edge-routing pass that pins vertices and recomputes bend points + connection points. You do **not** need to:
+**Don't hand-route edges.** Just declare `source` and `target`. You do **not** need to:
 - Add `<mxPoint>` waypoints
 - Set `exitX` / `exitY` / `entryX` / `entryY`
 - Route around obstacles
 - Worry about edge-vertex collisions or parallel edge spacing
 
-Just declare `source` and `target` and let ELK do the routing. The ELK pass also reverts itself if it made routing worse — so your edges are at worst unchanged, never worse.
+draw.io's built-in router is **basic**: it draws each edge as a straight line or a simple right-angle path between `source` and `target`, with **no awareness of other shapes** — a wire will run straight across any box that sits between its endpoints. That's fine when connected nodes have open space between them. When edges would otherwise cross over shapes, or you want consistently clean orthogonal wires that route *around* the boxes, set **`routing: "libavoid"`** on `create_diagram`; for a full re-layout use **`postLayout: "elk"`** (see **Edge routing & layout passes** below). Both compute the waypoints for you — you never add them by hand either way.
 
-**What you still choose: the edge style.** The style determines the overall look (orthogonal angles, curves, straight lines) — ELK honors the style family when routing.
+**What you still choose: the edge style.** The style determines the overall look (orthogonal angles, curves, straight lines) — the router honors the style family.
 
 | Style | Syntax | Best for |
 |-------|--------|---------|
@@ -146,6 +148,10 @@ Just declare `source` and `target` and let ELK do the routing. The ELK pass also
 - `dashed=1` — dashed line
 - `strokeColor=#...`, `strokeWidth=2` — color/width
 - Edge labels: set `value` directly on the edge cell
+
+**Keep edge labels short and meaningful** — one to three words (`Yes`, `async`, `reads`). Drop labels that merely restate an obvious action (`call`, `register`); move longer explanations into node text or a small legend node.
+
+**Visual semantics — stay consistent, add a legend when mixing styles.** Within one diagram apply `dashed=1`, `strokeColor`, and `strokeWidth` consistently for one chosen meaning (e.g. dashed = optional / async / inferred relationship). Don't mix several dashed meanings without a small legend explaining them.
 
 ## Containers and groups
 
@@ -438,26 +444,26 @@ To enable dark mode color adaptation, the `mxGraphModel` element must include `a
 
 When generating diagrams, you generally do not need to specify dark-mode colors — the automatic inversion handles most cases. Use `light-dark()` only when the automatic inverse color is unsatisfactory.
 
-## Automatic edge routing
+## Edge routing & layout passes
 
-Every XML diagram rendered in the viewer automatically runs an ELK (Eclipse Layout Kernel) edge-routing pass **after** the initial render:
+By default, edges are drawn by draw.io's **built-in router**, which is intentionally basic: each edge is a straight line or a simple right-angle path between its endpoints, with **no obstacle avoidance** — a connector runs straight through any shape lying between its `source` and `target`. There is no server-side post-processing. Two **opt-in** passes on `create_diagram` upgrade this; they are independent and combine freely, run client-side after the diagram renders, and the exported XML (copy/clipboard, "Open in draw.io") reflects the final routed result.
 
-1. Vertex positions are pinned (the AI's placement is respected — no vertex moves).
-2. ELK recomputes bend points + connection points for every edge (orthogonal routing).
-3. A metric (edge-vertex intersections) compares before vs. after. If ELK made collisions worse, the edge routing is reverted to your original.
-4. The exported XML (copy/clipboard, "Open in draw.io") reflects whatever is finally shown — so downstream consumers also get the cleaned-up edges.
+- **`routing: "libavoid"`** (XML only) — obstacle-avoiding orthogonal **edge routing**. Vertices stay exactly where you placed them; only the connectors are recomputed, so they run in clean right-angle segments that route *around* the boxes (and spread apart when parallel) instead of cutting across them. Use it for diagrams you laid out deliberately — architecture, network topology, deployment, swimlanes, UML, floor plans — where you want tidy wires without disturbing your layout.
+- **`postLayout: "elk"`** — a **full re-layout** (ELK `layered` flow). Vertices animate (morph) from your positions to canonical hierarchical positions, and the edges are routed as part of that. Best for flowcharts, process/state diagrams, decision flows, pipelines, and other directional/hierarchical diagrams. (You should rarely hand-write these as XML — prefer Mermaid.) Flow **direction**: on XML set the optional `direction` field (`"vertical"` (default) / `"horizontal"`); on Mermaid it is read from the flowchart code (`flowchart TD/TB` vs `LR/RL`) and `direction` is ignored.
 
-You do not need to request this. Place vertices where they belong and write edges naively — the viewer handles connector cleanup.
+The four combinations:
 
-This also means: there is no server-side post-processing pass. What you generate is what the viewer starts with; the ELK pass is the only correction.
+| `postLayout` | `routing` | Result |
+|---|---|---|
+| — | — | basic built-in router (straight / simple right-angle, no obstacle avoidance); your positions kept |
+| — | `libavoid` | your positions kept; wires re-routed orthogonally *around* the shapes |
+| `elk` | — | ELK places the vertices **and** routes the edges (decent routing built in) |
+| `elk` | `libavoid` | rarely worth it — ELK already routes; only add `libavoid` if ELK's routing specifically comes out poor |
 
-## Post-layout (optional, overrides vertex positions)
-
-For cases where you want a **full** re-layout — moving vertices to canonical positions — set the optional `postLayout` parameter on `create_diagram` to `"elk"` (ELK's `layered` flow algorithm). Vertices animate (morph) from their original positions to the algorithm's layout. Best for flowcharts, process diagrams, state diagrams, decision flows, pipelines, and hierarchical/directional diagrams.
-
-For `postLayout: "elk"`, the flow **direction** is separate: on **XML** set the optional `direction` field (`"vertical"` (default) or `"horizontal"`); on **Mermaid** it is read from the flowchart code (`flowchart TD/TB` → vertical, `LR/RL` → horizontal) and `direction` is ignored.
-
-**For XML diagrams: usually omit `postLayout`.** You authored the coordinates yourself, so the layout is already deliberate — the automatic edge-routing pass handles the rest. Set `postLayout` only when the user explicitly wants a canonical layout, or when you know vertex placement is significantly off. When you do use `postLayout: "elk"`, add `direction: "horizontal"` if the flow reads left-to-right.
+**Pick ONE — they are essentially alternatives, not a stack:**
+- **Neither** — fine when connected nodes sit in clear rows/columns with open space between them, so the basic router's straight/right-angle lines won't cross another shape. Simplest and lightest; do this by default for sparse layouts.
+- **`routing: "libavoid"`** — keep your hand-placed layout but clean up the wires: use whenever an edge would otherwise cut across a box, or you want consistently clean orthogonal wires routed around shapes (architecture, network topology, deployment, UML, floor plans — anything densely connected).
+- **`postLayout: "elk"`** — when you want a canonical re-layout (vertices moved). ELK routes the edges itself as part of the layout, so **do not also set `routing`** — the combination is redundant in almost all cases. Add `direction: "horizontal"` for left-to-right flow.
 
 **For Mermaid diagrams: see the `postLayout` parameter description for when to set it.** Complex Mermaid flowcharts (≥ ~20 nodes, ≥ 3 decision diamonds, feedback edges, or ≥ 3 endpoints) need `postLayout: "elk"` because the native parser's layout goes cramped or unbalanced past that threshold — the direction follows the flowchart code, so no `direction` is needed. Simple flowcharts and all non-flowchart Mermaid types (sequence, class, ER, sankey, …) need no `postLayout`.
 
