@@ -1,10 +1,12 @@
 # Mermaid Reference
 
-Short hints for generating Mermaid diagrams that render correctly in draw.io. draw.io's Mermaid parser covers 26 diagram types — the header keyword on the first non-directive line selects the type.
+Short hints for generating Mermaid diagrams that render correctly in draw.io. draw.io's Mermaid parser covers 28 diagram types — the header keyword on the first non-directive line selects the type.
+
+_Canonical list & dialog/ELK docs: <https://github.com/jgraph/drawio/discussions/5643>._
 
 ## General rules
 
-- **Pick the type keyword carefully.** `graph`/`flowchart`, `classDiagram`, `stateDiagram-v2`, `erDiagram`, `sequenceDiagram`, `gitGraph`, `journey`, `pie`, `gantt`, `mindmap`, `timeline`, `quadrantChart`, `requirementDiagram`, `sankey-beta`, `xychart-beta`, `block-beta`, `c4Context`/`C4Container`/`C4Component`, `architecture-beta`, `radar-beta`, `packet-beta`, `venn-beta`, `treemap-beta`, `treeView-beta`, `ishikawa-beta`, `kanban`, `zenuml`. Misspelling the header yields a blank diagram.
+- **Pick the type keyword carefully.** `graph`/`flowchart`, `classDiagram`, `stateDiagram-v2`, `erDiagram`, `sequenceDiagram`, `gitGraph`, `journey`, `pie`, `gantt`, `mindmap`, `timeline`, `quadrantChart`, `requirementDiagram`, `sankey-beta`, `xychart-beta`, `block-beta`, `c4Context`/`C4Container`/`C4Component`, `architecture-beta`, `radar-beta`, `packet-beta`, `venn-beta`, `treemap-beta`, `treeView-beta`, `ishikawa-beta`, `kanban`, `zenuml`, `wardley-beta`, `eventmodeling`. Misspelling the header yields a blank diagram.
 - **No trailing punctuation on node IDs.** IDs are identifiers (`myNode`, `node_1`, `A`) — spaces, hyphens (in some contexts), and reserved words (`end`, `class`, `subgraph`) break the parse. Put display text in brackets or quotes instead: `A["User's Account"]`.
 - **One statement per line.** Separate statements with newlines; `;` works as a delimiter in flowchart but not everywhere.
 - **Quote labels with special characters** (`:`, `-`, parentheses, non-ASCII). Use `"` not `'`.
@@ -426,6 +428,40 @@ zenuml
 ```
 
 Participant roles: `@Actor`, `@Boundary`, `@Control`, `@Entity`, `@Database`. Messages use `->` with a colon-separated label. Supports `if/else`, `while`, `par` blocks like sequence diagrams.
+
+## Wardley map
+
+```
+wardley-beta
+  title Tea Shop
+  anchor Business [0.95, 0.63]
+  component Cup of Tea [0.79, 0.61]
+  component Kettle [0.43, 0.35] (inertia)
+  Business -> Cup of Tea
+  Cup of Tea -> Kettle
+  evolve Kettle 0.62
+```
+
+- Header `wardley` or `wardley-beta`; `title` optional.
+- `anchor`/`component Name [visibility, evolution]` — coords are `[0..1, 0..1]` (y = value-chain visibility, x = evolution from Genesis to Commodity).
+- Component evolution markers in parens: `(inertia)`, `(build)`, `(buy)`, `(outsource)`, `(market)`.
+- Links: `A -> B` dependency, `A +> B` flow. `evolve Name <x>` adds an evolution target; `evolution Genesis -> Custom -> Product -> Commodity` relabels the x-axis stages.
+- Extras: `note "text" [x,y]`, `annotation N,[x,y] "text"`, `accelerator`/`deaccelerator "text" [x,y]`.
+
+## Event Modeling
+
+```
+eventmodeling
+  tf 01 ui CartUI
+  tf 02 cmd AddItem
+  tf 03 evt ItemAdded
+  tf 04 rmo Cart
+```
+
+- Each `tf <id> <type> <Name>` is a time-frame (column). Types: `ui` / `pcr` (processor), `cmd` / `command`, `rmo` / `readmodel`, `evt` / `event` — placed on the UI/Automation, Command/Read-Model, and Events swimlanes.
+- Wire frames with `->>`: `tf 04 evt ItemChanged ->> 02 ->> 03` links frame 04 back to 02 and 03.
+- `Namespace.Name` groups frames into slices (e.g. `Order.ChangeOrder`).
+- `data <id> { ... }` blocks attach payloads, referenced inline with `[[id]]`: `tf 02 cmd AddItem [[AddItem01]]`.
 
 ## When to prefer XML over Mermaid
 
