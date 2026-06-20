@@ -1,6 +1,6 @@
 ---
 name: multi-review
-description: Run a read-only multi-agent code review round for a named feature using Codex, Claude Code, and Factory Droid/DeepSeek. Use when a writer has finished changes and needs parallel reviewer feedback captured into versioned files before deciding what to fix.
+description: Run a read-only multi-agent code review round for a named feature using Codex, Claude Code, and GLM (via Fireworks). Use when a writer has finished changes and needs parallel reviewer feedback captured into versioned files before deciding what to fix.
 ---
 
 # Multi Review
@@ -38,13 +38,16 @@ Environment:
 
 ```bash
 MAX_ROUNDS=3                 # hard cap, default 3
-DROID_MODEL=custom:DeepSeek-V4-Pro-0
-                             # default Droid reviewer model
+FIREWORKS_API_KEY=...        # required for the GLM reviewer; export in your shell
+GLM_MODEL=accounts/fireworks/models/glm-5p2
+                             # default GLM reviewer model (Fireworks)
 REVIEW_TIMEOUT_SECONDS=900   # per-reviewer timeout
 SKIP_PREFLIGHT=1             # optional escape hatch for local debugging
 ```
 
-The script runs preflight smoke checks before starting reviewer work. Claude must work through `claude -p` in the target repo. Droid must work through `droid exec --model "$DROID_MODEL"`; set `DROID_MODEL` to the model id that works in your terminal.
+The script runs preflight smoke checks before starting reviewer work. Both Claude and GLM run through `claude -p` in the target repo; the GLM reviewer points the Claude Code harness at Fireworks' Anthropic-compatible endpoint via `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_MODEL`, scoped to that invocation so the Claude reviewer keeps your normal Anthropic auth.
+
+The earlier Factory Droid/DeepSeek reviewer (`droid exec --model "$DROID_MODEL"`, default `custom:DeepSeek-V4-Pro-0`) is commented out in the script for reference.
 
 ## Output
 
@@ -55,7 +58,7 @@ The script writes one directory per feature slug:
 .reviews/implementations/<feature-slug>/       # --mode implementation
   <feature-slug>-codex-vN.md
   <feature-slug>-claude-vN.md
-  <feature-slug>-droid-<model-slug>-vN.md
+  <feature-slug>-glm-5p2-vN.md
   .logs/vN/*.stderr
 ```
 

@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Usage: review-round.sh --feature NAME [--repo PATH] [--output-dir PATH] [--mode MODE] [--target-file PATH] [--preflight-only]
 
-Runs Codex, Claude Code, and Factory Droid reviewers in parallel.
+Runs Codex, Claude Code, and GLM (via Fireworks) reviewers in parallel.
 
 Options:
   --feature NAME       Required stable feature label.
@@ -19,7 +19,13 @@ Options:
 
 Environment:
   MAX_ROUNDS           Hard cap for review versions. Defaults to 3.
-  DROID_MODEL          Droid reviewer model. Defaults to custom:DeepSeek-V4-Pro-0.
+  FIREWORKS_API_KEY    Required for the GLM reviewer. Export in your shell.
+  GLM_MODEL            GLM reviewer model, served via the Fireworks
+                       Anthropic-compatible endpoint and driven through the
+                       Claude Code harness. Defaults to
+                       accounts/fireworks/models/glm-5p2.
+  # DROID_MODEL        (disabled) Factory Droid/DeepSeek reviewer model.
+  #                    Defaulted to custom:DeepSeek-V4-Pro-0.
   REVIEW_TIMEOUT_SECONDS
                        Per-reviewer timeout. Defaults to 900.
   SKIP_PREFLIGHT       Set to 1 to skip CLI smoke checks.
@@ -154,10 +160,18 @@ fi
 
 need_cmd codex
 need_cmd claude
-need_cmd droid
+# need_cmd droid   # disabled: GLM reviewer runs through the Claude Code harness.
 
-droid_model="${DROID_MODEL:-custom:DeepSeek-V4-Pro-0}"
-droid_model_slug="$(slugify "$droid_model")"
+[ -n "${FIREWORKS_API_KEY:-}" ] || die "FIREWORKS_API_KEY is not set; export it (e.g. in ~/.zshrc) for the GLM reviewer"
+
+# GLM reviewer: served by Fireworks' Anthropic-compatible endpoint, driven via claude -p.
+glm_model="${GLM_MODEL:-accounts/fireworks/models/glm-5p2}"
+glm_model_slug="$(slugify "${glm_model##*/}")"
+fireworks_base_url="https://api.fireworks.ai/inference"
+
+# Disabled Factory Droid/DeepSeek reviewer; kept for reference.
+# droid_model="${DROID_MODEL:-custom:DeepSeek-V4-Pro-0}"
+# droid_model_slug="$(slugify "$droid_model")"
 review_timeout="${REVIEW_TIMEOUT_SECONDS:-900}"
 case "$review_timeout" in
   ''|*[!0-9]*) die "REVIEW_TIMEOUT_SECONDS must be a positive integer" ;;
@@ -216,7 +230,7 @@ preflight() {
   local failed=0
   local codex_preflight_pid
   local claude_preflight_pid
-  local droid_preflight_pid
+  local glm_preflight_pid
 
   codex exec \
     --cd "$repo" \
@@ -236,12 +250,28 @@ preflight() {
   ) > "$logs_dir/claude.preflight.stdout" 2> "$logs_dir/claude.preflight.stderr" &
   claude_preflight_pid=$!
 
-  droid exec \
-    --cwd "$repo" \
-    --model "$droid_model" \
-    --output-format text \
-    "Reply with exactly: ok. Do not run tools." > "$logs_dir/droid.preflight.stdout" 2> "$logs_dir/droid.preflight.stderr" &
-  droid_preflight_pid=$!
+  (
+    cd "$repo" || exit 1
+    ANTHROPIC_BASE_URL="$fireworks_base_url" \
+    ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
+    ANTHROPIC_MODEL="$glm_model" \
+    ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
+    claude -p \
+      --permission-mode dontAsk \
+      --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
+      --disallowedTools "Edit,Write,NotebookEdit" \
+      --output-format text \
+      "Reply with exactly: ok. Do not run tools."
+  ) > "$logs_dir/glm.preflight.stdout" 2> "$logs_dir/glm.preflight.stderr" &
+  glm_preflight_pid=$!
+
+  # Disabled Factory Droid/DeepSeek preflight; kept for reference.
+  # droid exec \
+  #   --cwd "$repo" \
+  #   --model "$droid_model" \
+  #   --output-format text \
+  #   "Reply with exactly: ok. Do not run tools." > "$logs_dir/droid.preflight.stdout" 2> "$logs_dir/droid.preflight.stderr" &
+  # droid_preflight_pid=$!
 
   if ! wait_with_timeout "$codex_preflight_pid" codex-preflight "$logs_dir/codex.preflight.stderr"; then
     echo "codex preflight failed; see $logs_dir/codex.preflight.stderr" >&2
@@ -252,11 +282,18 @@ preflight() {
     echo "hint: non-interactive Claude must work with 'claude -p' in this repo; avoid --bare if you rely on terminal/keychain auth." >&2
     failed=1
   fi
-  if ! wait_with_timeout "$droid_preflight_pid" droid-preflight "$logs_dir/droid.preflight.stderr"; then
-    echo "droid preflight failed for model '$droid_model'; see $logs_dir/droid.preflight.stderr" >&2
-    echo "hint: set DROID_MODEL to the model id that works in your terminal, for example custom:DeepSeek-V4-Pro-0." >&2
+  if ! wait_with_timeout "$glm_preflight_pid" glm-preflight "$logs_dir/glm.preflight.stderr"; then
+    echo "glm preflight failed for model '$glm_model'; see $logs_dir/glm.preflight.stderr" >&2
+    echo "hint: confirm FIREWORKS_API_KEY is valid and that '$glm_model' is available on Fireworks." >&2
     failed=1
   fi
+
+  # Disabled Factory Droid/DeepSeek preflight wait; kept for reference.
+  # if ! wait_with_timeout "$droid_preflight_pid" droid-preflight "$logs_dir/droid.preflight.stderr"; then
+  #   echo "droid preflight failed for model '$droid_model'; see $logs_dir/droid.preflight.stderr" >&2
+  #   echo "hint: set DROID_MODEL to the model id that works in your terminal, for example custom:DeepSeek-V4-Pro-0." >&2
+  #   failed=1
+  # fi
 
   return "$failed"
 }
@@ -336,7 +373,8 @@ fi
 
 codex_out="$feature_dir/$feature_slug-codex-v$round.md"
 claude_out="$feature_dir/$feature_slug-claude-v$round.md"
-droid_out="$feature_dir/$feature_slug-droid-$droid_model_slug-v$round.md"
+glm_out="$feature_dir/$feature_slug-$glm_model_slug-v$round.md"
+# droid_out="$feature_dir/$feature_slug-droid-$droid_model_slug-v$round.md"
 
 run_codex() {
   codex exec \
@@ -371,17 +409,41 @@ run_claude() {
   return "$status"
 }
 
-run_droid() {
-  droid exec \
-    --cwd "$repo" \
-    --model "$droid_model" \
-    --disabled-tools TodoWrite \
-    --output-format text \
-    -f "$prompt_file" > "$droid_out" 2> "$logs_dir/droid.stderr"
+run_glm() {
+  local status
+  rm -f "$glm_out"
+  (
+    cd "$repo" || exit 1
+    ANTHROPIC_BASE_URL="$fireworks_base_url" \
+    ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
+    ANTHROPIC_MODEL="$glm_model" \
+    ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
+    claude -p \
+      --permission-mode dontAsk \
+      --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
+      --disallowedTools "Edit,Write,NotebookEdit" \
+      --output-format text \
+      "$(cat "$prompt_file")"
+  ) > "$logs_dir/glm.stdout" 2> "$logs_dir/glm.stderr"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    cp "$logs_dir/glm.stdout" "$glm_out"
+  fi
+  return "$status"
 }
 
+# Disabled Factory Droid/DeepSeek reviewer; kept for reference.
+# run_droid() {
+#   droid exec \
+#     --cwd "$repo" \
+#     --model "$droid_model" \
+#     --disabled-tools TodoWrite \
+#     --output-format text \
+#     -f "$prompt_file" > "$droid_out" 2> "$logs_dir/droid.stderr"
+# }
+
 echo "multi-review: feature '$feature' -> $feature_dir (round v$round)"
-echo "multi-review: mode '$review_mode', droid model '$droid_model'"
+echo "multi-review: mode '$review_mode', glm model '$glm_model'"
 
 if ! preflight; then
   exit 1
@@ -395,8 +457,10 @@ run_codex &
 codex_pid=$!
 run_claude &
 claude_pid=$!
-run_droid &
-droid_pid=$!
+run_glm &
+glm_pid=$!
+# run_droid &
+# droid_pid=$!
 
 failed=0
 
@@ -420,12 +484,26 @@ else
   failed=1
 fi
 
-if wait_with_timeout "$droid_pid" droid "$logs_dir/droid.stderr"; then
-  echo "droid: $droid_out"
+if wait_with_timeout "$glm_pid" glm "$logs_dir/glm.stderr"; then
+  echo "glm: $glm_out"
 else
-  echo "droid: failed; see $logs_dir/droid.stderr" >&2
+  if [ -s "$logs_dir/glm.stderr" ]; then
+    echo "glm: failed; see $logs_dir/glm.stderr" >&2
+  elif [ -s "$logs_dir/glm.stdout" ]; then
+    echo "glm: failed; see $logs_dir/glm.stdout" >&2
+  else
+    echo "glm: failed; no output captured; see $logs_dir/glm.stderr" >&2
+  fi
   failed=1
 fi
+
+# Disabled Factory Droid/DeepSeek reviewer wait; kept for reference.
+# if wait_with_timeout "$droid_pid" droid "$logs_dir/droid.stderr"; then
+#   echo "droid: $droid_out"
+# else
+#   echo "droid: failed; see $logs_dir/droid.stderr" >&2
+#   failed=1
+# fi
 
 if [ "$failed" -ne 0 ]; then
   exit "$failed"
