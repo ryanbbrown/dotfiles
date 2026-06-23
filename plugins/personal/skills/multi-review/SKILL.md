@@ -31,6 +31,9 @@ Options:
 --output-dir PATH    Review output root. Defaults to <repo>/.reviews.
 --mode MODE          Review mode: implementation or plan. Defaults to implementation.
 --target-file PATH   File to review, relative to repo or absolute. Required for plan mode.
+--skip LIST          Comma-separated reviewers to skip: codex, claude, glm. Repeatable.
+                     Cannot skip all three. E.g. --skip codex or --skip codex,glm.
+                     Skipping glm needs no FIREWORKS_API_KEY; skipping codex saves Codex usage.
 --preflight-only     Run CLI smoke checks, then exit before starting reviewers.
 ```
 

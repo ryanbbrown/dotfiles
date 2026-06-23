@@ -14,6 +14,9 @@ Options:
                        Reviews are written under plans/ or implementations/.
   --mode MODE          Review mode: implementation or plan. Defaults to implementation.
   --target-file PATH   File to review, relative to repo or absolute. Required for plan mode.
+  --skip LIST          Comma-separated reviewers to skip: codex, claude, glm.
+                       Repeatable. Cannot skip all three. E.g. --skip codex
+                       or --skip codex,glm.
   --preflight-only     Run CLI smoke checks, then exit before starting reviewers.
   -h, --help           Show this help.
 
@@ -47,12 +50,21 @@ slugify() {
     sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
 }
 
+# Whether a reviewer was excluded via --skip. Reads the global $skipped list.
+is_skipped() {
+  case " $skipped " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 feature=""
 repo="$(pwd)"
 output_root=""
 review_mode="implementation"
 target_file=""
 preflight_only=0
+skipped=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -81,6 +93,21 @@ while [ "$#" -gt 0 ]; do
       target_file="$2"
       shift 2
       ;;
+    --skip)
+      [ "$#" -ge 2 ] || die "--skip requires a value"
+      old_ifs="$IFS"
+      IFS=','
+      for tok in $2; do
+        tok="$(printf '%s' "$tok" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+        case "$tok" in
+          codex|claude|glm) is_skipped "$tok" || skipped="$skipped $tok" ;;
+          "") ;;
+          *) IFS="$old_ifs"; die "unknown reviewer in --skip: '$tok' (valid: codex, claude, glm)" ;;
+        esac
+      done
+      IFS="$old_ifs"
+      shift 2
+      ;;
     --preflight-only)
       preflight_only=1
       shift
@@ -101,6 +128,12 @@ case "$review_mode" in
   implementation|plan) ;;
   *) die "--mode must be 'implementation' or 'plan'" ;;
 esac
+
+active_reviewers=0
+for r in codex claude glm; do
+  is_skipped "$r" || active_reviewers=$((active_reviewers + 1))
+done
+[ "$active_reviewers" -gt 0 ] || die "--skip cannot exclude every reviewer"
 
 repo="$(cd "$repo" && pwd)"
 git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git repository: $repo"
@@ -158,11 +191,17 @@ if [ "$round" -gt "$max_rounds" ]; then
   die "review round v$round exceeds MAX_ROUNDS=$max_rounds for feature '$feature'"
 fi
 
-need_cmd codex
-need_cmd claude
+is_skipped codex || need_cmd codex
+# The claude binary backs both the Claude and GLM reviewers; only skip the
+# check when neither runs.
+if ! is_skipped claude || ! is_skipped glm; then
+  need_cmd claude
+fi
 # need_cmd droid   # disabled: GLM reviewer runs through the Claude Code harness.
 
-[ -n "${FIREWORKS_API_KEY:-}" ] || die "FIREWORKS_API_KEY is not set; export it (e.g. in ~/.zshrc) for the GLM reviewer"
+if ! is_skipped glm; then
+  [ -n "${FIREWORKS_API_KEY:-}" ] || die "FIREWORKS_API_KEY is not set; export it (e.g. in ~/.zshrc) for the GLM reviewer"
+fi
 
 # GLM reviewer: served by Fireworks' Anthropic-compatible endpoint, driven via claude -p.
 glm_model="${GLM_MODEL:-accounts/fireworks/models/glm-5p2}"
@@ -228,42 +267,48 @@ preflight() {
   [ "${SKIP_PREFLIGHT:-}" = "1" ] && return 0
 
   local failed=0
-  local codex_preflight_pid
-  local claude_preflight_pid
-  local glm_preflight_pid
+  local codex_preflight_pid=""
+  local claude_preflight_pid=""
+  local glm_preflight_pid=""
 
-  codex exec \
-    --cd "$repo" \
-    --sandbox read-only \
-    --ephemeral \
-    "Reply with exactly: ok. Do not run tools." > "$logs_dir/codex.preflight.stdout" 2> "$logs_dir/codex.preflight.stderr" &
-  codex_preflight_pid=$!
+  if ! is_skipped codex; then
+    codex exec \
+      --cd "$repo" \
+      --sandbox read-only \
+      --ephemeral \
+      "Reply with exactly: ok. Do not run tools." > "$logs_dir/codex.preflight.stdout" 2> "$logs_dir/codex.preflight.stderr" &
+    codex_preflight_pid=$!
+  fi
 
-  (
-    cd "$repo" || exit 1
-    claude -p \
-      --permission-mode dontAsk \
-      --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
-      --disallowedTools "Edit,Write,NotebookEdit" \
-      --output-format text \
-      "Reply with exactly: ok. Do not run tools."
-  ) > "$logs_dir/claude.preflight.stdout" 2> "$logs_dir/claude.preflight.stderr" &
-  claude_preflight_pid=$!
+  if ! is_skipped claude; then
+    (
+      cd "$repo" || exit 1
+      claude -p \
+        --permission-mode dontAsk \
+        --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
+        --disallowedTools "Edit,Write,NotebookEdit" \
+        --output-format text \
+        "Reply with exactly: ok. Do not run tools."
+    ) > "$logs_dir/claude.preflight.stdout" 2> "$logs_dir/claude.preflight.stderr" &
+    claude_preflight_pid=$!
+  fi
 
-  (
-    cd "$repo" || exit 1
-    ANTHROPIC_BASE_URL="$fireworks_base_url" \
-    ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
-    ANTHROPIC_MODEL="$glm_model" \
-    ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
-    claude -p \
-      --permission-mode dontAsk \
-      --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
-      --disallowedTools "Edit,Write,NotebookEdit" \
-      --output-format text \
-      "Reply with exactly: ok. Do not run tools."
-  ) > "$logs_dir/glm.preflight.stdout" 2> "$logs_dir/glm.preflight.stderr" &
-  glm_preflight_pid=$!
+  if ! is_skipped glm; then
+    (
+      cd "$repo" || exit 1
+      ANTHROPIC_BASE_URL="$fireworks_base_url" \
+      ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
+      ANTHROPIC_MODEL="$glm_model" \
+      ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
+      claude -p \
+        --permission-mode dontAsk \
+        --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
+        --disallowedTools "Edit,Write,NotebookEdit" \
+        --output-format text \
+        "Reply with exactly: ok. Do not run tools."
+    ) > "$logs_dir/glm.preflight.stdout" 2> "$logs_dir/glm.preflight.stderr" &
+    glm_preflight_pid=$!
+  fi
 
   # Disabled Factory Droid/DeepSeek preflight; kept for reference.
   # droid exec \
@@ -273,16 +318,16 @@ preflight() {
   #   "Reply with exactly: ok. Do not run tools." > "$logs_dir/droid.preflight.stdout" 2> "$logs_dir/droid.preflight.stderr" &
   # droid_preflight_pid=$!
 
-  if ! wait_with_timeout "$codex_preflight_pid" codex-preflight "$logs_dir/codex.preflight.stderr"; then
+  if [ -n "$codex_preflight_pid" ] && ! wait_with_timeout "$codex_preflight_pid" codex-preflight "$logs_dir/codex.preflight.stderr"; then
     echo "codex preflight failed; see $logs_dir/codex.preflight.stderr" >&2
     failed=1
   fi
-  if ! wait_with_timeout "$claude_preflight_pid" claude-preflight "$logs_dir/claude.preflight.stderr"; then
+  if [ -n "$claude_preflight_pid" ] && ! wait_with_timeout "$claude_preflight_pid" claude-preflight "$logs_dir/claude.preflight.stderr"; then
     echo "claude preflight failed; see $logs_dir/claude.preflight.stderr" >&2
     echo "hint: non-interactive Claude must work with 'claude -p' in this repo; avoid --bare if you rely on terminal/keychain auth." >&2
     failed=1
   fi
-  if ! wait_with_timeout "$glm_preflight_pid" glm-preflight "$logs_dir/glm.preflight.stderr"; then
+  if [ -n "$glm_preflight_pid" ] && ! wait_with_timeout "$glm_preflight_pid" glm-preflight "$logs_dir/glm.preflight.stderr"; then
     echo "glm preflight failed for model '$glm_model'; see $logs_dir/glm.preflight.stderr" >&2
     echo "hint: confirm FIREWORKS_API_KEY is valid and that '$glm_model' is available on Fireworks." >&2
     failed=1
@@ -444,6 +489,7 @@ run_glm() {
 
 echo "multi-review: feature '$feature' -> $feature_dir (round v$round)"
 echo "multi-review: mode '$review_mode', glm model '$glm_model'"
+[ -n "$skipped" ] && echo "multi-review: skipping reviewers:$skipped"
 
 if ! preflight; then
   exit 1
@@ -453,48 +499,63 @@ if [ "$preflight_only" -eq 1 ]; then
   exit 0
 fi
 
-run_codex &
-codex_pid=$!
-run_claude &
-claude_pid=$!
-run_glm &
-glm_pid=$!
+codex_pid=""
+claude_pid=""
+glm_pid=""
+if ! is_skipped codex; then
+  run_codex &
+  codex_pid=$!
+fi
+if ! is_skipped claude; then
+  run_claude &
+  claude_pid=$!
+fi
+if ! is_skipped glm; then
+  run_glm &
+  glm_pid=$!
+fi
 # run_droid &
 # droid_pid=$!
 
 failed=0
 
-if wait_with_timeout "$codex_pid" codex "$logs_dir/codex.stderr"; then
-  echo "codex: $codex_out"
-else
-  echo "codex: failed; see $logs_dir/codex.stderr" >&2
-  failed=1
+if [ -n "$codex_pid" ]; then
+  if wait_with_timeout "$codex_pid" codex "$logs_dir/codex.stderr"; then
+    echo "codex: $codex_out"
+  else
+    echo "codex: failed; see $logs_dir/codex.stderr" >&2
+    failed=1
+  fi
 fi
 
-if wait_with_timeout "$claude_pid" claude "$logs_dir/claude.stderr"; then
-  echo "claude: $claude_out"
-else
-  if [ -s "$logs_dir/claude.stderr" ]; then
-    echo "claude: failed; see $logs_dir/claude.stderr" >&2
-  elif [ -s "$logs_dir/claude.stdout" ]; then
-    echo "claude: failed; see $logs_dir/claude.stdout" >&2
+if [ -n "$claude_pid" ]; then
+  if wait_with_timeout "$claude_pid" claude "$logs_dir/claude.stderr"; then
+    echo "claude: $claude_out"
   else
-    echo "claude: failed; no output captured; see $logs_dir/claude.stderr" >&2
+    if [ -s "$logs_dir/claude.stderr" ]; then
+      echo "claude: failed; see $logs_dir/claude.stderr" >&2
+    elif [ -s "$logs_dir/claude.stdout" ]; then
+      echo "claude: failed; see $logs_dir/claude.stdout" >&2
+    else
+      echo "claude: failed; no output captured; see $logs_dir/claude.stderr" >&2
+    fi
+    failed=1
   fi
-  failed=1
 fi
 
-if wait_with_timeout "$glm_pid" glm "$logs_dir/glm.stderr"; then
-  echo "glm: $glm_out"
-else
-  if [ -s "$logs_dir/glm.stderr" ]; then
-    echo "glm: failed; see $logs_dir/glm.stderr" >&2
-  elif [ -s "$logs_dir/glm.stdout" ]; then
-    echo "glm: failed; see $logs_dir/glm.stdout" >&2
+if [ -n "$glm_pid" ]; then
+  if wait_with_timeout "$glm_pid" glm "$logs_dir/glm.stderr"; then
+    echo "glm: $glm_out"
   else
-    echo "glm: failed; no output captured; see $logs_dir/glm.stderr" >&2
+    if [ -s "$logs_dir/glm.stderr" ]; then
+      echo "glm: failed; see $logs_dir/glm.stderr" >&2
+    elif [ -s "$logs_dir/glm.stdout" ]; then
+      echo "glm: failed; see $logs_dir/glm.stdout" >&2
+    else
+      echo "glm: failed; no output captured; see $logs_dir/glm.stderr" >&2
+    fi
+    failed=1
   fi
-  failed=1
 fi
 
 # Disabled Factory Droid/DeepSeek reviewer wait; kept for reference.
