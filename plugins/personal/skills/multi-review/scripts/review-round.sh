@@ -208,6 +208,14 @@ glm_model="${GLM_MODEL:-accounts/fireworks/models/glm-5p2}"
 glm_model_slug="$(slugify "${glm_model##*/}")"
 fireworks_base_url="https://api.fireworks.ai/inference"
 
+# De-nest claude reviewers from a host Claude Code / cmux surface. Inside a
+# Claude Code session, cmux puts a `claude` wrapper shim on PATH and child
+# `claude -p` calls inherit the parent session's model and hang. Strip the cmux
+# shim from PATH and drop the child-session vars so reviewers run the real binary
+# standalone. No-op when launched outside such a host (e.g. from Codex).
+denest_path="$(printf '%s' "${PATH}" | tr ':' '\n' | grep -v '/cmux-cli-shims' | paste -s -d ':' -)"
+denest=(env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT -u CMUX_CLAUDE_WRAPPER_SHIM -u CMUX_CLAUDE_WRAPPER_SHIM_ROOT PATH="$denest_path")
+
 # Disabled Factory Droid/DeepSeek reviewer; kept for reference.
 # droid_model="${DROID_MODEL:-custom:DeepSeek-V4-Pro-0}"
 # droid_model_slug="$(slugify "$droid_model")"
@@ -283,7 +291,8 @@ preflight() {
   if ! is_skipped claude; then
     (
       cd "$repo" || exit 1
-      claude -p \
+      "${denest[@]}" claude -p \
+        --model claude-fable-5 \
         --permission-mode dontAsk \
         --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
         --disallowedTools "Edit,Write,NotebookEdit" \
@@ -300,7 +309,8 @@ preflight() {
       ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
       ANTHROPIC_MODEL="$glm_model" \
       ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
-      claude -p \
+      "${denest[@]}" claude -p \
+        --model "$glm_model" \
         --permission-mode dontAsk \
         --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
         --disallowedTools "Edit,Write,NotebookEdit" \
@@ -440,7 +450,8 @@ run_claude() {
   rm -f "$claude_out"
   (
     cd "$repo" || exit 1
-    claude -p \
+    "${denest[@]}" claude -p \
+      --model claude-fable-5 \
       --permission-mode dontAsk \
       --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
       --disallowedTools "Edit,Write,NotebookEdit" \
@@ -463,7 +474,8 @@ run_glm() {
     ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
     ANTHROPIC_MODEL="$glm_model" \
     ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
-    claude -p \
+    "${denest[@]}" claude -p \
+      --model "$glm_model" \
       --permission-mode dontAsk \
       --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
       --disallowedTools "Edit,Write,NotebookEdit" \
