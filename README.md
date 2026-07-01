@@ -88,6 +88,7 @@ Wrapped third-party skills currently kept active:
 - `last30days`
 - `grill-with-docs` (mattpocock-skills)
 - `improve-codebase-architecture` (mattpocock-skills)
+- `writing-great-skills` (mattpocock-skills)
 - `taste-skill` and `gpt-tasteskill`
 - `vercel-react-best-practices`
 
