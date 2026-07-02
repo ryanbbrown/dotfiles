@@ -4,7 +4,7 @@ set -eu
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root" || exit 1
 
-source_skill="drawio-mcp/skill-cli/drawio/SKILL.md"
+source_skill="drawio-mcp/plugins/claude-code/skills/drawio/SKILL.md"
 source_shared="drawio-mcp/shared"
 target_root="plugins/drawio/skills/drawio"
 references_dir="$target_root/references"
@@ -23,6 +23,10 @@ rm -rf "$target_root"
 mkdir -p "$references_dir"
 
 cp "$source_skill" "$target_root/SKILL.md"
+
+# Narrow the upstream "always use for any diagram" trigger: drawio should only
+# fire when the user explicitly asks for draw.io / .drawio output.
+perl -0pi -e 's|^description: .*$|description: Create or edit draw.io diagrams as .drawio files, or export them to PNG/SVG/PDF. Use only when the user explicitly mentions draw.io, drawio, or .drawio files. Do not use for generic diagram, flowchart, mockup, or wireframe requests that do not name draw.io.|m' "$target_root/SKILL.md"
 cp "$source_shared/xml-reference.md" "$references_dir/xml-reference.md"
 cp "$source_shared/style-reference.md" "$references_dir/style-reference.md"
 cp "$source_shared/mermaid-reference.md" "$references_dir/mermaid-reference.md"
