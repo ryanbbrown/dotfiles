@@ -15,9 +15,11 @@ LINK_CLAUDE=true
 LINK_CODEX=true
 LINK_SKILLS=true
 
-PLUGINS_DIR="$(pwd)/plugins"
-CLAUDE_MD_FILE="$(pwd)/CLAUDE.md"
-AGENTS_MD_FILE="$(pwd)/AGENTS.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PLUGINS_DIR="$SCRIPT_DIR/plugins"
+CLAUDE_MD_FILE="$SCRIPT_DIR/CLAUDE.md"
+AGENTS_MD_FILE="$SCRIPT_DIR/AGENTS.md"
 
 if [ -f "$CLAUDE_MD_FILE" ] && [ -f "$AGENTS_MD_FILE" ]; then
     CLAUDE_MD_SOURCE="$CLAUDE_MD_FILE"
@@ -29,7 +31,7 @@ elif [ -f "$AGENTS_MD_FILE" ]; then
     CLAUDE_MD_SOURCE="$AGENTS_MD_FILE"
     AGENTS_MD_SOURCE="$AGENTS_MD_FILE"
 else
-    echo "Warning: Neither CLAUDE.md nor AGENTS.md found in $(pwd), so instructions will not be linked."
+    echo "Warning: Neither CLAUDE.md nor AGENTS.md found in $SCRIPT_DIR, so instructions will not be linked."
     CLAUDE_MD_SOURCE=""
     AGENTS_MD_SOURCE=""
 fi
@@ -123,6 +125,9 @@ sync_skill_links() {
 
         for skill_path in "$source_dir"/*; do
             if [ ! -d "$skill_path" ]; then
+                if [ -L "$skill_path" ] && [ ! -e "$skill_path" ]; then
+                    echo "Warning: skipping dangling skill symlink $skill_path -> $(readlink "$skill_path")"
+                fi
                 continue
             fi
 
@@ -157,7 +162,7 @@ if [ "$LINK_SKILLS" = true ] && [ "$LINK_CLAUDE" = true ]; then
         "$CLAUDE_SKILLS_TARGET"
     # gstack skills resolve their compiled binary and bin/ helpers via
     # ~/.claude/skills/gstack (the canonical gstack install location).
-    create_symlink "$(pwd)/gstack" "$CLAUDE_SKILLS_TARGET/gstack"
+    create_symlink "$SCRIPT_DIR/gstack" "$CLAUDE_SKILLS_TARGET/gstack"
 fi
 
 if [ "$LINK_SKILLS" = true ] && [ "$LINK_CODEX" = true ]; then
