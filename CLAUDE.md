@@ -49,6 +49,7 @@ Read the screenshot and confirm the intended change is visible. For visual tweak
 
 ## Tools and environment
 - Use `uv` for all Python-related operations: `uv add` to install packages and `uv run file.py` to run files. Do not activate the venv first.
+- When the user asks to open a Markdown file in the browser, use `uv run ~/code/global-agent-context/scripts/open_md_preview.py path/to/file.md` to render a temporary HTML preview.
 - Do not use `qlmanage` for image verification or format conversion. It generates previews and thumbnails that can mislead layout QA. Use a real renderer or converter for the source format; for SVG-to-PNG, use `rsvg-convert --output=/tmp/output.png input.svg`.
 - When committing, follow conventional commits. Commit messages should be a single concise sentence.
 
