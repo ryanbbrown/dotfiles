@@ -88,8 +88,9 @@ Wrapped third-party skills currently kept active:
 - `last30days`
 - `grill-with-docs` (mattpocock-skills)
 - `improve-codebase-architecture` (mattpocock-skills)
+- `grilling`, `domain-modeling`, and `codebase-design` (mattpocock-skills; dependencies of the two skills above)
 - `writing-great-skills` (mattpocock-skills)
-- `taste-skill` and `gpt-tasteskill`
+- `taste-skill`
 - `vercel-react-best-practices`
 
 Older personal workflows are preserved in `archive/personal-skills/` but are not linked into Claude or Codex.
