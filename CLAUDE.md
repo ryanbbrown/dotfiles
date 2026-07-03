@@ -48,8 +48,9 @@ $B console
 Read the screenshot and confirm the intended change is visible. For visual tweaks, capture before and after screenshots and compare them. Use `$B viewport WxH` for responsive checks. If browse is unavailable, fall back to a Playwright script, but still inspect a real screenshot.
 
 ## Tools and environment
+- Put shared agent assets in `~/code/global-agent-context`, including skills, context files, tools, and scripts that are not specific to a single agent's settings.
 - Use `uv` for all Python-related operations: `uv add` to install packages and `uv run file.py` to run files. Do not activate the venv first.
-- When the user asks to open a Markdown file in the browser, use `uv run ~/code/global-agent-context/scripts/open_md_preview.py path/to/file.md` to render a temporary HTML preview.
+- When the user asks to open a Markdown file in the browser, use `uv run --with markdown-it-py ~/code/global-agent-context/scripts/open_md_preview.py path/to/file.md` to render a temporary HTML preview.
 - Do not use `qlmanage` for image verification or format conversion. It generates previews and thumbnails that can mislead layout QA. Use a real renderer or converter for the source format; for SVG-to-PNG, use `rsvg-convert --output=/tmp/output.png input.svg`.
 - When committing, follow conventional commits. Commit messages should be a single concise sentence.
 
