@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Quality"
+  short_description: "Spot useful tests and test slop"
+  default_prompt: "Use $test-quality to review whether these tests prove meaningful behavior."

@@ -6,18 +6,19 @@
     "name": "Ryan Brown"
   },
   "license": "MIT",
-  "keywords": ["personal", "workflow", "interview", "review"],
+  "keywords": ["personal", "workflow", "interview", "review", "test-quality"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Personal",
-    "shortDescription": "Interview and review workflows",
-    "longDescription": "Ryan's active personal coding-agent workflows: interview for shaping plans/specs through questions, and multi-review for parallel read-only feedback from multiple agents.",
+    "shortDescription": "Interview, review, and test-quality workflows",
+    "longDescription": "Ryan's active personal coding-agent workflows: interview for shaping plans/specs through questions, multi-review for parallel read-only feedback from multiple agents, and test-quality for evaluating whether tests prove meaningful behavior.",
     "developerName": "Ryan Brown",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
       "Interview me into a plan",
-      "Run a multi-agent review"
+      "Run a multi-agent review",
+      "Review these tests for real value"
     ]
   }
 }
