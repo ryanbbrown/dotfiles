@@ -1,6 +1,6 @@
 ---
 name: plain-words
-description: Write or edit non-code prose to be plain, concise, specific, and free of filler. Use for markdown notes, plans, summaries, comments, launch copy, emails, or when asked to make writing less verbose, generic, corporate, or AI-sounding.
+description: Write or edit non-code prose to be plain, concise, specific, free of filler and of unexplained jargon, and explicit enough that a reader with no context follows every sentence. Use for markdown notes, plans, summaries, comments, launch copy, emails, or when asked to make writing less verbose, generic, corporate, or AI-sounding.
 ---
 
 # Plain words
@@ -53,6 +53,18 @@ Write useful words. Cut the rest.
 - exact dates and numbers
 - clear next actions
 
+## Reader does no work
+
+Write for a reader with none of your context. Any sentence that only parses if the reader already knows the answer is a bug.
+
+- A word is jargon if the intended reader would have to ask what it means: "dereference," "idempotent," "backpressure" fail even for technical readers.
+- Define every term of art at first use, in the same sentence. If the definition feels too expensive, the term is wrong for this document.
+- Name things; do not point at them. A reference fails if the reader must pause, reread, or guess: "it" with two candidate nouns, "the pair" for fields never named. When in doubt, repeat the noun. Never point at content elsewhere ("the lists below") unless it is literally there.
+- Spell out the chain. If the point is A therefore C, write the B the reader would otherwise have to derive.
+- When you coin a term, rank things, or make a judgment call, say so where it happens, and say why.
+- Prefer named instances to the category: "a REST API, a flat file, an SFTP batch drop," not "the range of integrations."
+- Words that remove reader work are not filler. Cut throat-clearing, never steps of reasoning. When shorter fights clearer, clearer wins.
+
 ## Markdown rules
 
 - One bullet per item unless detail is needed.
@@ -68,3 +80,6 @@ Write useful words. Cut the rest.
 - Could a shorter word say the same thing?
 - Did I invent advice or structure the user did not ask for?
 - Did I state missing facts directly?
+- Could someone with no background in the subject follow every sentence?
+- Does any sentence only parse if the reader already knows the answer?
+- Did I cut a step of reasoning the reader will have to rebuild?
