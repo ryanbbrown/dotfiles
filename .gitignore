@@ -9,4 +9,5 @@ skills/browse/dist/
 .generated/
 .archive/
 .gstack/
+/.pi-subagents/
 .reference-skills/

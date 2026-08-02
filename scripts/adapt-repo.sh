@@ -68,8 +68,7 @@ write_local_workflow() {
 - Keep `.plans/` available for review while working, but remove it before merging upstream if the target repo should not receive local planning artifacts.
 - Use `.reviews/` for multi-agent review outputs.
 - Use `.html/` for generated HTML artifacts when visual explanation is useful.
-- Use `.agent/` for local agent scratch state, including reusable learnings.
-- Treat `.reviews/`, `.html/`, `.archive/`, `.agent/`, `CLAUDE.local.md`, and `AGENTS.override.md` as local-only files.
+- Treat `.reviews/`, `.html/`, `.archive/`, `CLAUDE.local.md`, and `AGENTS.override.md` as local-only files.
 EOF_WORKFLOW
 }
 
@@ -140,15 +139,14 @@ EOF_NO_SOURCE
   } > "$target"
 }
 
-mkdir -p .plans .reviews .html .archive .agent
-touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep .agent/.gitkeep .agent/learnings.jsonl
+mkdir -p .plans .reviews .html .archive
+touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep
 
 ensure_excluded "CLAUDE.local.md"
 ensure_excluded "AGENTS.override.md"
 ensure_excluded ".reviews/"
 ensure_excluded ".html/"
 ensure_excluded ".archive/"
-ensure_excluded ".agent/"
 
 write_claude_local
 write_agents_override

@@ -102,6 +102,7 @@ Older personal workflows are preserved in `archive/personal-skills/` but are not
 - `archive/` preserves retired personal skills.
 - `scripts/init-repo.sh` creates new side-project repositories.
 - `scripts/adapt-repo.sh` adds local workflow files to existing repositories without changing tracked project files.
+- `scripts/update-dcg.sh` updates and verifies the installed Destructive Command Guard binary without changing agent hook configuration.
 - `scripts/update-skill-sources.sh` updates third-party submodules, regenerates wrapped skills, reruns links, and can commit/push known source updates from cron.
 - `create-links.sh` links this repo into local Claude/Codex homes.
 
@@ -133,3 +134,11 @@ The repo tracks selected external skill sources as submodules and wraps only the
 ```
 
 This updates known submodules, regenerates `html-artifacts`, reruns `create-links.sh`, and commits only known submodule/generated source changes.
+
+The daily cron also runs:
+
+```bash
+/Users/ryanbrown/code/global-agent-context/scripts/update-dcg.sh
+```
+
+This uses `dcg`'s verified binary updater while preserving the existing Claude Code and Codex hook configuration.

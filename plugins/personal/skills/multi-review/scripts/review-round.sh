@@ -292,7 +292,8 @@ preflight() {
     (
       cd "$repo" || exit 1
       "${denest[@]}" claude -p \
-        --model claude-fable-5 \
+        --model claude-opus-5 \
+        --effort high \
         --permission-mode dontAsk \
         --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
         --disallowedTools "Edit,Write,NotebookEdit" \
@@ -309,7 +310,7 @@ preflight() {
       ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
       ANTHROPIC_MODEL="$glm_model" \
       ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
-      "${denest[@]}" claude -p \
+      "${denest[@]}" env -u ANTHROPIC_API_KEY claude -p \
         --model "$glm_model" \
         --permission-mode dontAsk \
         --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
@@ -451,7 +452,8 @@ run_claude() {
   (
     cd "$repo" || exit 1
     "${denest[@]}" claude -p \
-      --model claude-fable-5 \
+      --model claude-opus-5 \
+      --effort high \
       --permission-mode dontAsk \
       --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
       --disallowedTools "Edit,Write,NotebookEdit" \
@@ -474,7 +476,7 @@ run_glm() {
     ANTHROPIC_AUTH_TOKEN="$FIREWORKS_API_KEY" \
     ANTHROPIC_MODEL="$glm_model" \
     ANTHROPIC_SMALL_FAST_MODEL="$glm_model" \
-    "${denest[@]}" claude -p \
+    "${denest[@]}" env -u ANTHROPIC_API_KEY claude -p \
       --model "$glm_model" \
       --permission-mode dontAsk \
       --allowedTools "Read,Glob,Grep,LS,Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(pwd),Bash(ls*)" \
