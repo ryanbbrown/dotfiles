@@ -1,0 +1,1 @@
+../../vendor/gstack/browse/PLAN-snapshot-dropdown-interactive.md

@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # Rebuild the gstack browse binary when submodule sources are newer than the
-# compiled binary. Mirrors gstack/setup's build path without its skill
-# registration (create-links.sh owns linking in this repo).
+# compiled binary. Skill generation is handled separately by
+# generate-gstack-browse-skill.sh.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-gstack_dir="$repo_root/gstack"
+gstack_dir="$repo_root/vendor/gstack"
 bin="$gstack_dir/browse/dist/browse"
 
 command -v bun >/dev/null 2>&1 || { echo "error: bun is required" >&2; exit 1; }

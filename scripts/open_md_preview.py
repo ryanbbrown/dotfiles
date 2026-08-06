@@ -116,9 +116,10 @@ def main() -> int:
         return 2
 
     if MarkdownIt is None:
+        script = pathlib.Path(__file__).resolve()
         print(
             "missing markdown-it-py; run with: "
-            "uv run --with markdown-it-py ~/code/global-agent-context/scripts/open_md_preview.py PATH.md",
+            f"uv run --with markdown-it-py {script} PATH.md",
             file=sys.stderr,
         )
         return 2

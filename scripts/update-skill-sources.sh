@@ -7,19 +7,18 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root" || exit 1
 
 submodules=(
-  "gstack"
-  "mattpocock-skills"
-  "agent-html-skills"
-  "drawio-mcp"
-  "taste-skill"
-  "last30days-skill"
-  "crit"
-  "vercel-agent-skills"
+  "vendor/gstack"
+  "vendor/mattpocock-skills"
+  "vendor/drawio-mcp"
+  "vendor/taste-skill"
+  "vendor/last30days-skill"
+  "vendor/crit"
+  "vendor/vercel-agent-skills"
 )
 
 generated_paths=(
-  "plugins/html-artifacts/skills/html-artifacts"
-  "plugins/drawio/skills/drawio"
+  "skills/browse"
+  "skills/drawio"
 )
 
 commit=false
@@ -29,12 +28,13 @@ usage() {
   cat <<'USAGE'
 Usage: update-skill-sources.sh [--commit] [--push]
 
-Updates known skill submodules. With --commit, commits only the submodule
-pointer changes. With --push, pushes that commit after it is created.
+Updates known skill submodules and regenerates selected skill wrappers. With
+--commit, commits only known submodule and generated skill paths. With --push,
+pushes that commit after it is created.
 
 Guardrails:
   - Skips any submodule with local modifications.
-  - Commits only known submodule paths.
+  - Commits only known submodule and generated skill paths.
   - Refuses to push unless on main.
   - Does not rebase or merge if push fails.
 USAGE
@@ -47,6 +47,17 @@ log() {
 die() {
   log "ERROR: $*" >&2
   exit 1
+}
+
+is_configured_submodule() {
+  local target_path="$1"
+  local configured_path
+
+  while read -r _ configured_path; do
+    [ "$configured_path" = "$target_path" ] && return 0
+  done < <(git config --file .gitmodules --get-regexp '^submodule\..*\.path$')
+
+  return 1
 }
 
 while [ "$#" -gt 0 ]; do
@@ -76,7 +87,7 @@ for submodule in "${submodules[@]}"; do
     continue
   fi
 
-  if ! git config --file .gitmodules --get "submodule.$submodule.url" >/dev/null; then
+  if ! is_configured_submodule "$submodule"; then
     log "SKIP $submodule: not listed in .gitmodules"
     continue
   fi
@@ -90,11 +101,6 @@ for submodule in "${submodules[@]}"; do
   git submodule update --remote "$submodule" || die "failed to update $submodule"
 done
 
-if [ -x scripts/generate-html-artifacts-skill.sh ]; then
-  log "GENERATE html-artifacts skill"
-  scripts/generate-html-artifacts-skill.sh || die "failed to generate html-artifacts skill"
-fi
-
 if [ -x scripts/generate-drawio-skill.sh ]; then
   log "GENERATE drawio skill"
   scripts/generate-drawio-skill.sh || die "failed to generate drawio skill"
@@ -105,14 +111,14 @@ if [ -x scripts/build-gstack-browse.sh ]; then
   scripts/build-gstack-browse.sh || die "failed to build gstack browse binary"
 fi
 
-if [ -x create-links.sh ]; then
-  log "LINK agent skills"
-  ./create-links.sh || die "failed to link agent skills"
+if [ -x scripts/generate-gstack-browse-skill.sh ]; then
+  log "GENERATE gstack browse skill"
+  scripts/generate-gstack-browse-skill.sh || die "failed to generate gstack browse skill"
 fi
 
 changed=()
 for submodule in "${submodules[@]}"; do
-  if ! git config --file .gitmodules --get "submodule.$submodule.url" >/dev/null; then
+  if ! is_configured_submodule "$submodule"; then
     continue
   fi
 
@@ -135,7 +141,7 @@ if [ "${#changed[@]}" -eq 0 ]; then
   exit 0
 fi
 
-log "Changed skill submodules: ${changed[*]}"
+log "Changed skill sources: ${changed[*]}"
 
 if [ "$commit" != true ]; then
   exit 0
@@ -144,7 +150,7 @@ fi
 git add -- "${changed[@]}"
 
 if git diff --cached --quiet -- "${changed[@]}"; then
-  log "No staged submodule pointer changes"
+  log "No staged skill source changes"
   exit 0
 fi
 

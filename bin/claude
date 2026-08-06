@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+clean_path=""
+old_ifs="$IFS"
+IFS=:
+for entry in ${PATH:-}; do
+  if [ "$entry" = "$self_dir" ] || [ "$entry" = "$HOME/.local/bin" ]; then
+    continue
+  fi
+  case "$entry" in
+    */cmux-cli-shims|*/cmux-cli-shims/*) continue ;;
+  esac
+  clean_path="${clean_path:+$clean_path:}$entry"
+done
+IFS="$old_ifs"
+
+real_claude="$(PATH="$clean_path" command -v claude 2>/dev/null || true)"
+[ -n "$real_claude" ] || { echo "error: could not find the underlying Claude Code executable" >&2; exit 1; }
+
+exec "$real_claude" "--mcp-config=$HOME/.claude/mcp.json" "$@"

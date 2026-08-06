@@ -1,24 +1,21 @@
 [submodule "gstack"]
-	path = gstack
+	path = vendor/gstack
 	url = https://github.com/garrytan/gstack.git
 [submodule "mattpocock-skills"]
-	path = mattpocock-skills
+	path = vendor/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
-[submodule "agent-html-skills"]
-	path = agent-html-skills
-	url = https://github.com/f-labs-io/agent-html-skills.git
 [submodule "drawio-mcp"]
-	path = drawio-mcp
+	path = vendor/drawio-mcp
 	url = https://github.com/jgraph/drawio-mcp
 [submodule "taste-skill"]
-	path = taste-skill
+	path = vendor/taste-skill
 	url = https://github.com/Leonxlnx/taste-skill.git
 [submodule "last30days-skill"]
-	path = last30days-skill
+	path = vendor/last30days-skill
 	url = https://github.com/mvanhorn/last30days-skill
 [submodule "crit"]
-	path = crit
+	path = vendor/crit
 	url = https://github.com/tomasz-tomczyk/crit.git
 [submodule "vercel-agent-skills"]
-	path = vercel-agent-skills
+	path = vendor/vercel-agent-skills
 	url = https://github.com/vercel-labs/agent-skills.git

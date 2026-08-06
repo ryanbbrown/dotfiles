@@ -1,0 +1,17 @@
+{
+  "packages": [
+    "npm:pi-mcp-adapter",
+    "npm:pi-web-access",
+    "npm:@tifan/pi-fixed-editor",
+    "git:github.com/algal/pi-openai-server-compaction@c6d593087709e9481223dc6c6c2269b371b5e055",
+    "git:github.com/ryanbbrown/pi-minimal-toolcall@bfa919df8c01fd2028cba54243a5d55e99554a12",
+    "npm:@aliou/pi-processes",
+    "git:github.com/nicobailon/pi-subagents"
+  ],
+  "hideThinkingBlock": true,
+  "defaultThinkingLevel": "high",
+  "theme": "dark-no-tool-bg",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-sol",
+  "lastChangelogVersion": "0.83.0"
+}

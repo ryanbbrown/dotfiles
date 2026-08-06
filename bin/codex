@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+clean_path=""
+old_ifs="$IFS"
+IFS=:
+for entry in ${PATH:-}; do
+  if [ "$entry" = "$self_dir" ] || [ "$entry" = "$HOME/.local/bin" ]; then
+    continue
+  fi
+  case "$entry" in
+    */cmux-cli-shims|*/cmux-cli-shims/*) continue ;;
+  esac
+  clean_path="${clean_path:+$clean_path:}$entry"
+done
+IFS="$old_ifs"
+
+real_codex="$(PATH="$clean_path" command -v codex 2>/dev/null || true)"
+[ -n "$real_codex" ] || { echo "error: could not find the underlying Codex executable" >&2; exit 1; }
+
+case "${1:-}" in
+  login|logout|plugin|mcp-server|app-server|app|completion|update|doctor|features|help)
+    exec "$real_codex" "$@"
+    ;;
+  *)
+    exec "$real_codex" --profile dotfiles-mcp "$@"
+    ;;
+esac

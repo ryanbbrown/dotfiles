@@ -1,1 +1,0 @@
-../../../../../agent-html-skills/plugins/html-skills/skills/html-testing-checklist/SKILL.md

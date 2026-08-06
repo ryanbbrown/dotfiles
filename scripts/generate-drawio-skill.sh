@@ -4,9 +4,9 @@ set -eu
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root" || exit 1
 
-source_skill="drawio-mcp/plugins/claude-code/skills/drawio/SKILL.md"
-source_shared="drawio-mcp/shared"
-target_root="plugins/drawio/skills/drawio"
+source_skill="vendor/drawio-mcp/plugins/claude-code/skills/drawio/SKILL.md"
+source_shared="vendor/drawio-mcp/shared"
+target_root="skills/drawio"
 references_dir="$target_root/references"
 
 if [ ! -f "$source_skill" ]; then

@@ -1,13 +1,13 @@
 __pycache__/
+/papercuts.md
 
 # Editor-specific dirs created by npx skills installer — not needed in repo
-.claude/
-.cursor/
+/.claude/
+/.cursor/
 
-# Compiled browse binary (built from gstack submodule)
-skills/browse/dist/
-.generated/
-.archive/
-.gstack/
+# Local generated and runtime state
+/.generated/
+/.archive/
+/.gstack/
 /.pi-subagents/
-.reference-skills/
+/.reference-skills/

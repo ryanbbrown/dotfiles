@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -eq 0 ]; then
+  echo 'usage: papercut "what you were doing; what got in the way"' >&2
+  exit 2
+fi
+
+papercuts_file="$HOME/.dotfiles/papercuts.md"
+umask 077
+
+cwd="$(pwd -P)"
+if repo_root="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)"; then
+  repo_root="$(cd "$repo_root" && pwd -P)"
+  if [ "$cwd" = "$repo_root" ]; then
+    relative_cwd="."
+  else
+    relative_cwd="${cwd#"$repo_root"/}"
+  fi
+  location="[repo: $repo_root; cwd: $relative_cwd]"
+else
+  location="[cwd: $cwd]"
+fi
+
+if [ ! -e "$papercuts_file" ]; then
+  printf '# Papercuts\n\n' > "$papercuts_file"
+fi
+
+printf -- '- %s — %s — %s\n' "$(date '+%Y-%m-%d %H:%M')" "$location" "$*" >> "$papercuts_file"
+echo "Logged papercut in $papercuts_file"
