@@ -345,7 +345,11 @@ preflight() {
   if ! is_skipped claude; then
     (
       cd "$repo" || exit 1
-      "${denest[@]}" claude -p \
+      "${denest[@]}" env \
+        -u ANTHROPIC_API_KEY \
+        -u ANTHROPIC_AUTH_TOKEN \
+        -u ANTHROPIC_BASE_URL \
+        claude -p \
         --model "$claude_model" \
         --effort high \
         --permission-mode dontAsk \
@@ -641,7 +645,11 @@ run_claude() {
   rm -f "$claude_out"
   (
     cd "$snapshot_repo" || exit 1
-    "${denest[@]}" claude -p \
+    "${denest[@]}" env \
+      -u ANTHROPIC_API_KEY \
+      -u ANTHROPIC_AUTH_TOKEN \
+      -u ANTHROPIC_BASE_URL \
+      claude -p \
       --model "$claude_model" \
       --effort high \
       --permission-mode dontAsk \
