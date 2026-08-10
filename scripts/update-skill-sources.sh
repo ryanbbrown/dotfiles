@@ -7,7 +7,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root" || exit 1
 
 submodules=(
-  "vendor/gstack"
+  "vendor/agent-browser"
   "vendor/mattpocock-skills"
   "vendor/drawio-mcp"
   "vendor/taste-skill"
@@ -17,7 +17,6 @@ submodules=(
 )
 
 generated_paths=(
-  "skills/browse"
   "skills/drawio"
 )
 
@@ -104,16 +103,6 @@ done
 if [ -x scripts/generate-drawio-skill.sh ]; then
   log "GENERATE drawio skill"
   scripts/generate-drawio-skill.sh || die "failed to generate drawio skill"
-fi
-
-if [ -x scripts/build-gstack-browse.sh ]; then
-  log "BUILD gstack browse binary"
-  scripts/build-gstack-browse.sh || die "failed to build gstack browse binary"
-fi
-
-if [ -x scripts/generate-gstack-browse-skill.sh ]; then
-  log "GENERATE gstack browse skill"
-  scripts/generate-gstack-browse-skill.sh || die "failed to generate gstack browse skill"
 fi
 
 changed=()

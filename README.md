@@ -22,7 +22,7 @@ Each entry under `skills/` is one of:
 - a generated wrapper around selected upstream material
 - a link to a skill in an upstream repository under `vendor/`
 
-Skills use flat names such as `implement`, `browse`, and `test-quality`. They do not use agent-specific plugin namespaces.
+Skills use flat names such as `implement`, `agent-browser`, and `test-quality`. They do not use agent-specific plugin namespaces.
 
 ### Install
 
@@ -36,6 +36,13 @@ Then install the home links:
 
 ```bash
 scripts/link-home.sh
+```
+
+Install Vercel's browser automation CLI and its managed Chrome runtime:
+
+```bash
+npm install -g agent-browser
+agent-browser install
 ```
 
 The script creates `~/.dotfiles` as a stable link to the checkout. It then installs these groups of links:
@@ -91,7 +98,7 @@ Run:
 $HOME/.dotfiles/scripts/update-skill-sources.sh
 ```
 
-The script updates known submodules and rebuilds generated wrappers. It currently regenerates the `browse` and `drawio` skills.
+The script updates known submodules and rebuilds generated wrappers. It currently regenerates the `drawio` skill.
 
 Pass `--commit` to commit known source changes. Pass `--push` to commit and push them from `main`.
 
@@ -105,6 +112,12 @@ Update the Destructive Command Guard binary separately:
 
 ```bash
 $HOME/.dotfiles/scripts/update-dcg.sh
+```
+
+Update the browser automation CLI separately:
+
+```bash
+agent-browser upgrade
 ```
 
 ### Set up a project
@@ -207,14 +220,15 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 #### Planning and delivery
 
-- `interview` asks focused questions and writes the answers into a plan or specification.
+- `grilling` stress-tests a plan, decision, or idea through focused questions.
+- `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
 - `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 
 #### Review and browser QA
 
-- `browse` drives a headless browser for product testing and site dogfooding.
+- `agent-browser` drives a browser for automation, product testing, and site dogfooding.
 - `crit` collects structured inline feedback on code, plans, HTML files, and live pages.
 
 #### Architecture and design
@@ -233,7 +247,7 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 - `plain-words` removes filler and makes general prose clear and specific.
 - `govuk-style` applies GOV.UK and GDS house style when requested.
-- `writing-great-skills` provides the design principles used to write predictable agent skills.
+- `writing-for-agents` provides the design principles used to write predictable agent instructions.
 
 ## Main implementation flow
 

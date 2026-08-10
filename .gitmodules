@@ -1,6 +1,3 @@
-[submodule "gstack"]
-	path = vendor/gstack
-	url = https://github.com/garrytan/gstack.git
 [submodule "mattpocock-skills"]
 	path = vendor/mattpocock-skills
 	url = https://github.com/mattpocock/skills.git
@@ -19,3 +16,6 @@
 [submodule "vercel-agent-skills"]
 	path = vendor/vercel-agent-skills
 	url = https://github.com/vercel-labs/agent-skills.git
+[submodule "agent-browser"]
+	path = vendor/agent-browser
+	url = https://github.com/vercel-labs/agent-browser.git
