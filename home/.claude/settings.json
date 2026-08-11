@@ -20,10 +20,6 @@
       "WebSearch",
       "WebFetch",
       "Grep"
-    ],
-    "deny": [
-      "mcp__plugin_readwise_readwise__*",
-      "mcp__readwise__*"
     ]
   },
   "model": "opus[1m]",
@@ -117,16 +113,9 @@
     "code-simplifier@claude-plugins-official": true,
     "swiftui-expert@swiftui-expert-skill": true,
     "swift-lsp@claude-plugins-official": true,
-    "readwise@readwise-skills": true,
     "codex@openai-codex": true
   },
   "extraKnownMarketplaces": {
-    "readwise-skills": {
-      "source": {
-        "source": "github",
-        "repo": "readwiseio/readwise-skills"
-      }
-    },
     "openai-codex": {
       "source": {
         "source": "github",

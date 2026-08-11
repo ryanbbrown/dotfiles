@@ -64,7 +64,6 @@ Claude Code
 
 Codex
   ~/.codex/hooks.json
-  ~/.codex/dotfiles-mcp.config.toml
   ~/.codex/cmux-feed.sh
   ~/.codex/notify.sh
 
@@ -190,7 +189,6 @@ Claude Code uses the shared skills plus several Claude-specific plugins:
 - Code Simplifier
 - SwiftUI Expert
 - Swift LSP
-- Readwise
 - OpenAI Codex
 
 Claude Code and Codex run the Destructive Command Guard before shell commands. Both send status and approval events to cmux. Codex also sends tool activity.
@@ -205,10 +203,12 @@ The custom MCP set is the same for Claude Code, Codex, and Pi:
 The repository tracks one agent-specific representation of this set for each tool:
 
 - `home/.claude/mcp.json`
-- `home/.codex/dotfiles-mcp.config.toml`
+- `bin/codex`
 - `home/.pi/agent/mcp.json`
 
-The installer links each file into its agent directory. The Claude Code and Codex launch wrappers load their linked files.
+The installer links the Claude Code and Pi files into their agent directories. The Codex wrapper passes its MCP settings as command-line overrides.
+
+Codex stores hook trust in its untracked `~/.codex/config.toml`. The wrapper does not use a writable tracked profile.
 
 Pi uses `pi-mcp-adapter` to search cached tool metadata. It starts an MCP server only when the agent needs it.
 

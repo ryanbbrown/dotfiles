@@ -19,11 +19,17 @@ IFS="$old_ifs"
 real_codex="$(PATH="$clean_path" command -v codex 2>/dev/null || true)"
 [ -n "$real_codex" ] || { echo "error: could not find the underlying Codex executable" >&2; exit 1; }
 
+mcp_config_args=(
+  --config 'mcp_servers.context7.command="npx"'
+  --config 'mcp_servers.context7.args=["-y","@upstash/context7-mcp"]'
+  --config 'mcp_servers.grep.url="https://mcp.grep.app"'
+)
+
 case "${1:-}" in
   login|logout|plugin|mcp-server|app-server|app|completion|update|doctor|features|help)
     exec "$real_codex" "$@"
     ;;
   *)
-    exec "$real_codex" --profile dotfiles-mcp "$@"
+    exec "$real_codex" "${mcp_config_args[@]}" "$@"
     ;;
 esac
