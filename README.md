@@ -45,6 +45,12 @@ npm install -g agent-browser
 agent-browser install
 ```
 
+Install the Railway CLI for deployment management:
+
+```bash
+brew install railway
+```
+
 The script creates `~/.dotfiles` as a stable link to the checkout. It then installs these groups of links:
 
 ```text
