@@ -15,8 +15,12 @@ Run from the repository being reviewed. Check managed processes first so you do 
 For an implementation review:
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round.sh --feature "feature name" --plan-file .plans/<plan-slug>.md
+~/.claude/skills/review-panel/scripts/review-round.sh --feature "feature name" --plan-file .plans/<plan-slug>.md --base-ref <pre-implementation-sha>
 ```
+
+Capture the base SHA before implementation starts. The implementation writer may commit before review, so the current `HEAD` cannot define the feature range. The launcher rejects an implementation review without a base or with an empty base-to-snapshot diff.
+
+Claude reviews use Claude Code OAuth only. The launcher removes Anthropic API key variables and verifies a first-party OAuth login before preflight. If OAuth is unavailable, stop and ask the user to run `claude auth login`. Do not add an API key fallback and do not bypass the OAuth failure.
 
 For a plan review:
 
@@ -35,6 +39,7 @@ When the background process exits, report whether it succeeded and identify the 
 --mode MODE          Review mode: implementation or plan. Defaults to implementation.
 --target-file PATH   Plan file to review, relative to repo or absolute within it. Required for plan mode.
 --plan-file PATH     Existing implementation plan, relative to repo or absolute within it. Required for implementation mode.
+--base-ref REF       Git commit recorded before implementation. Required for implementation mode.
 --skip LIST          Comma-separated reviewers to skip: codex, claude, glm. Repeatable.
                      Cannot skip all three. Skipping glm needs no FIREWORKS_API_KEY.
 --preflight-only     Run CLI smoke checks, then exit before starting reviewers.
@@ -51,6 +56,8 @@ GLM_MODEL=accounts/fireworks/models/glm-5p2
 REVIEW_TIMEOUT_SECONDS=900   Per-reviewer timeout.
 SKIP_PREFLIGHT=1             Optional escape hatch for local debugging.
 ```
+
+`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer. Fireworks credentials remain required only for the separate GLM reviewer.
 
 ## Output
 

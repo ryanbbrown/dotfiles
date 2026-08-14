@@ -3,7 +3,7 @@ set -u
 
 usage() {
   cat <<'USAGE'
-Usage: review-round.sh --feature NAME [--repo PATH] [--output-dir PATH] [--mode MODE] [--target-file PATH] [--plan-file PATH] [--preflight-only]
+Usage: review-round.sh --feature NAME [--repo PATH] [--output-dir PATH] [--mode MODE] [--target-file PATH] [--plan-file PATH] [--base-ref REF] [--preflight-only]
 
 Runs Codex, Claude Code, and GLM (via Fireworks) reviewers in parallel.
 
@@ -15,6 +15,7 @@ Options:
   --mode MODE          Review mode: implementation or plan. Defaults to implementation.
   --target-file PATH   Plan file to review, relative to repo or absolute within it. Required for plan mode.
   --plan-file PATH     Existing implementation plan, relative to repo or absolute within it. Required for implementation mode.
+  --base-ref REF       Git commit captured before implementation. Required for implementation mode.
   --skip LIST          Comma-separated reviewers to skip: codex, claude, glm.
                        Repeatable. Cannot skip all three. E.g. --skip codex
                        or --skip codex,glm.
@@ -66,6 +67,7 @@ output_root=""
 review_mode="implementation"
 target_file=""
 plan_file=""
+base_ref=""
 preflight_only=0
 skipped=""
 
@@ -99,6 +101,11 @@ while [ "$#" -gt 0 ]; do
     --plan-file)
       [ "$#" -ge 2 ] || die "--plan-file requires a value"
       plan_file="$2"
+      shift 2
+      ;;
+    --base-ref)
+      [ "$#" -ge 2 ] || die "--base-ref requires a value"
+      base_ref="$2"
       shift 2
       ;;
     --skip)
@@ -170,12 +177,16 @@ case "$review_mode" in
   plan)
     [ -n "$target_file" ] || die "--target-file is required when --mode plan"
     [ -z "$plan_file" ] || die "--plan-file is only valid when --mode implementation"
+    [ -z "$base_ref" ] || die "--base-ref is only valid when --mode implementation"
     resolve_repo_file "target" "$target_file"
     target_file="$resolved_repo_file"
     review_plan_file="$target_file"
     ;;
   implementation)
     [ -z "$target_file" ] || die "--target-file is only valid when --mode plan"
+    if [ "$preflight_only" -eq 0 ]; then
+      [ -n "$base_ref" ] || die "--base-ref is required when --mode implementation"
+    fi
     if [ -n "$plan_file" ]; then
       resolve_repo_file "plan" "$plan_file"
       plan_file="$resolved_repo_file"
@@ -242,6 +253,9 @@ is_skipped codex || need_cmd codex
 if ! is_skipped claude || ! is_skipped glm; then
   need_cmd claude
 fi
+if ! is_skipped claude; then
+  need_cmd jq
+fi
 # need_cmd droid   # disabled: GLM reviewer runs through the Claude Code harness.
 
 if ! is_skipped glm; then
@@ -259,6 +273,16 @@ fireworks_base_url="https://api.fireworks.ai/inference"
 
 # De-nest reviewers from a host Claude Code session.
 denest=(env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT)
+claude_oauth_env=(
+  env
+  -u CLAUDECODE
+  -u CLAUDE_CODE_CHILD_SESSION
+  -u CLAUDE_CODE_SESSION_ID
+  -u CLAUDE_CODE_ENTRYPOINT
+  -u ANTHROPIC_API_KEY
+  -u ANTHROPIC_AUTH_TOKEN
+  -u ANTHROPIC_BASE_URL
+)
 
 # Disabled Factory Droid/DeepSeek reviewer; kept for reference.
 # droid_model="${DROID_MODEL:-custom:DeepSeek-V4-Pro-0}"
@@ -327,6 +351,20 @@ preflight() {
   local claude_preflight_pid=""
   local glm_preflight_pid=""
 
+  if ! is_skipped claude; then
+    local auth_status
+    auth_status="$("${claude_oauth_env[@]}" claude auth status --json 2>/dev/null)" || auth_status=""
+    if ! printf '%s' "$auth_status" | jq -e '
+      .loggedIn == true
+      and .apiProvider == "firstParty"
+      and ((.authMethod // "") | ascii_downcase | test("oauth|claude|console"))
+    ' >/dev/null 2>&1; then
+      echo "claude preflight failed: a first-party OAuth login is required" >&2
+      echo "hint: unset Anthropic API key variables, then run 'claude auth login'" >&2
+      return 1
+    fi
+  fi
+
   if ! is_skipped codex; then
     codex exec \
       --cd "$repo" \
@@ -340,10 +378,7 @@ preflight() {
   if ! is_skipped claude; then
     (
       cd "$repo" || exit 1
-      "${denest[@]}" env \
-        -u ANTHROPIC_API_KEY \
-        -u ANTHROPIC_AUTH_TOKEN \
-        -u ANTHROPIC_BASE_URL \
+      "${claude_oauth_env[@]}" \
         claude -p \
         --model "$claude_model" \
         --effort high \
@@ -388,7 +423,7 @@ preflight() {
   fi
   if [ -n "$claude_preflight_pid" ] && ! wait_with_timeout "$claude_preflight_pid" claude-preflight "$logs_dir/claude.preflight.stderr"; then
     echo "claude preflight failed; see $logs_dir/claude.preflight.stderr" >&2
-    echo "hint: non-interactive Claude must work with 'claude -p' in this repo; avoid --bare if you rely on terminal/keychain auth." >&2
+    echo "hint: refresh the OAuth login with 'claude auth login'" >&2
     failed=1
   fi
   if [ -n "$glm_preflight_pid" ] && ! wait_with_timeout "$glm_preflight_pid" glm-preflight "$logs_dir/glm.preflight.stderr"; then
@@ -430,7 +465,12 @@ create_snapshot() {
   fi
 
   need_cmd shasum
-  base_sha="$(git -C "$repo" rev-parse --verify HEAD)" || die "repository has no HEAD commit to use as the review base"
+  if [ "$review_mode" = "implementation" ]; then
+    base_sha="$(git -C "$repo" rev-parse --verify "${base_ref}^{commit}")" || die "invalid implementation base ref: $base_ref"
+    git -C "$repo" merge-base --is-ancestor "$base_sha" HEAD || die "implementation base is not an ancestor of HEAD: $base_sha"
+  else
+    base_sha="$(git -C "$repo" rev-parse --verify HEAD)" || die "repository has no HEAD commit to use as the review base"
+  fi
   snapshot_captured_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
   git -C "$repo" status --short --untracked-files=all -- "${pathspecs[@]}" > "$tmp_dir/status.txt" || die "failed to record git status"
@@ -458,6 +498,9 @@ create_snapshot() {
 
   git -C "$repo" diff --binary --no-color --no-ext-diff "$base_sha" "$snapshot_sha" > "$tmp_dir/review.diff" || die "failed to record snapshot diff"
   git -C "$repo" diff --name-status --no-color --no-ext-diff "$base_sha" "$snapshot_sha" > "$tmp_dir/changed-files.txt" || die "failed to record changed files"
+  if [ "$review_mode" = "implementation" ] && [ ! -s "$tmp_dir/review.diff" ]; then
+    die "implementation snapshot has no changes relative to base $base_sha"
+  fi
   diff_sha256="$(shasum -a 256 "$tmp_dir/review.diff" | awk '{print $1}')"
 }
 
@@ -643,11 +686,8 @@ run_claude() {
   rm -f "$claude_out"
   (
     cd "$snapshot_repo" || exit 1
-    "${denest[@]}" env \
-      -u ANTHROPIC_API_KEY \
-      -u ANTHROPIC_AUTH_TOKEN \
-      -u ANTHROPIC_BASE_URL \
-      claude -p \
+      "${claude_oauth_env[@]}" \
+        claude -p \
       --model "$claude_model" \
       --effort high \
       --permission-mode dontAsk \

@@ -15,20 +15,23 @@ Before implementation, identify:
 - the approved plan file
 - a stable feature name for every review round
 - the repository being changed
+- the clean pre-implementation Git SHA that defines the review base
 - the plan's acceptance checks and required validation
 - the exact number of review rounds, if the user specified one
 
 Ask the user about any unresolved product, scope, or architecture decision before launching the implementation subagent. Do not ask for a review-round count when the user did not provide one.
 
+Require a clean worktree before recording the review base. Existing uncommitted work makes the feature boundary ambiguous, so preserve it separately or ask the user how to proceed. Record `git rev-parse HEAD` after the approved plan is committed and immediately before launching the implementation subagent.
+
 ## Implement
 
 1. List the available subagents and confirm that an implementation worker is executable.
-2. Launch one implementation subagent with the plan path, approved scope, acceptance checks, validation requirements, and expected handoff. Do not edit the same worktree or launch another writer while it runs.
+2. Launch one implementation subagent with the plan path, approved scope, acceptance checks, validation requirements, review base SHA, and expected handoff. The writer may commit the implementation. Do not edit the same worktree or launch another writer while it runs.
 3. When the implementation subagent finishes, inspect its handoff. If implementation or required validation is incomplete, resume the same subagent to finish before review.
 
 ## Review and synthesize
 
-1. Load and follow the `review-panel` skill in implementation mode, using the stable feature name and original plan. It runs the script in the background and reports the generated files.
+1. Load and follow the `review-panel` skill in implementation mode. Pass the stable feature name, original plan, and recorded review base with `--base-ref`. It runs the script in the background and reports the generated files.
 2. After the review process succeeds, read the round manifest and every reviewer report.
 3. Verify each finding against the frozen snapshot. Decide by evidence rather than reviewer count, and merge duplicate findings.
 4. Write `<feature-slug>-synthesis-vN.md` next to that round's reports. This is the authoritative fix list for the implementation subagent.
