@@ -404,6 +404,9 @@ preflight() {
   #   failed=1
   # fi
 
+  if [ "$failed" -eq 0 ]; then
+    rm -f "$logs_dir"/*.preflight.stderr "$logs_dir"/*-preflight.timeout
+  fi
   return "$failed"
 }
 
@@ -732,9 +735,21 @@ fi
 
 failed=0
 
+finish_reviewer() {
+  local name="$1"
+  local report_file="$2"
+
+  if [ ! -s "$report_file" ]; then
+    echo "$name: failed; final report was not produced; see $logs_dir/$name.stderr" >&2
+    return 1
+  fi
+  rm -f "$logs_dir/$name.stderr" "$logs_dir/$name.timeout"
+  echo "$name: $report_file"
+}
+
 if [ -n "$codex_pid" ]; then
   if wait_with_timeout "$codex_pid" codex "$logs_dir/codex.stderr"; then
-    echo "codex: $codex_out"
+    finish_reviewer codex "$codex_out" || failed=1
   else
     echo "codex: failed; see $logs_dir/codex.stderr" >&2
     failed=1
@@ -743,7 +758,7 @@ fi
 
 if [ -n "$claude_pid" ]; then
   if wait_with_timeout "$claude_pid" claude "$logs_dir/claude.stderr"; then
-    echo "claude: $claude_out"
+    finish_reviewer claude "$claude_out" || failed=1
   else
     if [ -s "$logs_dir/claude.stderr" ]; then
       echo "claude: failed; see $logs_dir/claude.stderr" >&2
@@ -758,7 +773,7 @@ fi
 
 if [ -n "$glm_pid" ]; then
   if wait_with_timeout "$glm_pid" glm "$logs_dir/glm.stderr"; then
-    echo "glm: $glm_out"
+    finish_reviewer glm "$glm_out" || failed=1
   else
     if [ -s "$logs_dir/glm.stderr" ]; then
       echo "glm: failed; see $logs_dir/glm.stderr" >&2

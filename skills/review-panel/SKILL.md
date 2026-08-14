@@ -63,7 +63,8 @@ The script chooses the next `vN` for the feature and writes:
   <feature-slug>-codex-vN.md
   <feature-slug>-claude-vN.md
   <feature-slug>-glm-5p2-vN.md
-  .logs/vN/*.stderr
+  .logs/vN/*.stdout
+  .logs/vN/*.stderr                    # Retained only after a failure, timeout, or missing report.
 ```
 
 The script freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot and review configuration.
