@@ -425,7 +425,7 @@ create_snapshot() {
   local review_plan_rel="${review_plan_file#"$repo"/}"
   local pathspecs
   pathspecs=(.)
-  if [ -n "$output_rel" ] && ! git -C "$repo" check-ignore -q -- "$output_rel"; then
+  if [ -n "$output_rel" ] && ! git -C "$repo" check-ignore -q --no-index -- "$output_rel"; then
     pathspecs+=(":(exclude)$output_rel" ":(exclude)$output_rel/**")
   fi
 
