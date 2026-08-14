@@ -2,7 +2,7 @@
 
 Personal coding-agent configuration and skills for Ryan Brown.
 
-This repository is the durable source for Claude Code, Codex, and Pi. It gives all three agents shared instructions and one flat skill set. It also tracks agent-specific settings, hooks, themes, and extensions.
+This repository is the durable source for Claude Code, Codex, and Pi. It gives all three agents shared instructions and one flat skill set. It also tracks agent-specific settings and hooks.
 
 The repository does not track credentials, sessions, caches, trust decisions, or other runtime state.
 
@@ -10,7 +10,7 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 
 ### Layout
 
-- `home/` contains global instructions and durable settings for Claude Code, Codex, Pi, and cmux.
+- `home/` contains global instructions and durable settings for Claude Code, Codex, and Pi.
 - `skills/` contains the skills exposed to all three coding agents.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
@@ -66,24 +66,16 @@ Shared skills
 Claude Code
   ~/.claude/settings.json
   ~/.claude/mcp.json
-  ~/.claude/hooks/cmux-session.sh
 
 Codex
   ~/.codex/hooks.json
-  ~/.codex/cmux-feed.sh
-  ~/.codex/notify.sh
 
 Pi
   ~/.pi/agent/settings.json
   ~/.pi/agent/mcp.json
   ~/.pi/agent/APPEND_SYSTEM.md
-  ~/.pi/agent/themes
-  ~/.pi/agent/extensions/cmux-session.ts
-  ~/.pi/agent/extensions/pi-minimal-toolcall
-  ~/.pi/agent/extensions/subagent
 
 Other
-  ~/.config/cmux/cmux.json
   ~/.local/bin/claude
   ~/.local/bin/codex
   ~/.local/bin/papercut
@@ -164,13 +156,9 @@ Claude Code, Codex, and Pi receive the same global instructions from `home/AGENT
 - Write concise prose in active voice.
 - Record small workflow problems with `papercut`.
 
-Claude Code, Codex, and Pi also publish activity through cmux. They share the `agentrun` status and report tool activity where the host supports it.
-
 ### Pi
 
-Pi defaults to `openai-codex/gpt-5.6-sol` with high reasoning. It hides thinking blocks.
-
-The custom `dark-no-tool-bg` theme starts from Pi's dark theme and removes the tool backgrounds.
+Pi defaults to `openai-codex/gpt-5.6-sol` with high reasoning.
 
 The tracked Pi settings install these packages:
 
@@ -178,15 +166,11 @@ The tracked Pi settings install these packages:
 | --- | --- |
 | [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt. |
 | [`pi-web-access`](https://github.com/nicobailon/pi-web-access) | Adds web search, source checks, page extraction, repository fetching, and video analysis. |
-| [`pi-fixed-editor`](https://github.com/tifandotme/pi-extensions/tree/master/packages/pi-fixed-editor) | Keeps the editor and footer fixed while the transcript scrolls. |
-| [`pi-openai-server-compaction`](https://github.com/algal/pi-openai-server-compaction) | Adds OpenAI server compaction while retaining a portable Pi text summary. |
-| [`pi-minimal-toolcall`](https://github.com/ryanbbrown/pi-minimal-toolcall) | Groups and collapses tool calls to reduce terminal noise. |
+| [`pi-openai-server-compaction`](https://github.com/algal/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
 | [`pi-processes`](https://github.com/aliou/pi-processes) | Runs servers, watchers, builds, and review panels as managed background processes. |
 | [`pi-subagents`](https://github.com/nicobailon/pi-subagents) | Adds focused child agents for scouting, implementation, review, research, and second opinions. |
 
-The local `cmux-session.ts` extension connects Pi lifecycle events to cmux. It updates status, sends completion notifications, publishes tool events, and records resume bindings.
-
-The Pi extension configuration keeps subagent output compact. It also gives core file and shell tools a minimal display.
+The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
 
 ### Claude Code and Codex
 
@@ -197,7 +181,7 @@ Claude Code uses the shared skills plus several Claude-specific plugins:
 - Swift LSP
 - OpenAI Codex
 
-Claude Code and Codex run the Destructive Command Guard before shell commands. Both send status and approval events to cmux. Codex also sends tool activity.
+Claude Code and Codex run the Destructive Command Guard before shell commands.
 
 ### MCP servers
 

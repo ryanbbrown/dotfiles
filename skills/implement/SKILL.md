@@ -1,6 +1,7 @@
 ---
 name: implement
-description: Implement an approved plan with one subagent, run independent review panels, synthesize findings, return required fixes to the same implementation subagent, and run the requested or warranted review rounds. Use after planning is complete and implementation is authorized.
+description: Implement an approved plan with one subagent and independent review panels. Use only when the user explicitly requests the implement skill.
+disable-model-invocation: true
 ---
 
 # Implement

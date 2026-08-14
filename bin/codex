@@ -9,9 +9,6 @@ for entry in ${PATH:-}; do
   if [ "$entry" = "$self_dir" ] || [ "$entry" = "$HOME/.local/bin" ]; then
     continue
   fi
-  case "$entry" in
-    */cmux-cli-shims|*/cmux-cli-shims/*) continue ;;
-  esac
   clean_path="${clean_path:+$clean_path:}$entry"
 done
 IFS="$old_ifs"

@@ -1,6 +1,7 @@
 ---
 name: review-panel
-description: Run independent Codex, Claude Code, and GLM reviews against one frozen snapshot and report the output files. Use when another workflow needs a panel of independent review reports for an implementation or plan.
+description: Run independent Codex, Claude Code, and GLM reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
+disable-model-invocation: true
 ---
 
 # Review panel

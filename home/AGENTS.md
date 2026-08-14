@@ -2,8 +2,9 @@
 
 ## Interaction
 
-- If the user interrupts with a question, objection, or uncertainty that could change the next action, stop after answering and wait for confirmation. Do not treat a correction that you proposed as permission to execute it. If the answer cannot change the authorized work, answer and continue.
-- Answer direct questions directly. Use no more than three short paragraphs unless the user requests detail or the task clearly requires a longer answer. Do not add caveats, headings, or summaries unless they change the answer. Use a longer structured response only when the user's request clearly calls for one.
+- DNC means "do not change." If a message includes DNC, answer its question or concern without making or continuing code changes.
+- Treat corrections as constraints on authorized work. Ask for confirmation before performing a materially new action that only you proposed.
+- Use no more than three short paragraphs unless the user requests detail or the task clearly requires a longer answer. Do not add caveats, headings, or summaries unless they change the answer. Use a longer structured response only when the user's request clearly calls for one.
 
 ## Implementation
 
@@ -30,5 +31,6 @@ Apply these ASD-STE100 Simplified Technical English principles to all prose, inc
 
 ## Other
 
-- Make all durable changes to coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
+- Store global coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
+- Store project-specific agent configuration, including MCP servers, in the project that uses it.
 - When you encounter small workflow friction—a failed tool call, unclear setup, flaky command, stale cache, misleading error, or unexpected gotcha—log it immediately with `papercut "what you were doing; what got in the way"`. Log non-blocking friction too; repeated papercuts reveal where the workflow needs improvement.
