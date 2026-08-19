@@ -1,7 +1,6 @@
 ---
 name: review-panel
 description: Run independent Codex, Claude Code, and GLM reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
-disable-model-invocation: true
 ---
 
 # Review panel
@@ -49,7 +48,8 @@ When the background process exits, report whether it succeeded and identify the 
 
 ```text
 MAX_ROUNDS=3                 Hard cap; defaults to 3.
-FIREWORKS_API_KEY=...        Required unless GLM is skipped.
+FIREWORKS_API_KEY=...        Optional override for GLM. When unset, the launcher
+                             reads FIREWORKS_API_KEY from ~/.dotfiles/.env.
 CODEX_MODEL=gpt-5.6-sol      Default Codex reviewer model.
 GLM_MODEL=accounts/fireworks/models/glm-5p2
                              Default GLM reviewer model.
@@ -57,7 +57,7 @@ REVIEW_TIMEOUT_SECONDS=900   Per-reviewer timeout.
 SKIP_PREFLIGHT=1             Optional escape hatch for local debugging.
 ```
 
-`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer. Fireworks credentials remain required only for the separate GLM reviewer.
+`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer. The launcher passes the Fireworks credential only to the separate GLM reviewer and removes it from Codex and first-party Claude reviewer environments.
 
 ## Output
 

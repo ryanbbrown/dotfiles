@@ -1,4 +1,5 @@
 __pycache__/
+/.env
 /papercuts.md
 
 # Editor-specific dirs created by npx skills installer — not needed in repo

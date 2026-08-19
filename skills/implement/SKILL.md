@@ -1,7 +1,6 @@
 ---
 name: implement
 description: Implement an approved plan with one subagent and independent review panels. Use only when the user explicitly requests the implement skill.
-disable-model-invocation: true
 ---
 
 # Implement

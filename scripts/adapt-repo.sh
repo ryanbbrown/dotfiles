@@ -140,7 +140,7 @@ EOF_NO_SOURCE
 }
 
 mkdir -p .plans .reviews .html .archive
-touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep
+touch .plans/.gitkeep .html/.gitkeep
 
 ensure_excluded "CLAUDE.local.md"
 ensure_excluded "AGENTS.override.md"

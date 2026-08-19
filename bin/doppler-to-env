@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: doppler-to-env --project PROJECT --config CONFIG [--output PATH] KEY [KEY ...]
+       doppler-to-env --project PROJECT --config CONFIG --list
+
+Create a local dotenv file with selected keys from one Doppler project and config.
+The output defaults to .env in the current directory and is replaced atomically.
+
+Options:
+  --project PROJECT  Required Doppler project.
+  --config CONFIG    Required Doppler config.
+  --output PATH      Output file. Defaults to .env.
+  --list             List available key names without showing values.
+  -h, --help         Show this help.
+USAGE
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+project=""
+config=""
+output=".env"
+list_keys=0
+keys=()
+key_count=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --project)
+      [ "$#" -ge 2 ] || die "--project requires a value"
+      project="$2"
+      shift 2
+      ;;
+    --config)
+      [ "$#" -ge 2 ] || die "--config requires a value"
+      config="$2"
+      shift 2
+      ;;
+    --output)
+      [ "$#" -ge 2 ] || die "--output requires a value"
+      output="$2"
+      shift 2
+      ;;
+    --list)
+      list_keys=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      case "$1" in
+        ''|[0-9]*|*[!A-Za-z0-9_]*) die "invalid environment key: $1" ;;
+      esac
+      if [ "$key_count" -gt 0 ]; then
+        for key in "${keys[@]}"; do
+          [ "$key" != "$1" ] || die "duplicate environment key: $1"
+        done
+      fi
+      keys[$key_count]="$1"
+      key_count=$((key_count + 1))
+      shift
+      ;;
+  esac
+done
+
+[ -n "$project" ] || die "--project is required"
+[ -n "$config" ] || die "--config is required"
+command -v doppler >/dev/null 2>&1 || die "doppler is not installed"
+command -v jq >/dev/null 2>&1 || die "jq is not installed"
+
+if [ "$list_keys" -eq 1 ]; then
+  [ "$key_count" -eq 0 ] || die "--list does not accept key names"
+  doppler secrets \
+    --project "$project" \
+    --config "$config" \
+    --only-names \
+    --json \
+    --silent |
+    jq -r 'keys[]'
+  exit 0
+fi
+
+[ "$key_count" -gt 0 ] || die "at least one key is required; use --list to see available keys"
+
+case "$output" in
+  /*) ;;
+  *) output="$(pwd -P)/$output" ;;
+esac
+
+output_dir="$(dirname "$output")"
+output_name="$(basename "$output")"
+[ -d "$output_dir" ] || die "output directory does not exist: $output_dir"
+output_dir="$(cd "$output_dir" && pwd -P)"
+output="$output_dir/$output_name"
+[ ! -d "$output" ] || die "output path is a directory: $output"
+
+if repo_root="$(git -C "$output_dir" rev-parse --show-toplevel 2>/dev/null)"; then
+  case "$output" in
+    "$repo_root"/*)
+      output_rel="${output#"$repo_root"/}"
+      if git -C "$repo_root" ls-files --error-unmatch -- "$output_rel" >/dev/null 2>&1; then
+        die "output is tracked by Git: $output"
+      fi
+      if ! git -C "$repo_root" check-ignore -q --no-index -- "$output_rel"; then
+        die "output is not ignored by Git: $output"
+      fi
+      ;;
+  esac
+fi
+
+umask 077
+tmp_file="$(mktemp "$output_dir/.doppler-to-env.output.XXXXXX")"
+secrets_file="$(mktemp "$output_dir/.doppler-to-env.secrets.XXXXXX")"
+keys_file="$(mktemp "$output_dir/.doppler-to-env.keys.XXXXXX")"
+cleanup() {
+  rm -f -- "${tmp_file:-}" "${secrets_file:-}" "${keys_file:-}"
+}
+trap cleanup EXIT
+
+if ! doppler secrets get "${keys[@]}" \
+  --project "$project" \
+  --config "$config" \
+  --json \
+  --silent > "$secrets_file"; then
+  die "could not download the requested keys from Doppler project '$project', config '$config'"
+fi
+printf '%s\n' "${keys[@]}" | jq -R . | jq -s . > "$keys_file"
+if ! jq -r --slurpfile names "$keys_file" '
+  $names[0][] as $name |
+  if (.[$name].computed | type) == "string" then
+    "\($name)=\(.[$name].computed | @sh)"
+  else
+    error("Doppler did not return " + $name)
+  end
+' "$secrets_file" > "$tmp_file"; then
+  die "could not create the dotenv file from the requested keys"
+fi
+[ -s "$tmp_file" ] || die "Doppler returned an empty environment"
+
+chmod 600 "$tmp_file"
+rm -f -- "$secrets_file" "$keys_file"
+secrets_file=""
+keys_file=""
+mv -f -- "$tmp_file" "$output"
+tmp_file=""
+trap - EXIT
+
+printf 'Created %s with %s key(s) from Doppler project %s, config %s.\n' "$output" "$key_count" "$project" "$config"

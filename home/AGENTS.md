@@ -14,14 +14,8 @@
 
 ## Writing
 
-Apply these ASD-STE100 Simplified Technical English principles to all prose, including chat responses, plans, documentation, comments, and user-facing text:
-- Use active voice. Use the imperative form for instructions.
-- Put only one instruction in each sentence.
-- Limit procedural sentences to 20 words and descriptive sentences to 25 words.
-- Use one term for each concept. Do not use synonyms only to add variety.
-- Remove unnecessary jargon. Define a necessary technical term when it first appears.
-- Do not write a sequence of more than three nouns. Use connecting words to make the relationships clear.
-- Keep each paragraph about one topic and to no more than six sentences.
+- Always talk in ASD-STE100 Simplified Technical English.
+- Always talk to me like I have ADHD.
 
 ## Comments and documentation
 
@@ -33,4 +27,5 @@ Apply these ASD-STE100 Simplified Technical English principles to all prose, inc
 
 - Store global coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
 - Store project-specific agent configuration, including MCP servers, in the project that uses it.
+- Projects should use `.env` for API keys and sensitive values. If it does not exist, run `doppler-to-env --help`.
 - When you encounter small workflow friction—a failed tool call, unclear setup, flaky command, stale cache, misleading error, or unexpected gotcha—log it immediately with `papercut "what you were doing; what got in the way"`. Log non-blocking friction too; repeated papercuts reveal where the workflow needs improvement.

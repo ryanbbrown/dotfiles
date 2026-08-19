@@ -53,6 +53,13 @@ Write useful words. Cut the rest.
 - exact dates and numbers
 - clear next actions
 
+## Natural prose
+
+- Match a supplied writing sample's vocabulary, sentence rhythm, punctuation, and tone. Keep the active instructions as the boundary.
+- Preserve every supported fact and qualification. Add a specific fact only when the source or the user supplies it.
+- Name the person or system that acts. Prefer direct forms such as "is" and "has" when they are accurate.
+- State the claim directly. Replace inflated significance, empty `-ing` analysis, scripted contrasts, and generic conclusions with a concrete effect, fact, or next action.
+
 ## Reader does no work
 
 Write for a reader with none of your context. Any sentence that only parses if the reader already knows the answer is a bug.
@@ -83,3 +90,5 @@ Write for a reader with none of your context. Any sentence that only parses if t
 - Could someone with no background in the subject follow every sentence?
 - Does any sentence only parse if the reader already knows the answer?
 - Did I cut a step of reasoning the reader will have to rebuild?
+- Did I add a fact, name, number, date, quote, or citation that the source does not support?
+- If the user supplied a writing sample, does the result match its vocabulary, rhythm, and tone within the active instructions?

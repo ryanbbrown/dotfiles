@@ -55,6 +55,7 @@ clean_legacy_codex_skill_links() {
 
 [ -f "$home_source/AGENTS.md" ] || die "missing $home_source/AGENTS.md"
 [ -x "$repo_root/bin/papercut" ] || die "missing executable $repo_root/bin/papercut"
+[ -x "$repo_root/bin/doppler-to-env" ] || die "missing executable $repo_root/bin/doppler-to-env"
 [ -x "$repo_root/bin/claude" ] || die "missing executable $repo_root/bin/claude"
 [ -x "$repo_root/bin/codex" ] || die "missing executable $repo_root/bin/codex"
 [ -d "$skills_source" ] || die "missing $skills_source"
@@ -69,6 +70,7 @@ if [ "$repo_root" != "$HOME/.dotfiles" ]; then
   create_symlink "$repo_root" "$HOME/.dotfiles"
 fi
 create_symlink "$repo_root/bin/papercut" "$HOME/.local/bin/papercut"
+create_symlink "$repo_root/bin/doppler-to-env" "$HOME/.local/bin/doppler-to-env"
 create_symlink "$repo_root/bin/claude" "$HOME/.local/bin/claude"
 create_symlink "$repo_root/bin/codex" "$HOME/.local/bin/codex"
 create_symlink "$home_source/AGENTS.md" "$HOME/.claude/CLAUDE.md"

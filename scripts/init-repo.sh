@@ -77,7 +77,7 @@ git init
 git branch -M main
 
 mkdir -p .plans .reviews .html .archive
-touch .plans/.gitkeep .reviews/.gitkeep .html/.gitkeep
+touch .plans/.gitkeep .html/.gitkeep
 
 if [ "$include_behavior" = true ]; then
   mkdir -p docs
@@ -124,8 +124,7 @@ __pycache__/
 
 .archive/
 
-.reviews/*
-!.reviews/.gitkeep
+.reviews/
 EOF_GITIGNORE
 
 cat > CLAUDE.md <<'EOF_CLAUDE'
@@ -137,7 +136,7 @@ cat > CLAUDE.md <<'EOF_CLAUDE'
 
 ## Workflow
 - Plans live in `.plans/`, should be committed, and should be named with implementation-order prefixes like `01-auth.md`, `02-billing.md`, and `03-dashboard.md`.
-- Multi-agent reviews live in `.reviews/`; the directory is kept with `.gitkeep`, but review outputs are ignored by default.
+- Multi-agent reviews live in `.reviews/` and must never be tracked.
 - Generated HTML artifacts live in `.html/` and should be committed when they capture useful design, planning, or review context.
 - Keep `README.md` current with the minimum context needed to run and understand the project.
 EOF_CLAUDE

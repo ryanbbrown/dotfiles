@@ -24,7 +24,8 @@ Options:
 
 Environment:
   MAX_ROUNDS           Hard cap for review versions. Defaults to 3.
-  FIREWORKS_API_KEY    Required for the GLM reviewer. Export in your shell.
+  FIREWORKS_API_KEY    Used for the GLM reviewer when already set. Otherwise
+                       loaded from ~/.dotfiles/.env.
   CODEX_MODEL          Codex reviewer model. Defaults to gpt-5.6-sol.
   GLM_MODEL            GLM reviewer model, served via the Fireworks
                        Anthropic-compatible endpoint and driven through the
@@ -151,7 +152,8 @@ done
 [ "$active_reviewers" -gt 0 ] || die "--skip cannot exclude every reviewer"
 
 repo="$(cd "$repo" && pwd -P)"
-git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git repository: $repo"
+repo_root="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || die "not a git repository: $repo"
+repo="$(cd "$repo_root" && pwd -P)"
 
 resolve_repo_file() {
   local option="$1"
@@ -218,6 +220,9 @@ case "$output_root" in
   "$repo"/*) output_rel="${output_root#"$repo"/}" ;;
   *) output_rel="" ;;
 esac
+if [ -n "$output_rel" ] && [ -n "$(git -C "$repo" ls-files -- "$output_rel")" ]; then
+  die "review output directory must not contain tracked files: $output_rel"
+fi
 
 feature_dir="$output_root/$mode_dir/$feature_slug"
 mkdir -p "$feature_dir"
@@ -258,9 +263,24 @@ if ! is_skipped claude; then
 fi
 # need_cmd droid   # disabled: GLM reviewer runs through the Claude Code harness.
 
-if ! is_skipped glm; then
-  [ -n "${FIREWORKS_API_KEY:-}" ] || die "FIREWORKS_API_KEY is not set; export it (e.g. in ~/.zshrc) for the GLM reviewer"
-fi
+load_fireworks_api_key() {
+  local env_file="$HOME/.dotfiles/.env"
+
+  is_skipped glm && return 0
+  if [ -z "${FIREWORKS_API_KEY:-}" ]; then
+    [ -r "$env_file" ] || die "FIREWORKS_API_KEY is unavailable; run: doppler-to-env --project api-keys --config dev_personal --output $env_file FIREWORKS_API_KEY"
+    FIREWORKS_API_KEY="$(
+      set -a
+      # shellcheck disable=SC1090
+      . "$env_file"
+      printf '%s' "${FIREWORKS_API_KEY:-}"
+    )" || die "could not load FIREWORKS_API_KEY from $env_file"
+  fi
+  [ -n "$FIREWORKS_API_KEY" ] || die "FIREWORKS_API_KEY is empty in $env_file"
+  export -n FIREWORKS_API_KEY
+}
+
+load_fireworks_api_key
 
 # Reviewer models are explicit so the round manifest can fingerprint them.
 codex_model="${CODEX_MODEL:-gpt-5.6-sol}"
@@ -282,6 +302,7 @@ claude_oauth_env=(
   -u ANTHROPIC_API_KEY
   -u ANTHROPIC_AUTH_TOKEN
   -u ANTHROPIC_BASE_URL
+  -u FIREWORKS_API_KEY
 )
 
 # Disabled Factory Droid/DeepSeek reviewer; kept for reference.
@@ -314,16 +335,22 @@ kill_tree() {
   kill -TERM "$pid" 2>/dev/null || true
 }
 
-wait_with_timeout() {
+timeout_watchdog_pid=""
+start_timeout_watchdog() {
   local pid="$1"
   local name="$2"
   local stderr_file="$3"
   local timeout_file="$logs_dir/$name.timeout"
-  local watchdog_pid
-  local status
   rm -f "$timeout_file"
   (
-    sleep "$review_timeout"
+    elapsed=0
+    while [ "$elapsed" -lt "$review_timeout" ]; do
+      sleep 1
+      if ! kill -0 "$pid" 2>/dev/null; then
+        exit 0
+      fi
+      elapsed=$((elapsed + 1))
+    done
     if kill -0 "$pid" 2>/dev/null; then
       echo "$name: timed out after ${review_timeout}s" >> "$stderr_file"
       touch "$timeout_file"
@@ -332,10 +359,17 @@ wait_with_timeout() {
       kill -KILL "$pid" 2>/dev/null || true
     fi
   ) &
-  watchdog_pid=$!
+  timeout_watchdog_pid=$!
+}
+
+wait_with_timeout() {
+  local pid="$1"
+  local name="$2"
+  local watchdog_pid="$3"
+  local timeout_file="$logs_dir/$name.timeout"
+  local status
   wait "$pid"
   status=$?
-  kill "$watchdog_pid" 2>/dev/null || true
   wait "$watchdog_pid" 2>/dev/null || true
   if [ -e "$timeout_file" ]; then
     return 124
@@ -350,6 +384,9 @@ preflight() {
   local codex_preflight_pid=""
   local claude_preflight_pid=""
   local glm_preflight_pid=""
+  local codex_preflight_watchdog_pid=""
+  local claude_preflight_watchdog_pid=""
+  local glm_preflight_watchdog_pid=""
 
   if ! is_skipped claude; then
     local auth_status
@@ -366,13 +403,15 @@ preflight() {
   fi
 
   if ! is_skipped codex; then
-    codex exec \
+    env -u FIREWORKS_API_KEY codex exec \
       --cd "$repo" \
       --model "$codex_model" \
       --sandbox read-only \
       --ephemeral \
       "Reply with exactly: ok. Do not run tools." > "$logs_dir/codex.preflight.stdout" 2> "$logs_dir/codex.preflight.stderr" &
     codex_preflight_pid=$!
+    start_timeout_watchdog "$codex_preflight_pid" codex-preflight "$logs_dir/codex.preflight.stderr"
+    codex_preflight_watchdog_pid="$timeout_watchdog_pid"
   fi
 
   if ! is_skipped claude; then
@@ -389,6 +428,8 @@ preflight() {
         "Reply with exactly: ok. Do not run tools."
     ) > "$logs_dir/claude.preflight.stdout" 2> "$logs_dir/claude.preflight.stderr" &
     claude_preflight_pid=$!
+    start_timeout_watchdog "$claude_preflight_pid" claude-preflight "$logs_dir/claude.preflight.stderr"
+    claude_preflight_watchdog_pid="$timeout_watchdog_pid"
   fi
 
   if ! is_skipped glm; then
@@ -407,6 +448,8 @@ preflight() {
         "Reply with exactly: ok. Do not run tools."
     ) > "$logs_dir/glm.preflight.stdout" 2> "$logs_dir/glm.preflight.stderr" &
     glm_preflight_pid=$!
+    start_timeout_watchdog "$glm_preflight_pid" glm-preflight "$logs_dir/glm.preflight.stderr"
+    glm_preflight_watchdog_pid="$timeout_watchdog_pid"
   fi
 
   # Disabled Factory Droid/DeepSeek preflight; kept for reference.
@@ -417,16 +460,16 @@ preflight() {
   #   "Reply with exactly: ok. Do not run tools." > "$logs_dir/droid.preflight.stdout" 2> "$logs_dir/droid.preflight.stderr" &
   # droid_preflight_pid=$!
 
-  if [ -n "$codex_preflight_pid" ] && ! wait_with_timeout "$codex_preflight_pid" codex-preflight "$logs_dir/codex.preflight.stderr"; then
+  if [ -n "$codex_preflight_pid" ] && ! wait_with_timeout "$codex_preflight_pid" codex-preflight "$codex_preflight_watchdog_pid"; then
     echo "codex preflight failed; see $logs_dir/codex.preflight.stderr" >&2
     failed=1
   fi
-  if [ -n "$claude_preflight_pid" ] && ! wait_with_timeout "$claude_preflight_pid" claude-preflight "$logs_dir/claude.preflight.stderr"; then
+  if [ -n "$claude_preflight_pid" ] && ! wait_with_timeout "$claude_preflight_pid" claude-preflight "$claude_preflight_watchdog_pid"; then
     echo "claude preflight failed; see $logs_dir/claude.preflight.stderr" >&2
     echo "hint: refresh the OAuth login with 'claude auth login'" >&2
     failed=1
   fi
-  if [ -n "$glm_preflight_pid" ] && ! wait_with_timeout "$glm_preflight_pid" glm-preflight "$logs_dir/glm.preflight.stderr"; then
+  if [ -n "$glm_preflight_pid" ] && ! wait_with_timeout "$glm_preflight_pid" glm-preflight "$glm_preflight_watchdog_pid"; then
     echo "glm preflight failed for model '$glm_model'; see $logs_dir/glm.preflight.stderr" >&2
     echo "hint: confirm FIREWORKS_API_KEY is valid and that '$glm_model' is available on Fireworks." >&2
     failed=1
@@ -667,7 +710,7 @@ glm_out="$feature_dir/$feature_slug-$glm_model_slug-v$round.md"
 
 run_codex() {
   local status
-  codex exec \
+  env -u FIREWORKS_API_KEY codex exec \
     --cd "$snapshot_repo" \
     --model "$codex_model" \
     --sandbox read-only \
@@ -758,17 +801,26 @@ echo "review-panel: manifest $manifest_file"
 codex_pid=""
 claude_pid=""
 glm_pid=""
+codex_watchdog_pid=""
+claude_watchdog_pid=""
+glm_watchdog_pid=""
 if ! is_skipped codex; then
   run_codex &
   codex_pid=$!
+  start_timeout_watchdog "$codex_pid" codex "$logs_dir/codex.stderr"
+  codex_watchdog_pid="$timeout_watchdog_pid"
 fi
 if ! is_skipped claude; then
   run_claude &
   claude_pid=$!
+  start_timeout_watchdog "$claude_pid" claude "$logs_dir/claude.stderr"
+  claude_watchdog_pid="$timeout_watchdog_pid"
 fi
 if ! is_skipped glm; then
   run_glm &
   glm_pid=$!
+  start_timeout_watchdog "$glm_pid" glm "$logs_dir/glm.stderr"
+  glm_watchdog_pid="$timeout_watchdog_pid"
 fi
 # run_droid &
 # droid_pid=$!
@@ -788,7 +840,7 @@ finish_reviewer() {
 }
 
 if [ -n "$codex_pid" ]; then
-  if wait_with_timeout "$codex_pid" codex "$logs_dir/codex.stderr"; then
+  if wait_with_timeout "$codex_pid" codex "$codex_watchdog_pid"; then
     finish_reviewer codex "$codex_out" || failed=1
   else
     echo "codex: failed; see $logs_dir/codex.stderr" >&2
@@ -797,7 +849,7 @@ if [ -n "$codex_pid" ]; then
 fi
 
 if [ -n "$claude_pid" ]; then
-  if wait_with_timeout "$claude_pid" claude "$logs_dir/claude.stderr"; then
+  if wait_with_timeout "$claude_pid" claude "$claude_watchdog_pid"; then
     finish_reviewer claude "$claude_out" || failed=1
   else
     if [ -s "$logs_dir/claude.stderr" ]; then
@@ -812,7 +864,7 @@ if [ -n "$claude_pid" ]; then
 fi
 
 if [ -n "$glm_pid" ]; then
-  if wait_with_timeout "$glm_pid" glm "$logs_dir/glm.stderr"; then
+  if wait_with_timeout "$glm_pid" glm "$glm_watchdog_pid"; then
     finish_reviewer glm "$glm_out" || failed=1
   else
     if [ -s "$logs_dir/glm.stderr" ]; then

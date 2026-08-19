@@ -1,8 +1,9 @@
 ## Subagents
 
-- GPT subagent option: `openai-codex/gpt-5.6-sol`.
-- Use `subagent` directly for substantial tasks that benefit from specialized focus or parallel work.
-- Use `scout` for codebase exploration, `worker` for isolated implementation, `reviewer` for independent review, and `oracle` for a second opinion.
-- Prefer background subagents when other work can continue independently.
-- Do not load the `pi-subagents` skill for routine delegation. Load it only for advanced chains, parallel workflows, worktrees, intercom, or diagnostics.
+- Use `subagent` for substantial tasks that benefit from independent or parallel work.
+- Use only the general `delegate` agent, including for review tasks. Do not call `subagent` with `action: "list"`.
+- Launch each child through a separate direct `subagent` call. Multiple independent calls are allowed.
+- Always set `async: true`, `mission: false`, and `agentContract: { version: 1 }`.
+- Do not use `workflowScript`, named role agents, or the plugin's `acceptance`, `gate`, or mission features.
+- Never call `subagent_wait` or poll status. After launch, continue any available independent work; otherwise end the turn and resume when the completion message arrives.
 - Do not delegate trivial questions or small, obvious edits.

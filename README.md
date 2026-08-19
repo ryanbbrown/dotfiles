@@ -14,7 +14,7 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 - `skills/` contains the skills exposed to all three coding agents.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
-- `bin/` contains small shared commands, including `papercut` for recording workflow friction.
+- `bin/` contains small shared commands, including `papercut` for recording workflow friction and `doppler-to-env` for creating local dotenv files.
 
 Each entry under `skills/` is one of:
 
@@ -78,6 +78,7 @@ Pi
 Other
   ~/.local/bin/claude
   ~/.local/bin/codex
+  ~/.local/bin/doppler-to-env
   ~/.local/bin/papercut
 ```
 
@@ -86,6 +87,28 @@ Codex and Pi discover `~/.agents/skills`. Claude Code discovers `~/.claude/skill
 The installer preserves an existing file or directory with a `.pre-dotfiles` suffix. It stops rather than overwrite an existing backup.
 
 Pi installs configured package contents under `~/.pi/agent`. Claude Code and Codex also retain their own runtime state outside this repository.
+
+### Create local environment files
+
+This requires an installed and authenticated Doppler CLI. Create or replace `.env` in the current directory from a Doppler project and config:
+
+```bash
+doppler-to-env --project api-keys --config dev_personal OPENAI_API_KEY
+```
+
+Add more key names to write multiple entries. List the available names without exposing their values:
+
+```bash
+doppler-to-env --project api-keys --config dev_personal --list
+```
+
+Use `--output PATH` to select another file. The command writes only the requested keys, replaces the file atomically with `0600` permissions, and refuses to write a tracked or unignored file inside a Git repository. `scripts/link-home.sh` installs the tracked command from `bin/doppler-to-env` at `~/.local/bin/doppler-to-env`.
+
+The review panel reads `FIREWORKS_API_KEY` from `~/.dotfiles/.env`. Create that shared file with:
+
+```bash
+doppler-to-env --project api-keys --config dev_personal --output ~/.dotfiles/.env FIREWORKS_API_KEY
+```
 
 ### Update upstream skill sources
 
@@ -169,6 +192,7 @@ The tracked Pi settings install these packages:
 | [`pi-openai-server-compaction`](https://github.com/algal/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
 | [`pi-processes`](https://github.com/aliou/pi-processes) | Runs servers, watchers, builds, and review panels as managed background processes. |
 | [`pi-subagents`](https://github.com/nicobailon/pi-subagents) | Adds focused child agents for scouting, implementation, review, research, and second opinions. |
+| [`pi-goal`](https://github.com/narumiruna/pi-extensions/tree/main/packages/pi-goal) | Keeps Pi working toward a session goal until it completes, pauses, or reaches a safety limit. |
 
 The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
 
