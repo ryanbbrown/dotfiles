@@ -189,7 +189,7 @@ The tracked Pi settings install these packages:
 | --- | --- |
 | [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt. |
 | [`pi-web-access`](https://github.com/nicobailon/pi-web-access) | Adds web search, source checks, page extraction, repository fetching, and video analysis. |
-| [`pi-openai-server-compaction`](https://github.com/algal/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
+| [`pi-openai-server-compaction`](https://github.com/ryanbbrown/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, including custom wake messages, with higher token and downstream context costs. |
 | [`pi-processes`](https://github.com/aliou/pi-processes) | Runs servers, watchers, builds, and review panels as managed background processes. |
 | [`pi-subagents`](https://github.com/nicobailon/pi-subagents) | Adds focused child agents for scouting, implementation, review, research, and second opinions. |
 | [`pi-goal`](https://github.com/narumiruna/pi-extensions/tree/main/packages/pi-goal) | Keeps Pi working toward a session goal until it completes, pauses, or reaches a safety limit. |
