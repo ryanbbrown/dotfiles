@@ -27,6 +27,14 @@ For a plan review:
 ~/.claude/skills/review-panel/scripts/review-round.sh --feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
 ```
 
+For a custom review of any repository file:
+
+```bash
+~/.claude/skills/review-panel/scripts/review-round.sh --feature "architecture suggestions" --mode custom --target-file .html/architecture-suggestions.html --prompt "Assess each recommendation and state whether you agree, with repository evidence."
+```
+
+Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The custom text defines the review objective. The launcher still supplies the frozen snapshot, read-only rules, and repository context.
+
 When the background process exits, report whether it succeeded and identify the output directory and review round. On failure, inspect the managed process output and report the error. Do not synthesize or act on findings as part of this skill.
 
 ## Options
@@ -35,8 +43,9 @@ When the background process exits, report whether it succeeded and identify the 
 --feature NAME       Required. Stable feature label; the script derives the version from this.
 --repo PATH          Repository to review. Defaults to the current directory.
 --output-dir PATH    Review output root. Defaults to <repo>/.reviews.
---mode MODE          Review mode: implementation or plan. Defaults to implementation.
---target-file PATH   Plan file to review, relative to repo or absolute within it. Required for plan mode.
+--mode MODE          Review mode: implementation, plan, or custom. Defaults to implementation.
+--target-file PATH   File to review, relative to repo or absolute within it. Required for plan and custom modes.
+--prompt TEXT|@PATH  Custom objective as inline text or an @-prefixed repository file. Required for custom mode.
 --plan-file PATH     Existing implementation plan, relative to repo or absolute within it. Required for implementation mode.
 --base-ref REF       Git commit recorded before implementation. Required for implementation mode.
 --skip LIST          Comma-separated reviewers to skip: codex, claude, glm. Repeatable.
@@ -65,6 +74,7 @@ The script chooses the next `vN` for the feature and writes:
 
 ```text
 .reviews/plans/<feature-slug>/                  # plan mode
+.reviews/custom/<feature-slug>/                 # custom mode
 .reviews/implementations/<feature-slug>/       # implementation mode
   <feature-slug>-manifest-vN.md
   <feature-slug>-codex-vN.md
