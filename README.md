@@ -127,13 +127,13 @@ What it does, in order:
 1. Checks that the `personal` worktree is clean. It stops before fetching if it is not.
 2. Fetches `upstream` and advances local `main` with fast-forward-only semantics. It finds the `main` worktree with `git worktree list --porcelain`, so it works whether `main` is checked out or not. It stops if `main` is behind and its checkout is dirty, or if `main` has diverged.
 3. Merges `main` into `personal` inside a temporary worktree. The real checkout is never in a merge state.
-4. Resolves conflicts in this order: rerere replays cached resolutions and stages them, then an arithmetic resolver sets `HOST_DAEMON_PROTOCOL_VERSION` to `upstream + (personal - merge base)`.
-5. Stops for your review if `host-daemon-contract/src/commands.ts` or `host-daemon-contract/test/contract.test.ts` still conflict. A passing build is not evidence of wire compatibility, so these two never get an automatic resolution.
-6. Calls the installed Claude Code CLI once, non-interactively at high effort, for any other file that still conflicts. Claude may edit whatever the merge needs, not only the conflicted files, and everything it leaves in the worktree goes into the merge commit. It stops if conflict markers remain.
+4. Lets Git merge and rerere replay whatever cached resolutions match. rerere runs with autoupdate, so replayed resolutions are staged.
+5. Calls the installed Claude Code CLI once, non-interactively at high effort, if any conflict is left. Claude receives the full unresolved set, the merge base, and the commit history of both sides, and it may change any file the merge needs. Everything it leaves in the worktree goes into the merge commit.
+6. Rejects the merge if Git still reports an unresolved path, if any file the merge touched still holds conflict markers, or if Claude fails.
 7. Installs dependencies in the temporary worktree and runs `turbo run typecheck test`, filtered to the packages the merge changed and their dependents. A merge that also moves a root file such as the lockfile selects no package at all, so those runs check everything instead.
 8. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit the merge started from and is still clean.
 
-The temporary worktree is always removed. Nothing is ever pushed.
+The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. The temporary worktree is always removed. Nothing is ever pushed.
 
 Run the checks:
 

@@ -3,6 +3,9 @@ set -euo pipefail
 
 # Every test builds its own throwaway repositories. Nothing here reads or
 # changes the real bb checkout, and no test starts a real model call.
+#
+# Conflict paths are generated per fixture and change between runs, so no test
+# can encode which file the tool is supposed to find conflicted.
 
 script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/bin/sync-bb-personal"
 [ -x "$script" ] || { echo "missing executable $script" >&2; exit 1; }
@@ -44,20 +47,33 @@ write_file() {
   printf '%s\n' "$2" > "$1"
 }
 
-protocol_file() {
-  printf 'export type Envelope = {\n  id: string;\n};\n\nexport const HOST_DAEMON_PROTOCOL_VERSION = %s as const;\n' "$1"
-}
-
-dispatch_file() {
-  printf 'export function dispatch(command: string) {\n  return command%s;\n}\n' "$1"
+source_file() {
+  printf 'export const marker = "%s";\nexport const tail = "stable";' "$1"
 }
 
 # ---------------------------------------------------------------------------
 # Fixture
 # ---------------------------------------------------------------------------
 
+# Paths the tests conflict on are built from this token, so they differ from run
+# to run and none of them can be special-cased anywhere.
+seeded_path() {
+  case "$1" in
+    1) printf 'packages/alpha/src/unit-%s-one.ts' "$fixture_token" ;;
+    2) printf 'packages/alpha/src/unit-%s-two.ts' "$fixture_token" ;;
+    3) printf 'packages/beta/src/unit-%s-three.ts' "$fixture_token" ;;
+    4) printf 'apps/gamma/src/unit-%s-four.ts' "$fixture_token" ;;
+    *) fail "no seeded path $1" ;;
+  esac
+}
+
+fresh_path() {
+  printf 'packages/beta/src/added-%s-%s.ts' "$fixture_token" "$1"
+}
+
 new_fixture() {
   fixture="$test_root/$1"
+  fixture_token="$RANDOM$$"
   upstream_bare="$fixture/upstream.git"
   origin_bare="$fixture/origin.git"
   repo="$fixture/repo"
@@ -87,21 +103,16 @@ new_fixture() {
   git init -q --bare "$upstream_bare"
   git init -q --bare "$origin_bare"
 
-  local seed="$fixture/seed"
+  local seed="$fixture/seed" index
   git init -q -b main "$seed"
-  write_file "$seed/package.json" '{"name":"bb","private":true}'
-  write_file "$seed/packages/host-daemon-contract/package.json" '{"name":"@bb/host-daemon-contract"}'
-  write_file "$seed/packages/host-daemon-contract/src/protocol.ts" "$(protocol_file 100)"
-  write_file "$seed/packages/host-daemon-contract/src/commands.ts" \
-    'export const commands = {
-  listThreads: "listThreads",
-};'
-  write_file "$seed/packages/host-daemon-contract/test/contract.test.ts" \
-    'test("contract", () => {
-  expect(commands.listThreads).toBe("listThreads");
-});'
-  write_file "$seed/apps/host-daemon/package.json" '{"name":"@bb/host-daemon"}'
-  write_file "$seed/apps/host-daemon/src/command-dispatch.ts" "$(dispatch_file '')"
+  write_file "$seed/package.json" '{"name":"fixture","private":true}'
+  write_file "$seed/packages/alpha/package.json" '{"name":"@fixture/alpha"}'
+  write_file "$seed/packages/beta/package.json" '{"name":"@fixture/beta"}'
+  write_file "$seed/apps/gamma/package.json" '{"name":"@fixture/gamma"}'
+  write_file "$seed/docs/notes.md" 'Fixture notes.'
+  for index in 1 2 3 4; do
+    write_file "$seed/$(seeded_path "$index")" "$(source_file "base-$index")"
+  done
   git -C "$seed" add -A
   git -C "$seed" commit -qm "base"
   git -C "$seed" push -q "$upstream_bare" main
@@ -152,9 +163,11 @@ STUB_CLAUDE
   chmod +x "$stub_bin/pnpm" "$stub_bin/claude"
 }
 
-upstream_commit() {
-  local message="$1"
-  shift
+# ---------------------------------------------------------------------------
+# Repository edits
+# ---------------------------------------------------------------------------
+
+upstream_run() {
   git -C "$upstream_work" pull -q --ff-only
   "$@"
   git -C "$upstream_work" add -A
@@ -162,13 +175,31 @@ upstream_commit() {
   git -C "$upstream_work" push -q origin main
 }
 
-personal_commit() {
-  local message="$1"
-  shift
+personal_run() {
   "$@"
   git -C "$personal" add -A
   git -C "$personal" commit -qm "$message"
 }
+
+upstream_set() {
+  message="upstream changes $1" upstream_run write_file "$upstream_work/$1" "$2"
+}
+
+personal_set() {
+  message="personal changes $1" personal_run write_file "$personal/$1" "$2"
+}
+
+upstream_remove() {
+  message="upstream removes $1" upstream_run git -C "$upstream_work" rm -q -- "$1"
+}
+
+personal_move() {
+  message="personal moves $1" personal_run git -C "$personal" mv -- "$1" "$2"
+}
+
+# ---------------------------------------------------------------------------
+# Running the tool
+# ---------------------------------------------------------------------------
 
 run_sync() {
   refs_before_origin="$(git -C "$origin_bare" for-each-ref)"
@@ -188,6 +219,17 @@ run_sync() {
   stderr="$(cat "$stderr_file")"
 }
 
+make_resolver() {
+  cat > "$fixture/resolver.sh"
+  chmod +x "$fixture/resolver.sh"
+}
+
+prompt_conflict_list() {
+  awk '/^Git could not resolve these paths:$/ { flag = 1; next }
+       /^$/ { if (flag) exit }
+       flag { print }' "$claude_prompt"
+}
+
 assert_no_push() {
   assert_eq "origin refs" "$(git -C "$origin_bare" for-each-ref)" "$refs_before_origin"
   assert_eq "upstream refs" "$(git -C "$upstream_bare" for-each-ref)" "$refs_before_upstream"
@@ -203,57 +245,19 @@ assert_personal_unchanged() {
   assert_eq "personal worktree is clean" "$(git -C "$personal" status --porcelain)" ""
 }
 
+assert_adopted() {
+  assert_eq "personal first parent" "$(sha 'personal^1')" "$1"
+  assert_eq "personal second parent" "$(sha 'personal^2')" "$(sha main)"
+  assert_eq "personal worktree is clean" "$(git -C "$personal" status --porcelain)" ""
+}
+
 sha() {
   git -C "$repo" rev-parse "$1"
 }
 
-# ---------------------------------------------------------------------------
-# Scenario builders
-# ---------------------------------------------------------------------------
-
 diverge_without_conflict() {
-  upstream_commit "upstream feature" \
-    write_file "$upstream_work/apps/host-daemon/src/upstream-only.ts" 'export const upstreamOnly = true;'
-  personal_commit "personal feature" \
-    write_file "$personal/apps/host-daemon/src/personal-only.ts" 'export const personalOnly = true;'
-}
-
-diverge_on_protocol_version() {
-  upstream_commit "upstream protocol bump" \
-    write_file "$upstream_work/packages/host-daemon-contract/src/protocol.ts" "$(protocol_file 105)"
-  personal_commit "personal protocol bump" \
-    write_file "$personal/packages/host-daemon-contract/src/protocol.ts" "$(protocol_file 103)"
-}
-
-diverge_on_dispatch() {
-  upstream_commit "upstream dispatch" \
-    write_file "$upstream_work/apps/host-daemon/src/command-dispatch.ts" "$(dispatch_file ' + "-upstream"')"
-  personal_commit "personal dispatch" \
-    write_file "$personal/apps/host-daemon/src/command-dispatch.ts" "$(dispatch_file ' + "-personal"')"
-}
-
-diverge_on_wire_contract() {
-  upstream_commit "upstream contract" \
-    write_file "$upstream_work/packages/host-daemon-contract/src/commands.ts" 'export const commands = {
-  listThreads: "listThreads",
-  upstreamCommand: "upstreamCommand",
-};'
-  personal_commit "personal contract" \
-    write_file "$personal/packages/host-daemon-contract/src/commands.ts" 'export const commands = {
-  listThreads: "listThreads",
-  personalCommand: "personalCommand",
-};'
-}
-
-write_dispatch_resolver() {
-  cat > "$fixture/resolver.sh" <<'RESOLVER'
-#!/usr/bin/env bash
-set -euo pipefail
-path="apps/host-daemon/src/command-dispatch.ts"
-printf 'export function dispatch(command: string) {\n  return command + "-personal-upstream";\n}\n' > "$path"
-git add -- "$path"
-RESOLVER
-  chmod +x "$fixture/resolver.sh"
+  upstream_set "$(seeded_path 1)" "$(source_file upstream-1)"
+  personal_set "$(seeded_path 3)" "$(source_file personal-3)"
 }
 
 # ---------------------------------------------------------------------------
@@ -262,26 +266,23 @@ RESOLVER
 
 t_clean_sync() {
   diverge_without_conflict
-  local before_personal before_main upstream_main
+  local before_personal upstream_main
   before_personal="$(sha personal)"
-  before_main="$(sha main)"
   upstream_main="$(git -C "$upstream_bare" rev-parse main)"
-  assert_ne "upstream moved" "$before_main" "$upstream_main"
+  assert_ne "upstream moved" "$(sha main)" "$upstream_main"
 
   run_sync
   assert_eq "exit status" "$status" "0"
   assert_eq "main is current" "$(sha main)" "$upstream_main"
   assert_eq "main worktree updated" \
-    "$(cat "$repo/apps/host-daemon/src/upstream-only.ts")" 'export const upstreamOnly = true;'
-  assert_eq "personal first parent" "$(sha 'personal^1')" "$before_personal"
-  assert_eq "personal second parent" "$(sha 'personal^2')" "$upstream_main"
-  assert_eq "personal worktree is clean" "$(git -C "$personal" status --porcelain)" ""
-  assert_eq "upstream file reached personal" \
-    "$(cat "$personal/apps/host-daemon/src/upstream-only.ts")" 'export const upstreamOnly = true;'
-  assert_eq "personal file survived" \
-    "$(cat "$personal/apps/host-daemon/src/personal-only.ts")" 'export const personalOnly = true;'
+    "$(cat "$repo/$(seeded_path 1)")" "$(source_file upstream-1)"
+  assert_adopted "$before_personal"
+  assert_eq "upstream change reached personal" \
+    "$(cat "$personal/$(seeded_path 1)")" "$(source_file upstream-1)"
+  assert_eq "personal change survived" \
+    "$(cat "$personal/$(seeded_path 3)")" "$(source_file personal-3)"
   assert_eq "claude was not used" "$(cat "$claude_log")" ""
-  assert_eq "checks ran" "$(sed -n '1p' "$pnpm_log")" "install --frozen-lockfile --prefer-offline"
+  assert_eq "install ran" "$(sed -n '1p' "$pnpm_log")" "install --frozen-lockfile --prefer-offline"
   assert_eq "checks were scoped to the merge" "$(sed -n '2p' "$pnpm_log")" \
     "exec turbo run typecheck test --filter=...[$before_personal]"
   assert_contains "output reports adoption" "$stdout" "Adopted"
@@ -303,43 +304,121 @@ t_already_current() {
   assert_no_leftover_state
 }
 
-t_protocol_version_resolved() {
-  diverge_on_protocol_version
-  local before_personal
+# Whatever Git leaves unresolved is what Claude gets, whichever files those are.
+t_modify_modify_conflicts_go_to_claude() {
+  local one two four before_personal
+  one="$(seeded_path 1)"
+  two="$(seeded_path 2)"
+  four="$(seeded_path 4)"
+  upstream_set "$one" "$(source_file upstream-1)"
+  upstream_set "$two" "$(source_file upstream-2)"
+  upstream_set "$four" "$(source_file upstream-4)"
+  personal_set "$one" "$(source_file personal-1)"
+  personal_set "$two" "$(source_file personal-2)"
+  personal_set "$four" "$(source_file personal-4)"
   before_personal="$(sha personal)"
 
-  run_sync
-  assert_eq "exit status" "$status" "0"
-  # upstream 105 + (personal 103 - base 100)
-  assert_eq "resolved protocol version" \
-    "$(sed -n 's/^export const HOST_DAEMON_PROTOCOL_VERSION = \([0-9]*\) as const;$/\1/p' \
-      "$personal/packages/host-daemon-contract/src/protocol.ts")" "108"
-  assert_eq "claude was not used" "$(cat "$claude_log")" ""
-  assert_eq "personal advanced" "$(sha 'personal^1')" "$before_personal"
-  assert_eq "personal worktree is clean" "$(git -C "$personal" status --porcelain)" ""
-  assert_no_push
-  assert_no_leftover_state
-}
-
-t_claude_resolves_remaining_conflict() {
-  diverge_on_dispatch
-  write_dispatch_resolver
-  local before_personal
-  before_personal="$(sha personal)"
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+for path in "$one" "$two" "$four"; do
+  printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "\$path"
+  git add -- "\$path"
+done
+RESOLVER
 
   run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
   assert_eq "claude was used once" "$(cat "$claude_log")" "called"
+  assert_eq "claude got exactly the unresolved paths" \
+    "$(prompt_conflict_list | sort)" "$(printf '%s\n%s\n%s\n' "$one" "$two" "$four" | sort)"
+  assert_contains "prompt carries incoming history" \
+    "$(cat "$claude_prompt")" "Incoming commits since the merge base:"
+  assert_contains "prompt carries local history" \
+    "$(cat "$claude_prompt")" "Local commits since the merge base:"
+  assert_contains "prompt names the merge base" \
+    "$(cat "$claude_prompt")" "$(git -C "$repo" merge-base "$before_personal" main)"
   assert_eq "resolution reached personal" \
-    "$(cat "$personal/apps/host-daemon/src/command-dispatch.ts")" \
-    "$(dispatch_file ' + "-personal-upstream"')"
-  assert_eq "personal advanced" "$(sha 'personal^1')" "$before_personal"
-  assert_eq "personal worktree is clean" "$(git -C "$personal" status --porcelain)" ""
+    "$(cat "$personal/$two")" "$(source_file merged)"
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
 
-  local prompt
-  prompt="$(cat "$claude_prompt")"
-  assert_contains "prompt names the conflict" "$prompt" "apps/host-daemon/src/command-dispatch.ts"
-  assert_contains "prompt forbids committing" "$prompt" "Do not commit"
+t_add_add_conflict_goes_to_claude() {
+  local added before_personal
+  added="$(fresh_path a)"
+  upstream_set "$added" "$(source_file upstream-added)"
+  personal_set "$added" "$(source_file personal-added)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$added"
+git add -- "$added"
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "claude got the added path" "$(prompt_conflict_list)" "$added"
+  assert_eq "resolution reached personal" "$(cat "$personal/$added")" "$(source_file merged)"
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_delete_modify_conflict_goes_to_claude() {
+  local target before_personal
+  target="$(seeded_path 3)"
+  upstream_remove "$target"
+  personal_set "$target" "$(source_file personal-3)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+git rm -q -f -- "$target"
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "claude got the deleted path" "$(prompt_conflict_list)" "$target"
+  assert_eq "the file is gone from the checkout" \
+    "$([ -e "$personal/$target" ] && echo present || echo absent)" "absent"
+  assert_eq "the file is gone from the commit" \
+    "$(git -C "$repo" ls-tree -r --name-only personal -- "$target")" ""
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_rename_modify_conflict_goes_to_claude() {
+  local origin_path renamed before_personal conflicted
+  origin_path="$(seeded_path 2)"
+  renamed="$(fresh_path renamed)"
+  upstream_set "$origin_path" "$(source_file upstream-2)"
+  personal_move "$origin_path" "$renamed"
+  personal_set "$renamed" "$(source_file personal-2)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<'RESOLVER'
+#!/usr/bin/env bash
+set -euo pipefail
+git diff --name-only --diff-filter=U -z | while IFS= read -r -d '' path; do
+  printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$path"
+  git add -- "$path"
+done
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "claude was used" "$(cat "$claude_log")" "called"
+  conflicted="$(prompt_conflict_list)"
+  assert_ne "a path was reported as conflicted" "$conflicted" ""
+  assert_eq "the resolved content reached personal" \
+    "$(cat "$personal/$conflicted")" "$(source_file merged)"
+  assert_adopted "$before_personal"
   assert_no_push
   assert_no_leftover_state
 }
@@ -347,60 +426,128 @@ t_claude_resolves_remaining_conflict() {
 # The resolver is free to edit beyond the conflicted files, so whatever it
 # leaves in the worktree must reach the commit that gets checked and adopted.
 t_claude_edits_beyond_the_conflict() {
-  diverge_on_dispatch
-  cat > "$fixture/resolver.sh" <<'RESOLVER'
+  local conflicted untouched created before_personal
+  conflicted="$(seeded_path 1)"
+  untouched="$(seeded_path 4)"
+  created="$(fresh_path helper)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
 #!/usr/bin/env bash
 set -euo pipefail
-path="apps/host-daemon/src/command-dispatch.ts"
-printf 'export function dispatch(command: string) {\n  return command + "-personal-upstream";\n}\n' > "$path"
-git add -- "$path"
-printf 'export const claudeHelper = true;\n' > "apps/host-daemon/src/claude-helper.ts"
-printf 'export const upstreamOnly = false;\n' > "apps/host-daemon/src/personal-only.ts"
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+printf 'export const marker = "rewritten";\nexport const tail = "stable";\n' > "$untouched"
+printf 'export const marker = "created";\nexport const tail = "stable";\n' > "$created"
 RESOLVER
-  chmod +x "$fixture/resolver.sh"
-  personal_commit "personal helper target" \
-    write_file "$personal/apps/host-daemon/src/personal-only.ts" 'export const upstreamOnly = true;'
-  local before_personal
-  before_personal="$(sha personal)"
 
   run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
+  assert_eq "the unstaged rewrite is committed" \
+    "$(git -C "$repo" show "personal:$untouched")" "$(source_file rewritten)"
   assert_eq "the new file is committed" \
-    "$(git -C "$repo" show "personal:apps/host-daemon/src/claude-helper.ts")" \
-    "export const claudeHelper = true;"
-  assert_eq "the unrelated edit is committed" \
-    "$(git -C "$repo" show "personal:apps/host-daemon/src/personal-only.ts")" \
-    "export const upstreamOnly = false;"
+    "$(git -C "$repo" show "personal:$created")" "$(source_file created)"
   assert_eq "the new file reached the checkout" \
-    "$(cat "$personal/apps/host-daemon/src/claude-helper.ts")" "export const claudeHelper = true;"
-  assert_eq "personal worktree is clean" "$(git -C "$personal" status --porcelain)" ""
-  assert_eq "personal advanced" "$(sha 'personal^1')" "$before_personal"
+    "$(cat "$personal/$created")" "$(source_file created)"
+  assert_adopted "$before_personal"
   assert_no_push
   assert_no_leftover_state
 }
 
-# A merge that only moves root files selects no turbo package, so a filtered
-# run would check nothing at all.
-t_root_only_change_checks_everything() {
-  upstream_commit "upstream root change" \
-    write_file "$upstream_work/package.json" '{"name":"bb","private":true,"packageManager":"pnpm@9"}'
-  personal_commit "personal package change" \
-    write_file "$personal/apps/host-daemon/src/personal-only.ts" 'export const personalOnly = true;'
+# Nothing the resolver runs may publish, whatever it decides to try.
+t_resolver_cannot_push() {
+  local conflicted before_personal
+  conflicted="$(seeded_path 1)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
 
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+# HEAD is ahead of both remotes here, so these pushes would land if anything
+# let them through.
+for remote in origin upstream; do
+  if git push --force "\$remote" HEAD:refs/heads/personal >>"$fixture/push.log" 2>&1; then
+    printf '%s pushed\n' "\$remote" >> "$fixture/push.log"
+  fi
+done
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_missing "no push reported success" "$(cat "$fixture/push.log")" "pushed"
+  assert_no_push
+  assert_eq "the sync still finished" "$status" "0"
+  assert_adopted "$before_personal"
+  assert_no_leftover_state
+}
+
+t_unresolved_conflict_aborts() {
+  local conflicted before_personal
+  conflicted="$(seeded_path 1)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+
+  # The stub returns success without resolving anything.
   run_sync
-  assert_eq "exit status" "$status" "0"
-  assert_eq "checks were not filtered" "$(sed -n '2p' "$pnpm_log")" \
-    "exec turbo run typecheck test"
-  assert_contains "output explains the wider run" "$stdout" "Checking everything."
+  assert_ne "exit status" "$status" "0"
+  assert_eq "claude was used" "$(cat "$claude_log")" "called"
+  assert_contains "error names the path" "$stderr" "$conflicted"
+  assert_contains "error explains the cause" "$stderr" "unresolved"
+  assert_personal_unchanged "$before_personal"
+  assert_eq "personal keeps its own version" \
+    "$(cat "$personal/$conflicted")" "$(source_file personal-1)"
+  assert_eq "no checks ran" "$(cat "$pnpm_log")" ""
+  assert_no_push
+  assert_no_leftover_state
+}
+
+# A staged file can still hold markers, and so can a file the resolver touched
+# that was never conflicted. Both have to reject the merge.
+t_conflict_markers_anywhere_abort() {
+  local conflicted polluted before_personal
+  conflicted="$(seeded_path 1)"
+  polluted="$(seeded_path 4)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+printf '<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> other\n' > "$polluted"
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_ne "exit status" "$status" "0"
+  assert_contains "error names the polluted file" "$stderr" "$polluted"
+  assert_contains "error explains the cause" "$stderr" "conflict markers"
+  assert_personal_unchanged "$before_personal"
+  assert_eq "no checks ran" "$(cat "$pnpm_log")" ""
   assert_no_push
   assert_no_leftover_state
 }
 
 t_rerere_replays_cached_resolution() {
-  diverge_on_dispatch
-  write_dispatch_resolver
-  local before_personal
+  local conflicted before_personal
+  conflicted="$(seeded_path 2)"
+  upstream_set "$conflicted" "$(source_file upstream-2)"
+  personal_set "$conflicted" "$(source_file personal-2)"
   before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+RESOLVER
 
   run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
   assert_eq "first run exit status" "$status" "0"
@@ -415,70 +562,23 @@ t_rerere_replays_cached_resolution() {
   assert_eq "second run exit status" "$status" "0"
   assert_eq "second run did not use claude" "$(cat "$claude_log")" ""
   assert_eq "cached resolution reached personal" \
-    "$(cat "$personal/apps/host-daemon/src/command-dispatch.ts")" \
-    "$(dispatch_file ' + "-personal-upstream"')"
-  assert_eq "personal advanced" "$(sha 'personal^1')" "$before_personal"
+    "$(cat "$personal/$conflicted")" "$(source_file merged)"
+  assert_adopted "$before_personal"
   assert_no_push
   assert_no_leftover_state
 }
 
-t_unresolved_conflict_aborts() {
-  diverge_on_dispatch
-  local before_personal
-  before_personal="$(sha personal)"
-
-  # The stub returns success without resolving anything.
-  run_sync
-  assert_ne "exit status" "$status" "0"
-  assert_eq "claude was used" "$(cat "$claude_log")" "called"
-  assert_contains "error names the conflict" "$stderr" "apps/host-daemon/src/command-dispatch.ts"
-  assert_personal_unchanged "$before_personal"
-  assert_eq "personal keeps its own version" \
-    "$(cat "$personal/apps/host-daemon/src/command-dispatch.ts")" \
-    "$(dispatch_file ' + "-personal"')"
-  assert_eq "no checks ran" "$(cat "$pnpm_log")" ""
-  assert_no_push
-  assert_no_leftover_state
-}
-
-t_wire_contract_conflict_stops_for_review() {
-  diverge_on_wire_contract
-  diverge_on_dispatch
-  local before_personal
-  before_personal="$(sha personal)"
+# A merge that only moves root files selects no turbo package, so a filtered
+# run would check nothing at all.
+t_root_only_change_checks_everything() {
+  upstream_set "package.json" '{"name":"fixture","private":true,"packageManager":"pnpm@9"}'
+  personal_set "$(seeded_path 3)" "$(source_file personal-3)"
 
   run_sync
-  assert_ne "exit status" "$status" "0"
-  assert_eq "claude was never called" "$(cat "$claude_log")" ""
-  assert_contains "error names the wire contract file" "$stderr" \
-    "packages/host-daemon-contract/src/commands.ts"
-  assert_contains "error asks for review" "$stderr" "need your review"
-  assert_personal_unchanged "$before_personal"
-  assert_eq "no checks ran" "$(cat "$pnpm_log")" ""
-  assert_no_push
-  assert_no_leftover_state
-}
-
-t_contract_test_conflict_stops_for_review() {
-  upstream_commit "upstream contract test" \
-    write_file "$upstream_work/packages/host-daemon-contract/test/contract.test.ts" \
-    'test("contract", () => {
-  expect(commands.upstreamCommand).toBe("upstreamCommand");
-});'
-  personal_commit "personal contract test" \
-    write_file "$personal/packages/host-daemon-contract/test/contract.test.ts" \
-    'test("contract", () => {
-  expect(commands.personalCommand).toBe("personalCommand");
-});'
-  local before_personal
-  before_personal="$(sha personal)"
-
-  run_sync
-  assert_ne "exit status" "$status" "0"
-  assert_eq "claude was never called" "$(cat "$claude_log")" ""
-  assert_contains "error names the contract test" "$stderr" \
-    "packages/host-daemon-contract/test/contract.test.ts"
-  assert_personal_unchanged "$before_personal"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "checks were not filtered" "$(sed -n '2p' "$pnpm_log")" \
+    "exec turbo run typecheck test"
+  assert_contains "output explains the wider run" "$stdout" "Checking everything."
   assert_no_push
   assert_no_leftover_state
 }
@@ -488,13 +588,13 @@ t_dirty_main_stops() {
   local before_personal before_main
   before_personal="$(sha personal)"
   before_main="$(sha main)"
-  write_file "$repo/apps/host-daemon/src/command-dispatch.ts" "$(dispatch_file ' + "-wip"')"
+  write_file "$repo/$(seeded_path 4)" "$(source_file work-in-progress)"
 
   run_sync
   assert_ne "exit status" "$status" "0"
   assert_eq "main did not move" "$(sha main)" "$before_main"
   assert_eq "work in progress survived" \
-    "$(cat "$repo/apps/host-daemon/src/command-dispatch.ts")" "$(dispatch_file ' + "-wip"')"
+    "$(cat "$repo/$(seeded_path 4)")" "$(source_file work-in-progress)"
   assert_contains "error explains the dirty checkout" "$stderr" "local changes"
   assert_personal_unchanged "$before_personal"
   assert_no_push
@@ -507,13 +607,13 @@ t_dirty_personal_stops_before_fetch() {
   before_personal="$(sha personal)"
   before_main="$(sha main)"
   before_upstream_ref="$(sha upstream/main)"
-  write_file "$personal/apps/host-daemon/src/command-dispatch.ts" "$(dispatch_file ' + "-wip"')"
+  write_file "$personal/$(seeded_path 4)" "$(source_file work-in-progress)"
 
   run_sync
   assert_ne "exit status" "$status" "0"
   assert_eq "personal head did not move" "$(sha personal)" "$before_personal"
   assert_eq "work in progress survived" \
-    "$(cat "$personal/apps/host-daemon/src/command-dispatch.ts")" "$(dispatch_file ' + "-wip"')"
+    "$(cat "$personal/$(seeded_path 4)")" "$(source_file work-in-progress)"
   assert_eq "main did not move" "$(sha main)" "$before_main"
   assert_eq "nothing was fetched" "$(sha upstream/main)" "$before_upstream_ref"
   assert_contains "error explains the dirty checkout" "$stderr" "local changes"
@@ -532,8 +632,7 @@ t_main_not_checked_out() {
   assert_eq "exit status" "$status" "0"
   assert_eq "main is current" "$(sha main)" "$upstream_main"
   assert_eq "the scratch branch was untouched" "$(git -C "$repo" rev-parse --abbrev-ref HEAD)" "scratch"
-  assert_eq "personal first parent" "$(sha 'personal^1')" "$before_personal"
-  assert_eq "personal second parent" "$(sha 'personal^2')" "$upstream_main"
+  assert_adopted "$before_personal"
   assert_no_push
   assert_no_leftover_state
 }
@@ -547,8 +646,8 @@ t_checks_failure_aborts() {
   assert_ne "exit status" "$status" "0"
   assert_contains "error explains the failure" "$stderr" "checks failed"
   assert_personal_unchanged "$before_personal"
-  assert_eq "the upstream file never reached personal" \
-    "$([ -e "$personal/apps/host-daemon/src/upstream-only.ts" ] && echo present || echo absent)" "absent"
+  assert_eq "the upstream change never reached personal" \
+    "$(cat "$personal/$(seeded_path 1)")" "$(source_file base-1)"
   assert_no_push
   assert_no_leftover_state
 }
@@ -560,7 +659,6 @@ t_personal_moving_during_checks_aborts() {
   cat > "$fixture/hook.sh" <<HOOK
 #!/usr/bin/env bash
 set -euo pipefail
-git -C "$personal" rev-parse HEAD > /dev/null
 if [ "\$(git -C "$personal" rev-parse HEAD)" = "$before_personal" ]; then
   git -C "$personal" commit -q --allow-empty -m "concurrent work"
 fi
@@ -572,46 +670,24 @@ HOOK
   assert_contains "error explains the race" "$stderr" "moved during the sync"
   assert_eq "personal keeps the concurrent commit" \
     "$(git -C "$repo" log -1 --format=%s personal)" "concurrent work"
-  assert_eq "personal has one parent" "$(git -C "$repo" rev-list --parents -1 personal | wc -w | tr -d ' ')" "2"
-  assert_eq "the upstream file never reached personal" \
-    "$([ -e "$personal/apps/host-daemon/src/upstream-only.ts" ] && echo present || echo absent)" "absent"
+  assert_eq "personal has one parent" \
+    "$(git -C "$repo" rev-list --parents -1 personal | wc -w | tr -d ' ')" "2"
+  assert_eq "the upstream change never reached personal" \
+    "$(cat "$personal/$(seeded_path 1)")" "$(source_file base-1)"
   assert_no_push
   assert_no_leftover_state
 }
 
-# The arithmetic resolver must not become "take one side of protocol.ts".
-t_protocol_resolver_keeps_both_sides() {
-  upstream_commit "upstream protocol work" \
-    write_file "$upstream_work/packages/host-daemon-contract/src/protocol.ts" \
-    'export type UpstreamPayload = { kind: string };
-
-export type Envelope = {
-  id: string;
-};
-
-export const HOST_DAEMON_PROTOCOL_VERSION = 105 as const;'
-  personal_commit "personal protocol work" \
-    write_file "$personal/packages/host-daemon-contract/src/protocol.ts" \
-    'export type Envelope = {
-  id: string;
-};
-
-export const HOST_DAEMON_PROTOCOL_VERSION = 103 as const;
-
-export type PersonalPayload = { kind: number };'
-
-  run_sync
-  assert_eq "exit status" "$status" "0"
-  local resolved
-  resolved="$(cat "$personal/packages/host-daemon-contract/src/protocol.ts")"
-  assert_contains "upstream type survived" "$resolved" "UpstreamPayload"
-  assert_contains "personal type survived" "$resolved" "PersonalPayload"
-  assert_contains "version is the replayed bump" "$resolved" \
-    "export const HOST_DAEMON_PROTOCOL_VERSION = 108 as const;"
-  assert_missing "no conflict markers" "$resolved" "<<<<<<<"
-  assert_eq "claude was not used" "$(cat "$claude_log")" ""
-  assert_no_push
-  assert_no_leftover_state
+# The tool must not know which files conflict or what a conflict in them means.
+# Any source path baked into the script would be exactly that knowledge.
+t_no_file_specific_conflict_policy() {
+  local literals
+  literals="$(grep -oE '[A-Za-z0-9_.$-]+/[A-Za-z0-9_.$-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|yaml|yml)' "$script" | sort -u)"
+  assert_eq "the only path literal is the workspace manifest lookup" \
+    "$literals" '$directory/package.json'
+  if grep -qiE 'protected|protocol|contract|wire|dispatch|sidebar|daemon' "$script"; then
+    fail "the script names a specific source file or subsystem"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -621,20 +697,22 @@ export type PersonalPayload = { kind: number };'
 tests=(
   t_clean_sync
   t_already_current
-  t_protocol_version_resolved
-  t_protocol_resolver_keeps_both_sides
-  t_claude_resolves_remaining_conflict
+  t_modify_modify_conflicts_go_to_claude
+  t_add_add_conflict_goes_to_claude
+  t_delete_modify_conflict_goes_to_claude
+  t_rename_modify_conflict_goes_to_claude
   t_claude_edits_beyond_the_conflict
-  t_root_only_change_checks_everything
-  t_rerere_replays_cached_resolution
+  t_resolver_cannot_push
   t_unresolved_conflict_aborts
-  t_wire_contract_conflict_stops_for_review
-  t_contract_test_conflict_stops_for_review
+  t_conflict_markers_anywhere_abort
+  t_rerere_replays_cached_resolution
+  t_root_only_change_checks_everything
   t_dirty_main_stops
   t_dirty_personal_stops_before_fetch
   t_main_not_checked_out
   t_checks_failure_aborts
   t_personal_moving_during_checks_aborts
+  t_no_file_specific_conflict_policy
 )
 
 failures=0

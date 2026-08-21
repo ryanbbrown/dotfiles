@@ -12,10 +12,9 @@ semantics, merges main into personal inside a temporary worktree, runs the
 affected package checks there, and adopts the tested merge into the real
 personal checkout with a fast-forward merge. It never pushes.
 
-Conflicts are resolved by rerere and by an arithmetic resolver for the
-host-daemon protocol version. Claude Code runs only on the conflicts that
-neither of those can finish. Conflicts in the wire contract stop the command
-for review instead.
+Git and rerere resolve what they can. Claude Code receives whatever conflicts
+remain, with the history of both sides, and resolves them at high effort. The
+command rejects the merge if any conflict survives.
 
 Options:
   --repo PATH  Git repository that holds the main and personal branches.
@@ -51,13 +50,6 @@ done
 upstream_remote="upstream"
 main_branch="main"
 personal_branch="personal"
-protocol_path="packages/host-daemon-contract/src/protocol.ts"
-# A passing build is not evidence of wire compatibility, so these two never get
-# an automatic resolution.
-protected_paths=(
-  "packages/host-daemon-contract/src/commands.ts"
-  "packages/host-daemon-contract/test/contract.test.ts"
-)
 
 git_repo() {
   git -C "$repo" "$@"
@@ -93,66 +85,21 @@ unmerged_paths() {
   git -C "$merge_tree" diff --name-only --diff-filter=U
 }
 
-protocol_version() {
-  local value
-  value="$(sed -n 's/^export const HOST_DAEMON_PROTOCOL_VERSION = \([0-9][0-9]*\) as const;$/\1/p' "$1")"
-  case "$value" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  printf '%s\n' "$value"
+merge_changed_paths() {
+  git -C "$merge_tree" diff --name-only -z "$@"
 }
 
-# The version constant conflicts on every merge because both sides always edit
-# the same line, and rerere can never match it because the numbers differ each
-# time. The correct value is arithmetic, not a judgement.
-resolve_protocol_version() {
-  local base="$temp_root/protocol.base"
-  local ours="$temp_root/protocol.ours"
-  local theirs="$temp_root/protocol.theirs"
-  local merged="$temp_root/protocol.merged"
-  local base_version ours_version theirs_version resolved_version file
-
-  git -C "$merge_tree" show ":1:$protocol_path" > "$base" 2>/dev/null || return 1
-  git -C "$merge_tree" show ":2:$protocol_path" > "$ours" 2>/dev/null || return 1
-  git -C "$merge_tree" show ":3:$protocol_path" > "$theirs" 2>/dev/null || return 1
-
-  base_version="$(protocol_version "$base")" || return 1
-  ours_version="$(protocol_version "$ours")" || return 1
-  theirs_version="$(protocol_version "$theirs")" || return 1
-  resolved_version=$(( theirs_version + ours_version - base_version ))
-
-  for file in "$base" "$ours" "$theirs"; do
-    sed 's/^export const HOST_DAEMON_PROTOCOL_VERSION = [0-9][0-9]* as const;$/export const HOST_DAEMON_PROTOCOL_VERSION = SYNC_PROTOCOL_VERSION as const;/' \
-      "$file" > "$file.normalized"
-  done
-
-  git merge-file -p "$ours.normalized" "$base.normalized" "$theirs.normalized" > "$merged" || return 1
-  sed "s/SYNC_PROTOCOL_VERSION/$resolved_version/" "$merged" > "$merge_tree/$protocol_path"
-  git -C "$merge_tree" add -- "$protocol_path"
-  echo "Resolved $protocol_path to protocol version $resolved_version."
-}
-
-conflicts_in_wire_contract() {
-  local path protected
-  while IFS= read -r path; do
-    for protected in "${protected_paths[@]}"; do
-      if [ "$path" = "$protected" ]; then
-        printf '%s\n' "$path"
-      fi
-    done
-  done < <(unmerged_paths)
-}
-
-has_conflict_markers() {
+# Every file the merge touched is checked, including the ones the resolver
+# reached for on its own.
+files_with_conflict_markers() {
   local path
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
+  while IFS= read -r -d '' path; do
     [ -f "$merge_tree/$path" ] || continue
-    if grep -qE '^(<<<<<<<|>>>>>>>) ' "$merge_tree/$path"; then
-      return 0
+    if grep -qIE '^<<<<<<< ' "$merge_tree/$path" &&
+      grep -qIE '^>>>>>>> ' "$merge_tree/$path"; then
+      printf '%s\n' "$path"
     fi
-  done <<< "$1"
-  return 1
+  done < <(merge_changed_paths "$personal_head")
 }
 
 indent() {
@@ -163,7 +110,7 @@ indent() {
 # lockfile selects nothing at all. Those runs have to check everything.
 merge_changed_files_outside_packages() {
   local path directory
-  while IFS= read -r path; do
+  while IFS= read -r -d '' path; do
     directory="$(dirname "$path")"
     while [ "$directory" != "." ]; do
       if git -C "$merge_tree" cat-file -e "$merge_commit:$directory/package.json" 2>/dev/null; then
@@ -172,7 +119,7 @@ merge_changed_files_outside_packages() {
       directory="$(dirname "$directory")"
     done
     return 0
-  done < <(git -C "$merge_tree" diff --name-only "$personal_head" "$merge_commit")
+  done < <(merge_changed_paths "$personal_head" "$merge_commit")
   return 1
 }
 
@@ -180,6 +127,20 @@ run_checks() {
   ( cd "$merge_tree" &&
     pnpm install --frozen-lockfile --prefer-offline &&
     pnpm exec turbo run typecheck test "$@" )
+}
+
+# Break the push URL of every remote through the environment, so no git the
+# resolver runs can publish. This leaves the repository configuration alone and
+# does not depend on a tool allowlist holding.
+build_no_push_env() {
+  local remote count=0
+  no_push_env=()
+  while IFS= read -r remote; do
+    no_push_env+=("GIT_CONFIG_KEY_$count=remote.$remote.pushurl")
+    no_push_env+=("GIT_CONFIG_VALUE_$count=/dev/null")
+    count=$((count + 1))
+  done < <(git_repo remote)
+  no_push_env+=("GIT_CONFIG_COUNT=$count")
 }
 
 [ -d "$repo" ] || die "repository directory does not exist: $repo"
@@ -241,46 +202,58 @@ git_repo worktree add --quiet --detach "$merge_tree" "$personal_head"
 if git_merge_tree merge --no-ff --no-edit "$main_branch" >/dev/null; then
   echo "Merged $main_branch into $personal_branch without conflicts."
 else
-  if [ -n "$(unmerged_paths)" ]; then
-    resolve_protocol_version || true
-  fi
-
-  wire_conflicts="$(conflicts_in_wire_contract)"
-  if [ -n "$wire_conflicts" ]; then
-    echo "Wire contract conflicts need your review:" >&2
-    indent "$wire_conflicts" >&2
-    die "stopped without changing $personal_branch"
-  fi
-
   remaining="$(unmerged_paths)"
   if [ -n "$remaining" ]; then
     claude_bin="$(command -v claude)" || die "Claude Code is not installed"
+    build_no_push_env
     echo "Asking Claude Code to resolve:"
     indent "$remaining"
 
-    prompt="You are resolving a Git merge inside an isolated scratch worktree. The merge brings branch $main_branch into branch $personal_branch.
+    merge_base="$(git_repo merge-base "$personal_head" "$main_branch")"
+    incoming_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$main_branch")"
+    local_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$personal_head")"
 
-These files conflict:
+    prompt="You are resolving a Git merge inside an isolated scratch worktree. The merge brings branch $main_branch into branch $personal_branch. Your working directory is the worktree and it is safe to change anything in it.
+
+Merge base:              $merge_base
+Incoming ($main_branch): $(git_repo rev-parse "$main_branch")
+Local ($personal_branch): $personal_head
+
+Git could not resolve these paths:
 $remaining
+
+Incoming commits since the merge base:
+$incoming_log
+
+Local commits since the merge base:
+$local_log
+
+Every conflicted path keeps its three inputs in the index: 'git show :1:<path>' is the merge base, ':2:<path>' is $personal_branch, ':3:<path>' is $main_branch. Use git log and git diff over the ranges above to find out why each side changed, then decide from that evidence rather than from the conflict markers alone.
 
 Rules:
 - Keep the intent of both sides. Do not drop $personal_branch customizations and do not drop upstream changes.
-- Leave no conflict markers.
-- Make any further edit the merge needs to be coherent.
-- Do not commit, push, install, build, or run tests.
+- Resolve every path listed above and leave no conflict markers anywhere in the worktree.
+- Make any other change the merge needs to be coherent, in any file.
+- Do not commit and do not push. Staging is optional; everything left in the worktree is committed for you.
 
-Reply with one line per file: '<file>: resolved' or '<file>: unresolved'."
+Reply with one line per path: '<path>: resolved' or '<path>: unresolved'."
 
-    ( cd "$merge_tree" && "$claude_bin" -p "$prompt" \
+    ( cd "$merge_tree" && env "${no_push_env[@]}" "$claude_bin" -p "$prompt" \
         --effort high \
         --permission-mode acceptEdits \
-        --allowedTools 'Read,Edit,Write,Grep,Glob,Bash(git add:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*)' ) ||
+        --allowedTools 'Read,Edit,Write,Grep,Glob,Bash(git *)' ) ||
       die "Claude Code did not finish; $personal_branch is unchanged"
 
     still_unmerged="$(unmerged_paths)"
-    if [ -n "$still_unmerged" ] || has_conflict_markers "$remaining"; then
-      echo "These files are still conflicted:" >&2
-      indent "${still_unmerged:-$remaining}" >&2
+    if [ -n "$still_unmerged" ]; then
+      echo "Git still reports these paths as unresolved:" >&2
+      indent "$still_unmerged" >&2
+      die "stopped without changing $personal_branch"
+    fi
+    marked="$(files_with_conflict_markers)"
+    if [ -n "$marked" ]; then
+      echo "These files still contain conflict markers:" >&2
+      indent "$marked" >&2
       die "stopped without changing $personal_branch"
     fi
   fi
