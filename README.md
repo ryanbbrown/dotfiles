@@ -128,12 +128,12 @@ What it does, in order:
 2. Fetches `upstream` and advances local `main` with fast-forward-only semantics. It finds the `main` worktree with `git worktree list --porcelain`, so it works whether `main` is checked out or not. It stops if `main` is behind and its checkout is dirty, or if `main` has diverged.
 3. Merges `main` into `personal` inside a temporary worktree. The real checkout is never in a merge state.
 4. Lets Git merge and rerere replay whatever cached resolutions match. rerere runs with autoupdate, so replayed resolutions are staged.
-5. Calls the installed Claude Code CLI once, non-interactively at high effort, if any conflict is left. Claude receives the full unresolved set, the merge base, and the commit history of both sides, and it may change any file the merge needs. Everything it leaves in the worktree goes into the merge commit.
+5. Hands the rest to the installed Claude Code CLI, once, non-interactively at high effort and with full permission. Claude gets the unresolved set, the merge base, and the commit history of both sides. It owns the whole job from there: resolve the conflicts, read the repository's own instructions and package scripts, install dependencies, run the repository checks, repair what the merge broke anywhere in the tree, and repeat until the checks pass.
 6. Rejects the merge if Git still reports an unresolved path, if any file the merge touched still holds conflict markers, or if Claude fails.
-7. Installs dependencies in the temporary worktree and runs `turbo run typecheck test`, filtered to the packages the merge changed and their dependents. A merge that also moves a root file such as the lockfile selects no package at all, so those runs check everything instead.
+7. Commits everything Claude left in the worktree, then runs the same repository checks again to confirm the result independently.
 8. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit the merge started from and is still clean.
 
-The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. The temporary worktree is always removed. Nothing is ever pushed.
+The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. A run that does not reach the end leaves the rerere cache exactly as it found it, so a resolution it could not verify is never replayed later. The temporary worktree is always removed. Nothing is ever pushed: the push URL of every remote is broken through the environment for the duration of the resolver, rather than by restricting what Claude may run.
 
 Run the checks:
 

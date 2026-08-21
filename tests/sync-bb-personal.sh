@@ -83,6 +83,7 @@ new_fixture() {
   pnpm_log="$fixture/pnpm.log"
   claude_log="$fixture/claude.log"
   claude_prompt="$fixture/claude-prompt.txt"
+  claude_argv="$fixture/claude-argv.txt"
   run_tmp="$fixture/tmp"
   stdout_file="$fixture/stdout.txt"
   stderr_file="$fixture/stderr.txt"
@@ -136,6 +137,12 @@ printf '%s\n' "$*" >> "$PNPM_LOG"
 if [ -n "${PNPM_HOOK:-}" ]; then
   "$PNPM_HOOK"
 fi
+# Stands in for a repository check that fails until the resolver repairs it.
+if [ -n "${PNPM_REQUIRE_FILE:-}" ]; then
+  case "$*" in
+    *turbo*) [ -e "$PNPM_REQUIRE_FILE" ] || exit 1 ;;
+  esac
+fi
 if [ -n "${PNPM_FAIL_ON:-}" ]; then
   case "$*" in
     *"$PNPM_FAIL_ON"*) exit 1 ;;
@@ -147,6 +154,9 @@ STUB_PNPM
   cat > "$stub_bin/claude" <<'STUB_CLAUDE'
 #!/usr/bin/env bash
 printf 'called\n' >> "$CLAUDE_LOG"
+for argument in "$@"; do
+  printf '%s\n' "$argument"
+done > "$CLAUDE_ARGV"
 previous=""
 for argument in "$@"; do
   if [ "$previous" = "-p" ]; then
@@ -211,6 +221,7 @@ run_sync() {
     PNPM_LOG="$pnpm_log" \
     CLAUDE_LOG="$claude_log" \
     CLAUDE_PROMPT="$claude_prompt" \
+    CLAUDE_ARGV="$claude_argv" \
     "$@" \
     "$script" --repo "$repo" > "$stdout_file" 2> "$stderr_file"
   status=$?
@@ -228,6 +239,15 @@ prompt_conflict_list() {
   awk '/^Git could not resolve these paths:$/ { flag = 1; next }
        /^$/ { if (flag) exit }
        flag { print }' "$claude_prompt"
+}
+
+rr_entries() {
+  [ -d "$repo/.git/rr-cache" ] || return 0
+  ( cd "$repo/.git/rr-cache" && find . -mindepth 1 | sort )
+}
+
+turbo_invocations() {
+  grep -c 'turbo run' "$pnpm_log" | tr -d ' '
 }
 
 assert_no_push() {
@@ -283,8 +303,8 @@ t_clean_sync() {
     "$(cat "$personal/$(seeded_path 3)")" "$(source_file personal-3)"
   assert_eq "claude was not used" "$(cat "$claude_log")" ""
   assert_eq "install ran" "$(sed -n '1p' "$pnpm_log")" "install --frozen-lockfile --prefer-offline"
-  assert_eq "checks were scoped to the merge" "$(sed -n '2p' "$pnpm_log")" \
-    "exec turbo run typecheck test --filter=...[$before_personal]"
+  assert_eq "the repository checks ran" "$(sed -n '2p' "$pnpm_log")" \
+    "exec turbo run typecheck test"
   assert_contains "output reports adoption" "$stdout" "Adopted"
   assert_contains "output reports no push" "$stdout" "Nothing was pushed."
   assert_no_push
@@ -456,6 +476,146 @@ RESOLVER
   assert_no_leftover_state
 }
 
+# The resolver is a normal coding agent: full permission, no tool allowlist,
+# and free to run commands that have nothing to do with git.
+t_resolver_has_full_command_freedom() {
+  local conflicted before_personal argv
+  conflicted="$(seeded_path 1)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+# None of the following is a git command.
+mkdir -p build-scratch
+sh -c 'printf "built by a non-git command\n" > build-scratch/report.txt'
+cp build-scratch/report.txt "$(fresh_path evidence)"
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted" "$(fresh_path evidence)"
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_eq "exit status" "$status" "0"
+
+  argv="$(cat "$claude_argv")"
+  assert_contains "full permission mode is requested" "$argv" "bypassPermissions"
+  assert_contains "high effort is requested" "$argv" "--effort"
+  assert_missing "no tool allowlist" "$argv" "--allowedTools"
+  assert_missing "no tool denylist" "$argv" "--disallowedTools"
+  assert_missing "no accept-edits restriction" "$argv" "acceptEdits"
+
+  assert_eq "the non-git work reached personal" \
+    "$(git -C "$repo" show "personal:$(fresh_path evidence)")" "built by a non-git command"
+  assert_eq "the conflict was resolved" \
+    "$(cat "$personal/$conflicted")" "$(source_file merged)"
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+# The whole point of the redesign: the resolver runs the repository checks
+# itself, sees a failure the merge caused, and repairs it before finishing.
+t_resolver_repairs_a_failing_repository_check() {
+  local conflicted repair before_personal
+  conflicted="$(seeded_path 1)"
+  repair="$(fresh_path repair)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+
+# First attempt at the repository checks fails.
+if pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test; then
+  printf 'checks passed too early\n' >&2
+  exit 1
+fi
+
+# Diagnose, repair, and try again.
+printf 'export const marker = "repair";\nexport const tail = "stable";\n' > "$repair"
+pnpm install --frozen-lockfile --prefer-offline
+pnpm exec turbo run typecheck test
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh" PNPM_REQUIRE_FILE="$repair"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "the resolver ran the checks twice and the script confirmed once" \
+    "$(turbo_invocations)" "3"
+  assert_eq "the repair is in the adopted commit" \
+    "$(git -C "$repo" show "personal:$repair")" "$(source_file repair)"
+  assert_eq "the repair reached the checkout" \
+    "$(cat "$personal/$repair")" "$(source_file repair)"
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+# An unverified resolution must never survive to be replayed silently.
+t_failed_checks_leave_no_reusable_resolution() {
+  local conflicted before_personal before_rr
+  conflicted="$(seeded_path 2)"
+  upstream_set "$conflicted" "$(source_file upstream-2)"
+  personal_set "$conflicted" "$(source_file personal-2)"
+  before_personal="$(sha personal)"
+  before_rr="$(rr_entries)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "unverified";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh" PNPM_FAIL_ON="turbo"
+  assert_ne "exit status" "$status" "0"
+  assert_contains "error explains the failure" "$stderr" "checks failed"
+  assert_personal_unchanged "$before_personal"
+  assert_eq "the reuse cache is untouched" "$(rr_entries)" "$before_rr"
+
+  # Prove it by replaying the same merge with a resolver that cannot run.
+  : > "$claude_log"
+  run_sync CLAUDE_EXIT=1
+  assert_ne "second run exit status" "$status" "0"
+  assert_eq "the second run still needed a resolver" "$(cat "$claude_log")" "called"
+  assert_contains "the conflict came back" "$stderr" "$conflicted"
+  assert_personal_unchanged "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+# The resolver owns the worktree but not the commit. Taking it aborts the run,
+# and still leaves nothing reusable behind.
+t_resolver_committing_aborts_without_caching() {
+  local conflicted before_personal before_rr
+  conflicted="$(seeded_path 1)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+  before_rr="$(rr_entries)"
+
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
+git add -- "$conflicted"
+git commit -q --no-edit
+RESOLVER
+
+  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  assert_ne "exit status" "$status" "0"
+  assert_contains "error explains the cause" "$stderr" "merge state was lost"
+  assert_personal_unchanged "$before_personal"
+  assert_eq "the reuse cache is untouched" "$(rr_entries)" "$before_rr"
+  assert_no_push
+  assert_no_leftover_state
+}
+
 # Nothing the resolver runs may publish, whatever it decides to try.
 t_resolver_cannot_push() {
   local conflicted before_personal
@@ -568,17 +728,15 @@ RESOLVER
   assert_no_leftover_state
 }
 
-# A merge that only moves root files selects no turbo package, so a filtered
-# run would check nothing at all.
+# Check scope must not depend on which files moved.
 t_root_only_change_checks_everything() {
   upstream_set "package.json" '{"name":"fixture","private":true,"packageManager":"pnpm@9"}'
   personal_set "$(seeded_path 3)" "$(source_file personal-3)"
 
   run_sync
   assert_eq "exit status" "$status" "0"
-  assert_eq "checks were not filtered" "$(sed -n '2p' "$pnpm_log")" \
+  assert_eq "the whole repository is still checked" "$(sed -n '2p' "$pnpm_log")" \
     "exec turbo run typecheck test"
-  assert_contains "output explains the wider run" "$stdout" "Checking everything."
   assert_no_push
   assert_no_leftover_state
 }
@@ -683,8 +841,7 @@ HOOK
 t_no_file_specific_conflict_policy() {
   local literals
   literals="$(grep -oE '[A-Za-z0-9_.$-]+/[A-Za-z0-9_.$-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|yaml|yml)' "$script" | sort -u)"
-  assert_eq "the only path literal is the workspace manifest lookup" \
-    "$literals" '$directory/package.json'
+  assert_eq "the script names no source path at all" "$literals" ""
   if grep -qiE 'protected|protocol|contract|wire|dispatch|sidebar|daemon' "$script"; then
     fail "the script names a specific source file or subsystem"
   fi
@@ -702,6 +859,10 @@ tests=(
   t_delete_modify_conflict_goes_to_claude
   t_rename_modify_conflict_goes_to_claude
   t_claude_edits_beyond_the_conflict
+  t_resolver_has_full_command_freedom
+  t_resolver_repairs_a_failing_repository_check
+  t_failed_checks_leave_no_reusable_resolution
+  t_resolver_committing_aborts_without_caching
   t_resolver_cannot_push
   t_unresolved_conflict_aborts
   t_conflict_markers_anywhere_abort

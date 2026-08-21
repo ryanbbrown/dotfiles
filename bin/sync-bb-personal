@@ -12,9 +12,11 @@ semantics, merges main into personal inside a temporary worktree, runs the
 affected package checks there, and adopts the tested merge into the real
 personal checkout with a fast-forward merge. It never pushes.
 
-Git and rerere resolve what they can. Claude Code receives whatever conflicts
-remain, with the history of both sides, and resolves them at high effort. The
-command rejects the merge if any conflict survives.
+Git and rerere resolve what they can. Claude Code owns whatever is left: it
+resolves the conflicts, installs dependencies, runs the repository checks,
+repairs what the merge broke, and repeats until the checks pass. This command
+then confirms those same checks before adopting anything. A run that does not
+finish leaves the rerere cache exactly as it found it.
 
 Options:
   --repo PATH  Git repository that holds the main and personal branches.
@@ -50,6 +52,9 @@ done
 upstream_remote="upstream"
 main_branch="main"
 personal_branch="personal"
+# The repository's own checks. The resolver has to make this pass before it
+# finishes, and this script runs it again afterwards to confirm.
+check_command='pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test'
 
 git_repo() {
   git -C "$repo" "$@"
@@ -106,41 +111,45 @@ indent() {
   printf '%s\n' "$1" | sed 's/^/  /'
 }
 
-# turbo selects packages by directory, so a change to a root file such as the
-# lockfile selects nothing at all. Those runs have to check everything.
-merge_changed_files_outside_packages() {
-  local path directory
-  while IFS= read -r -d '' path; do
-    directory="$(dirname "$path")"
-    while [ "$directory" != "." ]; do
-      if git -C "$merge_tree" cat-file -e "$merge_commit:$directory/package.json" 2>/dev/null; then
-        continue 2
-      fi
-      directory="$(dirname "$directory")"
-    done
-    return 0
-  done < <(merge_changed_paths "$personal_head" "$merge_commit")
-  return 1
-}
-
 run_checks() {
-  ( cd "$merge_tree" &&
-    pnpm install --frozen-lockfile --prefer-offline &&
-    pnpm exec turbo run typecheck test "$@" )
+  ( cd "$merge_tree" && sh -c "$check_command" )
 }
 
-# Break the push URL of every remote through the environment, so no git the
-# resolver runs can publish. This leaves the repository configuration alone and
-# does not depend on a tool allowlist holding.
-build_no_push_env() {
+# Break the push URL of every remote and switch rerere off, through the
+# environment. No git the resolver runs can publish, and no resolution is
+# cached until this script has verified it. Repository configuration is
+# untouched and nothing depends on a tool allowlist holding.
+build_resolver_env() {
   local remote count=0
-  no_push_env=()
+  resolver_env=()
   while IFS= read -r remote; do
-    no_push_env+=("GIT_CONFIG_KEY_$count=remote.$remote.pushurl")
-    no_push_env+=("GIT_CONFIG_VALUE_$count=/dev/null")
+    resolver_env+=("GIT_CONFIG_KEY_$count=remote.$remote.pushurl")
+    resolver_env+=("GIT_CONFIG_VALUE_$count=/dev/null")
     count=$((count + 1))
   done < <(git_repo remote)
-  no_push_env+=("GIT_CONFIG_COUNT=$count")
+  resolver_env+=("GIT_CONFIG_KEY_$count=rerere.enabled")
+  resolver_env+=("GIT_CONFIG_VALUE_$count=false")
+  count=$((count + 1))
+  resolver_env+=("GIT_CONFIG_COUNT=$count")
+}
+
+# A failed attempt must leave the reuse cache exactly as it was, so a
+# resolution this run could not verify can never be replayed silently.
+snapshot_rr_cache() {
+  rr_snapshot="$temp_root/rr-cache.before"
+  : > "$rr_snapshot"
+  [ -d "$rr_cache_dir" ] || return 0
+  ( cd "$rr_cache_dir" && find . -mindepth 1 -maxdepth 2 ) | sort > "$rr_snapshot"
+}
+
+restore_rr_cache() {
+  local entry
+  [ -n "${rr_snapshot:-}" ] && [ -f "$rr_snapshot" ] || return 0
+  [ -d "$rr_cache_dir" ] || return 0
+  # Reverse order removes a recorded resolution before its directory.
+  ( cd "$rr_cache_dir" && find . -mindepth 1 -maxdepth 2 ) | sort -r | while IFS= read -r entry; do
+    grep -qxF "$entry" "$rr_snapshot" || rm -rf -- "$rr_cache_dir/$entry"
+  done
 }
 
 [ -d "$repo" ] || die "repository directory does not exist: $repo"
@@ -188,7 +197,10 @@ fi
 
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/sync-bb-personal.XXXXXX")"
 merge_tree="$temp_root/merge"
+rr_cache_dir="$(git_repo rev-parse --path-format=absolute --git-common-dir)/rr-cache"
+sync_succeeded=0
 cleanup() {
+  [ "$sync_succeeded" -eq 1 ] || restore_rr_cache
   if [ -d "$merge_tree" ]; then
     git_repo worktree remove --force "$merge_tree" >/dev/null 2>&1 || true
   fi
@@ -196,6 +208,7 @@ cleanup() {
   git_repo worktree prune >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+snapshot_rr_cache
 
 git_repo worktree add --quiet --detach "$merge_tree" "$personal_head"
 
@@ -205,15 +218,17 @@ else
   remaining="$(unmerged_paths)"
   if [ -n "$remaining" ]; then
     claude_bin="$(command -v claude)" || die "Claude Code is not installed"
-    build_no_push_env
-    echo "Asking Claude Code to resolve:"
+    build_resolver_env
+    echo "Handing the merge to Claude Code. Conflicted paths:"
     indent "$remaining"
 
     merge_base="$(git_repo merge-base "$personal_head" "$main_branch")"
     incoming_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$main_branch")"
     local_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$personal_head")"
 
-    prompt="You are resolving a Git merge inside an isolated scratch worktree. The merge brings branch $main_branch into branch $personal_branch. Your working directory is the worktree and it is safe to change anything in it.
+    prompt="You own a Git merge from start to finish, inside an isolated scratch worktree. Your working directory is that worktree. It is disposable and it is safe to change anything in it.
+
+The merge brings branch $main_branch into branch $personal_branch.
 
 Merge base:              $merge_base
 Incoming ($main_branch): $(git_repo rev-parse "$main_branch")
@@ -228,20 +243,27 @@ $incoming_log
 Local commits since the merge base:
 $local_log
 
-Every conflicted path keeps its three inputs in the index: 'git show :1:<path>' is the merge base, ':2:<path>' is $personal_branch, ':3:<path>' is $main_branch. Use git log and git diff over the ranges above to find out why each side changed, then decide from that evidence rather than from the conflict markers alone.
+The job is finished when this command passes:
 
-Rules:
+    $check_command
+
+Work through it:
+1. Resolve every conflicted path. Each one keeps its three inputs in the index: 'git show :1:<path>' is the merge base, ':2:<path>' is $personal_branch, ':3:<path>' is $main_branch. Use git log and git diff over the ranges above to find out why each side changed, and decide from that evidence rather than from the conflict markers alone.
+2. Read the repository's own instructions and its package scripts to learn how it expects to be built, checked and worked in. Follow them.
+3. Run the command above. Installing dependencies is part of it and may take a few minutes.
+4. A merge without conflict markers is not a correct merge. Expect failures in files that merged cleanly but no longer agree with the ones you resolved. Read each failure, find the real cause, and fix it wherever it lives.
+5. Run the command again. Keep going until it passes, or until you reach something you genuinely cannot fix.
+
+You may run any command you need. Rules:
 - Keep the intent of both sides. Do not drop $personal_branch customizations and do not drop upstream changes.
-- Resolve every path listed above and leave no conflict markers anywhere in the worktree.
-- Make any other change the merge needs to be coherent, in any file.
-- Do not commit and do not push. Staging is optional; everything left in the worktree is committed for you.
+- Do not weaken a check to make it pass. Do not delete or skip a test, and do not silence a type error, unless the merge genuinely made it obsolete and you say so.
+- Do not commit and do not push. Everything you leave in the worktree is committed for you.
 
-Reply with one line per path: '<path>: resolved' or '<path>: unresolved'."
+Finish by saying whether the command above passes. If it does not, say exactly what blocked you."
 
-    ( cd "$merge_tree" && env "${no_push_env[@]}" "$claude_bin" -p "$prompt" \
+    ( cd "$merge_tree" && env "${resolver_env[@]}" "$claude_bin" -p "$prompt" \
         --effort high \
-        --permission-mode acceptEdits \
-        --allowedTools 'Read,Edit,Write,Grep,Glob,Bash(git *)' ) ||
+        --permission-mode bypassPermissions ) ||
       die "Claude Code did not finish; $personal_branch is unchanged"
 
     still_unmerged="$(unmerged_paths)"
@@ -260,8 +282,8 @@ Reply with one line per path: '<path>: resolved' or '<path>: unresolved'."
 
   git -C "$merge_tree" rev-parse --verify --quiet MERGE_HEAD >/dev/null ||
     die "the merge state was lost; $personal_branch is unchanged"
-  # The resolver may edit more than the conflicted files, and the checks below
-  # read the working tree, so the commit has to carry everything in it.
+  # The resolver edits more than the conflicted files, so the commit has to
+  # carry everything it left behind.
   git -C "$merge_tree" add -A
   git_merge_tree commit --no-edit >/dev/null ||
     die "could not record the merge commit; $personal_branch is unchanged"
@@ -272,15 +294,9 @@ merge_commit="$(git -C "$merge_tree" rev-parse HEAD)"
 [ "$(git -C "$merge_tree" rev-parse "$merge_commit^1")" = "$personal_head" ] ||
   die "the merge commit does not build on $personal_branch; nothing was adopted"
 
-if merge_changed_files_outside_packages; then
-  echo "The merge changes files outside the workspace packages. Checking everything."
-  run_checks || die "checks failed; $personal_branch is unchanged"
-else
-  echo "Running checks for the packages the merge changed."
-  # turbo selects the changed packages and their dependents from the range, so
-  # the run stays as small as the merge allows.
-  run_checks --filter="...[$personal_head]" || die "checks failed; $personal_branch is unchanged"
-fi
+# The resolver was told to leave these passing. Run them again to confirm.
+echo "Confirming the repository checks."
+run_checks || die "checks failed; $personal_branch is unchanged"
 
 # The real checkout is live. Adopt only if it is still exactly where the merge
 # started, and only by fast-forward, so a half-updated tree cannot happen.
@@ -291,5 +307,6 @@ worktree_is_clean "$personal_worktree" ||
 git -C "$personal_worktree" merge --ff-only "$merge_commit" >/dev/null ||
   die "could not fast-forward $personal_branch; nothing was adopted"
 
+sync_succeeded=1
 echo "Adopted $(git_repo rev-parse --short "$merge_commit") into $personal_branch at $personal_worktree."
 echo "Nothing was pushed."
