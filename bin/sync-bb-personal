@@ -12,7 +12,7 @@ semantics, merges main into personal inside a temporary worktree, runs the
 affected package checks there, and adopts the tested merge into the real
 personal checkout with a fast-forward merge. It never pushes.
 
-Git and rerere resolve what they can. Claude Code owns whatever is left: it
+Git and rerere resolve what they can. Codex owns whatever is left: it
 resolves the conflicts, installs dependencies, runs the repository checks,
 repairs what the merge broke, and repeats until the checks pass. This command
 then confirms those same checks before adopting anything. A run that does not
@@ -217,9 +217,9 @@ if git_merge_tree merge --no-ff --no-edit "$main_branch" >/dev/null; then
 else
   remaining="$(unmerged_paths)"
   if [ -n "$remaining" ]; then
-    claude_bin="$(command -v claude)" || die "Claude Code is not installed"
+    codex_bin="$(command -v codex)" || die "Codex CLI is not installed"
     build_resolver_env
-    echo "Handing the merge to Claude Code. Conflicted paths:"
+    echo "Handing the merge to Codex. Conflicted paths:"
     indent "$remaining"
 
     merge_base="$(git_repo merge-base "$personal_head" "$main_branch")"
@@ -261,10 +261,12 @@ You may run any command you need. Rules:
 
 Finish by saying whether the command above passes. If it does not, say exactly what blocked you."
 
-    ( cd "$merge_tree" && env "${resolver_env[@]}" "$claude_bin" -p "$prompt" \
-        --effort high \
-        --permission-mode bypassPermissions ) ||
-      die "Claude Code did not finish; $personal_branch is unchanged"
+    ( cd "$merge_tree" && env "${resolver_env[@]}" "$codex_bin" exec \
+        --dangerously-bypass-approvals-and-sandbox \
+        --ignore-rules \
+        --ephemeral \
+        "$prompt" ) ||
+      die "Codex did not finish; $personal_branch is unchanged"
 
     still_unmerged="$(unmerged_paths)"
     if [ -n "$still_unmerged" ]; then

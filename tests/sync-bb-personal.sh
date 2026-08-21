@@ -81,9 +81,9 @@ new_fixture() {
   upstream_work="$fixture/upstream-work"
   stub_bin="$fixture/bin"
   pnpm_log="$fixture/pnpm.log"
-  claude_log="$fixture/claude.log"
-  claude_prompt="$fixture/claude-prompt.txt"
-  claude_argv="$fixture/claude-argv.txt"
+  codex_log="$fixture/codex.log"
+  codex_prompt="$fixture/codex-prompt.txt"
+  codex_argv="$fixture/codex-argv.txt"
   run_tmp="$fixture/tmp"
   stdout_file="$fixture/stdout.txt"
   stderr_file="$fixture/stderr.txt"
@@ -97,7 +97,7 @@ new_fixture() {
   printf '[user]\n\tname = sync test\n\temail = sync-test@example.com\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n' \
     > "$GIT_CONFIG_GLOBAL"
   : > "$pnpm_log"
-  : > "$claude_log"
+  : > "$codex_log"
 
   install_stubs
 
@@ -151,26 +151,22 @@ fi
 exit 0
 STUB_PNPM
 
-  cat > "$stub_bin/claude" <<'STUB_CLAUDE'
+  cat > "$stub_bin/codex" <<'STUB_CODEX'
 #!/usr/bin/env bash
-printf 'called\n' >> "$CLAUDE_LOG"
-for argument in "$@"; do
-  printf '%s\n' "$argument"
-done > "$CLAUDE_ARGV"
-previous=""
-for argument in "$@"; do
-  if [ "$previous" = "-p" ]; then
-    printf '%s' "$argument" > "$CLAUDE_PROMPT"
-  fi
-  previous="$argument"
+printf 'called\n' >> "$CODEX_LOG"
+: > "$CODEX_ARGV"
+while [ "$#" -gt 1 ]; do
+  printf '%s\n' "$1" >> "$CODEX_ARGV"
+  shift
 done
-if [ -n "${CLAUDE_RESOLVER:-}" ]; then
-  exec "$CLAUDE_RESOLVER"
+printf '%s' "${1:-}" > "$CODEX_PROMPT"
+if [ -n "${CODEX_RESOLVER:-}" ]; then
+  exec "$CODEX_RESOLVER"
 fi
-exit "${CLAUDE_EXIT:-0}"
-STUB_CLAUDE
+exit "${CODEX_EXIT:-0}"
+STUB_CODEX
 
-  chmod +x "$stub_bin/pnpm" "$stub_bin/claude"
+  chmod +x "$stub_bin/pnpm" "$stub_bin/codex"
 }
 
 # ---------------------------------------------------------------------------
@@ -219,9 +215,9 @@ run_sync() {
     PATH="$stub_bin:$PATH" \
     TMPDIR="$run_tmp" \
     PNPM_LOG="$pnpm_log" \
-    CLAUDE_LOG="$claude_log" \
-    CLAUDE_PROMPT="$claude_prompt" \
-    CLAUDE_ARGV="$claude_argv" \
+    CODEX_LOG="$codex_log" \
+    CODEX_PROMPT="$codex_prompt" \
+    CODEX_ARGV="$codex_argv" \
     "$@" \
     "$script" --repo "$repo" > "$stdout_file" 2> "$stderr_file"
   status=$?
@@ -238,7 +234,7 @@ make_resolver() {
 prompt_conflict_list() {
   awk '/^Git could not resolve these paths:$/ { flag = 1; next }
        /^$/ { if (flag) exit }
-       flag { print }' "$claude_prompt"
+       flag { print }' "$codex_prompt"
 }
 
 rr_entries() {
@@ -301,7 +297,7 @@ t_clean_sync() {
     "$(cat "$personal/$(seeded_path 1)")" "$(source_file upstream-1)"
   assert_eq "personal change survived" \
     "$(cat "$personal/$(seeded_path 3)")" "$(source_file personal-3)"
-  assert_eq "claude was not used" "$(cat "$claude_log")" ""
+  assert_eq "Codex was not used" "$(cat "$codex_log")" ""
   assert_eq "install ran" "$(sed -n '1p' "$pnpm_log")" "install --frozen-lockfile --prefer-offline"
   assert_eq "the repository checks ran" "$(sed -n '2p' "$pnpm_log")" \
     "exec turbo run typecheck test"
@@ -319,13 +315,13 @@ t_already_current() {
   assert_contains "output explains the no-op" "$stdout" "Nothing to do."
   assert_personal_unchanged "$before_personal"
   assert_eq "no checks ran" "$(cat "$pnpm_log")" ""
-  assert_eq "claude was not used" "$(cat "$claude_log")" ""
+  assert_eq "Codex was not used" "$(cat "$codex_log")" ""
   assert_no_push
   assert_no_leftover_state
 }
 
-# Whatever Git leaves unresolved is what Claude gets, whichever files those are.
-t_modify_modify_conflicts_go_to_claude() {
+# Whatever Git leaves unresolved is what Codex gets, whichever files those are.
+t_modify_modify_conflicts_go_to_codex() {
   local one two four before_personal
   one="$(seeded_path 1)"
   two="$(seeded_path 2)"
@@ -347,17 +343,17 @@ for path in "$one" "$two" "$four"; do
 done
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
-  assert_eq "claude was used once" "$(cat "$claude_log")" "called"
-  assert_eq "claude got exactly the unresolved paths" \
+  assert_eq "Codex was used once" "$(cat "$codex_log")" "called"
+  assert_eq "Codex got exactly the unresolved paths" \
     "$(prompt_conflict_list | sort)" "$(printf '%s\n%s\n%s\n' "$one" "$two" "$four" | sort)"
   assert_contains "prompt carries incoming history" \
-    "$(cat "$claude_prompt")" "Incoming commits since the merge base:"
+    "$(cat "$codex_prompt")" "Incoming commits since the merge base:"
   assert_contains "prompt carries local history" \
-    "$(cat "$claude_prompt")" "Local commits since the merge base:"
+    "$(cat "$codex_prompt")" "Local commits since the merge base:"
   assert_contains "prompt names the merge base" \
-    "$(cat "$claude_prompt")" "$(git -C "$repo" merge-base "$before_personal" main)"
+    "$(cat "$codex_prompt")" "$(git -C "$repo" merge-base "$before_personal" main)"
   assert_eq "resolution reached personal" \
     "$(cat "$personal/$two")" "$(source_file merged)"
   assert_adopted "$before_personal"
@@ -365,7 +361,7 @@ RESOLVER
   assert_no_leftover_state
 }
 
-t_add_add_conflict_goes_to_claude() {
+t_add_add_conflict_goes_to_codex() {
   local added before_personal
   added="$(fresh_path a)"
   upstream_set "$added" "$(source_file upstream-added)"
@@ -379,16 +375,16 @@ printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$ad
 git add -- "$added"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
-  assert_eq "claude got the added path" "$(prompt_conflict_list)" "$added"
+  assert_eq "Codex got the added path" "$(prompt_conflict_list)" "$added"
   assert_eq "resolution reached personal" "$(cat "$personal/$added")" "$(source_file merged)"
   assert_adopted "$before_personal"
   assert_no_push
   assert_no_leftover_state
 }
 
-t_delete_modify_conflict_goes_to_claude() {
+t_delete_modify_conflict_goes_to_codex() {
   local target before_personal
   target="$(seeded_path 3)"
   upstream_remove "$target"
@@ -401,9 +397,9 @@ set -euo pipefail
 git rm -q -f -- "$target"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
-  assert_eq "claude got the deleted path" "$(prompt_conflict_list)" "$target"
+  assert_eq "Codex got the deleted path" "$(prompt_conflict_list)" "$target"
   assert_eq "the file is gone from the checkout" \
     "$([ -e "$personal/$target" ] && echo present || echo absent)" "absent"
   assert_eq "the file is gone from the commit" \
@@ -413,7 +409,7 @@ RESOLVER
   assert_no_leftover_state
 }
 
-t_rename_modify_conflict_goes_to_claude() {
+t_rename_modify_conflict_goes_to_codex() {
   local origin_path renamed before_personal conflicted
   origin_path="$(seeded_path 2)"
   renamed="$(fresh_path renamed)"
@@ -431,9 +427,9 @@ git diff --name-only --diff-filter=U -z | while IFS= read -r -d '' path; do
 done
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
-  assert_eq "claude was used" "$(cat "$claude_log")" "called"
+  assert_eq "Codex was used" "$(cat "$codex_log")" "called"
   conflicted="$(prompt_conflict_list)"
   assert_ne "a path was reported as conflicted" "$conflicted" ""
   assert_eq "the resolved content reached personal" \
@@ -445,7 +441,7 @@ RESOLVER
 
 # The resolver is free to edit beyond the conflicted files, so whatever it
 # leaves in the worktree must reach the commit that gets checked and adopted.
-t_claude_edits_beyond_the_conflict() {
+t_codex_edits_beyond_the_conflict() {
   local conflicted untouched created before_personal
   conflicted="$(seeded_path 1)"
   untouched="$(seeded_path 4)"
@@ -463,7 +459,7 @@ printf 'export const marker = "rewritten";\nexport const tail = "stable";\n' > "
 printf 'export const marker = "created";\nexport const tail = "stable";\n' > "$created"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
   assert_eq "the unstaged rewrite is committed" \
     "$(git -C "$repo" show "personal:$untouched")" "$(source_file rewritten)"
@@ -496,15 +492,16 @@ printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$co
 git add -- "$conflicted" "$(fresh_path evidence)"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "exit status" "$status" "0"
 
-  argv="$(cat "$claude_argv")"
-  assert_contains "full permission mode is requested" "$argv" "bypassPermissions"
-  assert_contains "high effort is requested" "$argv" "--effort"
-  assert_missing "no tool allowlist" "$argv" "--allowedTools"
-  assert_missing "no tool denylist" "$argv" "--disallowedTools"
-  assert_missing "no accept-edits restriction" "$argv" "acceptEdits"
+  argv="$(cat "$codex_argv")"
+  assert_eq "Codex gets the exact non-interactive full-permission invocation" "$argv" \
+    "$(printf '%s\n' \
+      exec \
+      --dangerously-bypass-approvals-and-sandbox \
+      --ignore-rules \
+      --ephemeral)"
 
   assert_eq "the non-git work reached personal" \
     "$(git -C "$repo" show "personal:$(fresh_path evidence)")" "built by a non-git command"
@@ -543,7 +540,7 @@ pnpm install --frozen-lockfile --prefer-offline
 pnpm exec turbo run typecheck test
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh" PNPM_REQUIRE_FILE="$repair"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh" PNPM_REQUIRE_FILE="$repair"
   assert_eq "exit status" "$status" "0"
   assert_eq "the resolver ran the checks twice and the script confirmed once" \
     "$(turbo_invocations)" "3"
@@ -572,17 +569,17 @@ printf 'export const marker = "unverified";\nexport const tail = "stable";\n' > 
 git add -- "$conflicted"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh" PNPM_FAIL_ON="turbo"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh" PNPM_FAIL_ON="turbo"
   assert_ne "exit status" "$status" "0"
   assert_contains "error explains the failure" "$stderr" "checks failed"
   assert_personal_unchanged "$before_personal"
   assert_eq "the reuse cache is untouched" "$(rr_entries)" "$before_rr"
 
   # Prove it by replaying the same merge with a resolver that cannot run.
-  : > "$claude_log"
-  run_sync CLAUDE_EXIT=1
+  : > "$codex_log"
+  run_sync CODEX_EXIT=1
   assert_ne "second run exit status" "$status" "0"
-  assert_eq "the second run still needed a resolver" "$(cat "$claude_log")" "called"
+  assert_eq "the second run still needed a resolver" "$(cat "$codex_log")" "called"
   assert_contains "the conflict came back" "$stderr" "$conflicted"
   assert_personal_unchanged "$before_personal"
   assert_no_push
@@ -607,7 +604,7 @@ git add -- "$conflicted"
 git commit -q --no-edit
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_ne "exit status" "$status" "0"
   assert_contains "error explains the cause" "$stderr" "merge state was lost"
   assert_personal_unchanged "$before_personal"
@@ -638,7 +635,7 @@ for remote in origin upstream; do
 done
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_missing "no push reported success" "$(cat "$fixture/push.log")" "pushed"
   assert_no_push
   assert_eq "the sync still finished" "$status" "0"
@@ -656,7 +653,7 @@ t_unresolved_conflict_aborts() {
   # The stub returns success without resolving anything.
   run_sync
   assert_ne "exit status" "$status" "0"
-  assert_eq "claude was used" "$(cat "$claude_log")" "called"
+  assert_eq "Codex was used" "$(cat "$codex_log")" "called"
   assert_contains "error names the path" "$stderr" "$conflicted"
   assert_contains "error explains the cause" "$stderr" "unresolved"
   assert_personal_unchanged "$before_personal"
@@ -685,7 +682,7 @@ git add -- "$conflicted"
 printf '<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> other\n' > "$polluted"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_ne "exit status" "$status" "0"
   assert_contains "error names the polluted file" "$stderr" "$polluted"
   assert_contains "error explains the cause" "$stderr" "conflict markers"
@@ -709,18 +706,18 @@ printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$co
 git add -- "$conflicted"
 RESOLVER
 
-  run_sync CLAUDE_RESOLVER="$fixture/resolver.sh"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh"
   assert_eq "first run exit status" "$status" "0"
-  assert_eq "first run used claude" "$(cat "$claude_log")" "called"
+  assert_eq "first run used Codex" "$(cat "$codex_log")" "called"
 
   # Replay the same merge. rerere must supply the same resolution with no model.
   git -C "$personal" reset -q --hard "$before_personal"
-  : > "$claude_log"
+  : > "$codex_log"
   : > "$pnpm_log"
 
-  run_sync CLAUDE_EXIT=1
+  run_sync CODEX_EXIT=1
   assert_eq "second run exit status" "$status" "0"
-  assert_eq "second run did not use claude" "$(cat "$claude_log")" ""
+  assert_eq "second run did not use Codex" "$(cat "$codex_log")" ""
   assert_eq "cached resolution reached personal" \
     "$(cat "$personal/$conflicted")" "$(source_file merged)"
   assert_adopted "$before_personal"
@@ -854,11 +851,11 @@ t_no_file_specific_conflict_policy() {
 tests=(
   t_clean_sync
   t_already_current
-  t_modify_modify_conflicts_go_to_claude
-  t_add_add_conflict_goes_to_claude
-  t_delete_modify_conflict_goes_to_claude
-  t_rename_modify_conflict_goes_to_claude
-  t_claude_edits_beyond_the_conflict
+  t_modify_modify_conflicts_go_to_codex
+  t_add_add_conflict_goes_to_codex
+  t_delete_modify_conflict_goes_to_codex
+  t_rename_modify_conflict_goes_to_codex
+  t_codex_edits_beyond_the_conflict
   t_resolver_has_full_command_freedom
   t_resolver_repairs_a_failing_repository_check
   t_failed_checks_leave_no_reusable_resolution
