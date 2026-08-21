@@ -14,7 +14,8 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 - `skills/` contains the skills exposed to all three coding agents.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
-- `bin/` contains small shared commands, including `papercut` for recording workflow friction and `doppler-to-env` for creating local dotenv files.
+- `bin/` contains small shared commands, including `papercut` for recording workflow friction, `doppler-to-env` for creating local dotenv files, and `sync-bb-personal` for updating the bb `personal` branch from upstream.
+- `tests/` contains the checks for the commands in `bin/`.
 
 Each entry under `skills/` is one of:
 
@@ -80,6 +81,7 @@ Other
   ~/.local/bin/codex
   ~/.local/bin/doppler-to-env
   ~/.local/bin/papercut
+  ~/.local/bin/sync-bb-personal
 ```
 
 Codex and Pi discover `~/.agents/skills`. Claude Code discovers `~/.claude/skills`. Both locations resolve to the same `skills/` directory.
@@ -109,6 +111,37 @@ The review panel reads `FIREWORKS_API_KEY` from `~/.dotfiles/.env`. Create that 
 ```bash
 doppler-to-env --project api-keys --config dev_personal --output ~/.dotfiles/.env FIREWORKS_API_KEY
 ```
+
+### Sync the bb personal branch
+
+Run on demand from anywhere:
+
+```bash
+sync-bb-personal
+```
+
+The command works on `~/code/bb`. Pass `--repo PATH` to use another checkout.
+
+What it does, in order:
+
+1. Checks that the `personal` worktree is clean. It stops before fetching if it is not.
+2. Fetches `upstream` and advances local `main` with fast-forward-only semantics. It finds the `main` worktree with `git worktree list --porcelain`, so it works whether `main` is checked out or not. It stops if `main` is behind and its checkout is dirty, or if `main` has diverged.
+3. Merges `main` into `personal` inside a temporary worktree. The real checkout is never in a merge state.
+4. Resolves conflicts in this order: rerere replays cached resolutions and stages them, then an arithmetic resolver sets `HOST_DAEMON_PROTOCOL_VERSION` to `upstream + (personal - merge base)`.
+5. Stops for your review if `host-daemon-contract/src/commands.ts` or `host-daemon-contract/test/contract.test.ts` still conflict. A passing build is not evidence of wire compatibility, so these two never get an automatic resolution.
+6. Calls the installed Claude Code CLI once, non-interactively at high effort, for any other file that still conflicts. Claude may edit whatever the merge needs, not only the conflicted files, and everything it leaves in the worktree goes into the merge commit. It stops if conflict markers remain.
+7. Installs dependencies in the temporary worktree and runs `turbo run typecheck test`, filtered to the packages the merge changed and their dependents. A merge that also moves a root file such as the lockfile selects no package at all, so those runs check everything instead.
+8. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit the merge started from and is still clean.
+
+The temporary worktree is always removed. Nothing is ever pushed.
+
+Run the checks:
+
+```bash
+tests/sync-bb-personal.sh
+```
+
+The tests build their own throwaway repositories and stub `claude` and `pnpm`. They never touch the real bb checkout and never start a model call.
 
 ### Update upstream skill sources
 

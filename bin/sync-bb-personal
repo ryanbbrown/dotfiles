@@ -1,0 +1,322 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: sync-bb-personal [--repo PATH]
+
+Bring the personal branch of the bb checkout up to date with upstream main.
+
+The command fetches upstream, advances local main with fast-forward-only
+semantics, merges main into personal inside a temporary worktree, runs the
+affected package checks there, and adopts the tested merge into the real
+personal checkout with a fast-forward merge. It never pushes.
+
+Conflicts are resolved by rerere and by an arithmetic resolver for the
+host-daemon protocol version. Claude Code runs only on the conflicts that
+neither of those can finish. Conflicts in the wire contract stop the command
+for review instead.
+
+Options:
+  --repo PATH  Git repository that holds the main and personal branches.
+               Defaults to ~/code/bb.
+  -h, --help   Show this help.
+USAGE
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+repo="$HOME/code/bb"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --repo)
+      [ "$#" -ge 2 ] || die "--repo requires a value"
+      repo="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown option: $1"
+      ;;
+  esac
+done
+
+upstream_remote="upstream"
+main_branch="main"
+personal_branch="personal"
+protocol_path="packages/host-daemon-contract/src/protocol.ts"
+# A passing build is not evidence of wire compatibility, so these two never get
+# an automatic resolution.
+protected_paths=(
+  "packages/host-daemon-contract/src/commands.ts"
+  "packages/host-daemon-contract/test/contract.test.ts"
+)
+
+git_repo() {
+  git -C "$repo" "$@"
+}
+
+# rerere records and replays resolutions in the shared rr-cache of the
+# repository, so the settings belong on the merge commands rather than in
+# anyone's global configuration.
+git_merge_tree() {
+  git -C "$merge_tree" -c rerere.enabled=true -c rerere.autoupdate=true "$@"
+}
+
+worktree_for_branch() {
+  local want="branch refs/heads/$1"
+  local current=""
+  local line
+  while IFS= read -r line; do
+    if [ "${line#worktree }" != "$line" ]; then
+      current="${line#worktree }"
+    elif [ "$line" = "$want" ]; then
+      printf '%s\n' "$current"
+      return 0
+    fi
+  done < <(git_repo worktree list --porcelain)
+  return 1
+}
+
+worktree_is_clean() {
+  [ -z "$(git -C "$1" status --porcelain)" ]
+}
+
+unmerged_paths() {
+  git -C "$merge_tree" diff --name-only --diff-filter=U
+}
+
+protocol_version() {
+  local value
+  value="$(sed -n 's/^export const HOST_DAEMON_PROTOCOL_VERSION = \([0-9][0-9]*\) as const;$/\1/p' "$1")"
+  case "$value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$value"
+}
+
+# The version constant conflicts on every merge because both sides always edit
+# the same line, and rerere can never match it because the numbers differ each
+# time. The correct value is arithmetic, not a judgement.
+resolve_protocol_version() {
+  local base="$temp_root/protocol.base"
+  local ours="$temp_root/protocol.ours"
+  local theirs="$temp_root/protocol.theirs"
+  local merged="$temp_root/protocol.merged"
+  local base_version ours_version theirs_version resolved_version file
+
+  git -C "$merge_tree" show ":1:$protocol_path" > "$base" 2>/dev/null || return 1
+  git -C "$merge_tree" show ":2:$protocol_path" > "$ours" 2>/dev/null || return 1
+  git -C "$merge_tree" show ":3:$protocol_path" > "$theirs" 2>/dev/null || return 1
+
+  base_version="$(protocol_version "$base")" || return 1
+  ours_version="$(protocol_version "$ours")" || return 1
+  theirs_version="$(protocol_version "$theirs")" || return 1
+  resolved_version=$(( theirs_version + ours_version - base_version ))
+
+  for file in "$base" "$ours" "$theirs"; do
+    sed 's/^export const HOST_DAEMON_PROTOCOL_VERSION = [0-9][0-9]* as const;$/export const HOST_DAEMON_PROTOCOL_VERSION = SYNC_PROTOCOL_VERSION as const;/' \
+      "$file" > "$file.normalized"
+  done
+
+  git merge-file -p "$ours.normalized" "$base.normalized" "$theirs.normalized" > "$merged" || return 1
+  sed "s/SYNC_PROTOCOL_VERSION/$resolved_version/" "$merged" > "$merge_tree/$protocol_path"
+  git -C "$merge_tree" add -- "$protocol_path"
+  echo "Resolved $protocol_path to protocol version $resolved_version."
+}
+
+conflicts_in_wire_contract() {
+  local path protected
+  while IFS= read -r path; do
+    for protected in "${protected_paths[@]}"; do
+      if [ "$path" = "$protected" ]; then
+        printf '%s\n' "$path"
+      fi
+    done
+  done < <(unmerged_paths)
+}
+
+has_conflict_markers() {
+  local path
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    [ -f "$merge_tree/$path" ] || continue
+    if grep -qE '^(<<<<<<<|>>>>>>>) ' "$merge_tree/$path"; then
+      return 0
+    fi
+  done <<< "$1"
+  return 1
+}
+
+indent() {
+  printf '%s\n' "$1" | sed 's/^/  /'
+}
+
+# turbo selects packages by directory, so a change to a root file such as the
+# lockfile selects nothing at all. Those runs have to check everything.
+merge_changed_files_outside_packages() {
+  local path directory
+  while IFS= read -r path; do
+    directory="$(dirname "$path")"
+    while [ "$directory" != "." ]; do
+      if git -C "$merge_tree" cat-file -e "$merge_commit:$directory/package.json" 2>/dev/null; then
+        continue 2
+      fi
+      directory="$(dirname "$directory")"
+    done
+    return 0
+  done < <(git -C "$merge_tree" diff --name-only "$personal_head" "$merge_commit")
+  return 1
+}
+
+run_checks() {
+  ( cd "$merge_tree" &&
+    pnpm install --frozen-lockfile --prefer-offline &&
+    pnpm exec turbo run typecheck test "$@" )
+}
+
+[ -d "$repo" ] || die "repository directory does not exist: $repo"
+git_repo rev-parse --git-dir >/dev/null 2>&1 || die "not a Git repository: $repo"
+git_repo remote get-url "$upstream_remote" >/dev/null 2>&1 ||
+  die "the '$upstream_remote' remote is not configured in $repo"
+git_repo rev-parse --verify --quiet "refs/heads/$main_branch" >/dev/null ||
+  die "branch $main_branch does not exist in $repo"
+git_repo rev-parse --verify --quiet "refs/heads/$personal_branch" >/dev/null ||
+  die "branch $personal_branch does not exist in $repo"
+
+# Preflight the real personal checkout before anything else touches the
+# repository. A dirty checkout is an editing session, not a sync target.
+personal_worktree="$(worktree_for_branch "$personal_branch")" ||
+  die "branch $personal_branch is not checked out in any worktree of $repo"
+[ -d "$personal_worktree" ] || die "the $personal_branch worktree is missing: $personal_worktree"
+worktree_is_clean "$personal_worktree" ||
+  die "the $personal_branch checkout has local changes: $personal_worktree"
+personal_head="$(git_repo rev-parse "$personal_branch")"
+
+git_repo fetch --quiet "$upstream_remote" "$main_branch" ||
+  die "could not fetch $main_branch from $upstream_remote"
+
+main_worktree=""
+main_worktree="$(worktree_for_branch "$main_branch")" || true
+if [ "$(git_repo rev-parse "$main_branch")" = "$(git_repo rev-parse "$upstream_remote/$main_branch")" ]; then
+  echo "Branch $main_branch already matches $upstream_remote/$main_branch."
+elif [ -n "$main_worktree" ]; then
+  [ -d "$main_worktree" ] || die "the $main_branch worktree is missing: $main_worktree"
+  worktree_is_clean "$main_worktree" ||
+    die "the $main_branch checkout has local changes and is behind $upstream_remote/$main_branch: $main_worktree"
+  git -C "$main_worktree" merge --ff-only "$upstream_remote/$main_branch" >/dev/null ||
+    die "$main_branch has diverged from $upstream_remote/$main_branch; resolve it by hand"
+  echo "Advanced $main_branch in $main_worktree."
+else
+  git_repo fetch --quiet "$upstream_remote" "$main_branch:$main_branch" ||
+    die "$main_branch has diverged from $upstream_remote/$main_branch; resolve it by hand"
+  echo "Advanced $main_branch."
+fi
+
+if git_repo merge-base --is-ancestor "$main_branch" "$personal_branch"; then
+  echo "Branch $personal_branch already contains $main_branch. Nothing to do."
+  exit 0
+fi
+
+temp_root="$(mktemp -d "${TMPDIR:-/tmp}/sync-bb-personal.XXXXXX")"
+merge_tree="$temp_root/merge"
+cleanup() {
+  if [ -d "$merge_tree" ]; then
+    git_repo worktree remove --force "$merge_tree" >/dev/null 2>&1 || true
+  fi
+  rm -rf -- "$temp_root"
+  git_repo worktree prune >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+git_repo worktree add --quiet --detach "$merge_tree" "$personal_head"
+
+if git_merge_tree merge --no-ff --no-edit "$main_branch" >/dev/null; then
+  echo "Merged $main_branch into $personal_branch without conflicts."
+else
+  if [ -n "$(unmerged_paths)" ]; then
+    resolve_protocol_version || true
+  fi
+
+  wire_conflicts="$(conflicts_in_wire_contract)"
+  if [ -n "$wire_conflicts" ]; then
+    echo "Wire contract conflicts need your review:" >&2
+    indent "$wire_conflicts" >&2
+    die "stopped without changing $personal_branch"
+  fi
+
+  remaining="$(unmerged_paths)"
+  if [ -n "$remaining" ]; then
+    claude_bin="$(command -v claude)" || die "Claude Code is not installed"
+    echo "Asking Claude Code to resolve:"
+    indent "$remaining"
+
+    prompt="You are resolving a Git merge inside an isolated scratch worktree. The merge brings branch $main_branch into branch $personal_branch.
+
+These files conflict:
+$remaining
+
+Rules:
+- Keep the intent of both sides. Do not drop $personal_branch customizations and do not drop upstream changes.
+- Leave no conflict markers.
+- Make any further edit the merge needs to be coherent.
+- Do not commit, push, install, build, or run tests.
+
+Reply with one line per file: '<file>: resolved' or '<file>: unresolved'."
+
+    ( cd "$merge_tree" && "$claude_bin" -p "$prompt" \
+        --effort high \
+        --permission-mode acceptEdits \
+        --allowedTools 'Read,Edit,Write,Grep,Glob,Bash(git add:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*)' ) ||
+      die "Claude Code did not finish; $personal_branch is unchanged"
+
+    still_unmerged="$(unmerged_paths)"
+    if [ -n "$still_unmerged" ] || has_conflict_markers "$remaining"; then
+      echo "These files are still conflicted:" >&2
+      indent "${still_unmerged:-$remaining}" >&2
+      die "stopped without changing $personal_branch"
+    fi
+  fi
+
+  git -C "$merge_tree" rev-parse --verify --quiet MERGE_HEAD >/dev/null ||
+    die "the merge state was lost; $personal_branch is unchanged"
+  # The resolver may edit more than the conflicted files, and the checks below
+  # read the working tree, so the commit has to carry everything in it.
+  git -C "$merge_tree" add -A
+  git_merge_tree commit --no-edit >/dev/null ||
+    die "could not record the merge commit; $personal_branch is unchanged"
+  echo "Merged $main_branch into $personal_branch after conflict resolution."
+fi
+
+merge_commit="$(git -C "$merge_tree" rev-parse HEAD)"
+[ "$(git -C "$merge_tree" rev-parse "$merge_commit^1")" = "$personal_head" ] ||
+  die "the merge commit does not build on $personal_branch; nothing was adopted"
+
+if merge_changed_files_outside_packages; then
+  echo "The merge changes files outside the workspace packages. Checking everything."
+  run_checks || die "checks failed; $personal_branch is unchanged"
+else
+  echo "Running checks for the packages the merge changed."
+  # turbo selects the changed packages and their dependents from the range, so
+  # the run stays as small as the merge allows.
+  run_checks --filter="...[$personal_head]" || die "checks failed; $personal_branch is unchanged"
+fi
+
+# The real checkout is live. Adopt only if it is still exactly where the merge
+# started, and only by fast-forward, so a half-updated tree cannot happen.
+[ "$(git_repo rev-parse "$personal_branch")" = "$personal_head" ] ||
+  die "$personal_branch moved during the sync; nothing was adopted"
+worktree_is_clean "$personal_worktree" ||
+  die "the $personal_branch checkout changed during the sync; nothing was adopted"
+git -C "$personal_worktree" merge --ff-only "$merge_commit" >/dev/null ||
+  die "could not fast-forward $personal_branch; nothing was adopted"
+
+echo "Adopted $(git_repo rev-parse --short "$merge_commit") into $personal_branch at $personal_worktree."
+echo "Nothing was pushed."
