@@ -1,60 +1,45 @@
 ---
 name: implement
-description: Implement an approved plan with one subagent and independent review panels. Use only when the user explicitly requests the implement skill.
+description: Plan and implement a task in interview or direct mode with exact plan and implementation review cycles. Use only when the user explicitly requests the implement skill.
 ---
 
 # Implement
 
-Use this skill after an implementation plan is complete and approved. The main agent owns the workflow and remains the final decision-maker. Use one implementation subagent as the only writer for the active worktree.
+Invoke as:
 
-## Required inputs
+```text
+/implement <interview|direct> p<N> i<N> — <task or approved plan>
+```
 
-Before implementation, identify:
+Require both counts. `pN` is the number of successful plan-review cycles. `iN` is the number of successful implementation-review cycles. Zero means no panel for that phase. Run exactly the requested counts and no extra cycles.
 
-- the approved plan file
-- a stable feature name for every review round
-- the repository being changed
-- the clean pre-implementation Git SHA that defines the review base
-- the plan's acceptance checks and required validation
-- the exact number of review rounds, if the user specified one
+The main agent owns planning, decisions, review synthesis, and final validation. Use one implementation subagent as the only implementation writer.
 
-Ask the user about any unresolved product, scope, or architecture decision before launching the implementation subagent. Do not ask for a review-round count when the user did not provide one.
+## Plan
 
-Require a clean worktree before recording the review base. Existing uncommitted work makes the feature boundary ambiguous, so preserve it separately or ask the user how to proceed. Record `git rev-parse HEAD` after the approved plan is committed and immediately before launching the implementation subagent.
+Use an existing approved plan without recreating or reopening it. Otherwise create a plan that states the scope, decisions, acceptance checks, and required validation.
+
+- `interview`: inspect the task and code, identify the few important unresolved design decisions, give a recommendation for each, and wait for the user. After the user responds, create the plan and continue.
+- `direct`: inspect the task and code, make clear bounded decisions, create the plan, and continue without unnecessary questions.
+
+For each requested plan-review cycle, run `review-panel` in plan mode, verify and synthesize its findings, and apply required revisions to the plan. Write the synthesis beside the reports. A cycle succeeds when the panel succeeds and its required revisions are resolved. A failed panel does not count.
 
 ## Implement
 
-1. List the available subagents and confirm that an implementation worker is executable.
-2. Launch one implementation subagent with the plan path, approved scope, acceptance checks, validation requirements, review base SHA, and expected handoff. The writer may commit the implementation. Do not edit the same worktree or launch another writer while it runs.
-3. When the implementation subagent finishes, inspect its handoff. If implementation or required validation is incomplete, resume the same subagent to finish before review.
+If implementation reviews are requested, require a clean worktree and record the pre-implementation Git SHA after the plan is settled.
 
-## Review and synthesize
+Launch one implementation subagent with the plan, acceptance checks, validation requirements, and review base when needed. Inspect its handoff and resume the same subagent until the implementation and required validation are complete.
 
-1. Load and follow the `review-panel` skill in implementation mode. Pass the stable feature name, original plan, and recorded review base with `--base-ref`. It runs the script in the background and reports the generated files.
-2. After the review process succeeds, read the round manifest and every reviewer report.
-3. Verify each finding against the frozen snapshot. Decide by evidence rather than reviewer count, and merge duplicate findings.
-4. Write `<feature-slug>-synthesis-vN.md` next to that round's reports. This is the authoritative fix list for the implementation subagent.
-5. For each required fix, include the source findings, file location, verified problem, required outcome, and validation. Briefly record findings that require a user decision or need no action, with the reason.
-6. Ask the user only for decisions that cannot be made from the code and approved plan. Update the synthesis with each decision before continuing.
+For each requested implementation-review cycle, run `review-panel` in implementation mode against the original review base. Read every report, verify findings against the frozen snapshot, and write a synthesis beside the reports. Resume the same implementation subagent with required fixes and validation. A cycle succeeds when the panel succeeds, required fixes are complete, and required validation passes. A failed panel does not count.
 
-## Fix
+Decide findings by evidence rather than reviewer count. Send the implementation subagent the synthesis, not the raw reports.
 
-If required fixes remain, resume the same implementation subagent. Pass it the original plan and synthesis file. Tell it to apply the required fixes, preserve approved decisions, run the listed validation, and return an updated handoff. Do not launch a fresh fix worker when the original subagent can be resumed, and do not ask it to reinterpret the raw review reports.
+## Stop boundaries
 
-If no required fixes remain, skip the fix handoff.
+In `direct` mode, stop for the user when a material product, scope, architecture, security, privacy, data-loss, or irreversible decision cannot be safely inferred.
 
-## Decide whether to repeat
-
-If the user specified a review-round count, run exactly that many rounds. Follow that count even when the dynamic guidelines below would choose a different number. Use the same feature name so the script creates the next version.
-
-If the user did not specify a count, default to one review round. After fixes, use focused validation and inspect the final diff. Do not repeat only because a fix changed behavior or corrected a defect.
-
-Run a second round only when the fixes are broad, high-risk, or difficult to validate directly. Examples include security, privacy, safety, data loss, concurrency, or major architecture changes. Run a third round only when the second-round fixes introduce another substantial high-risk change.
-
-Do not repeat a round only to pursue optional polish. Treat the script's review-round cap as a safety limit, not a target. Do not hide unresolved required fixes or material risks when the final round ends.
+The invocation does not authorize deployment, publishing, pushing, external communication, production changes, or spending outside the requested review panels. Require explicit authorization for those actions.
 
 ## Complete
 
-Inspect the final diff and confirm the required validation before reporting completion. Report the implementation result, validation evidence, synthesis files, review rounds, deferred findings, and residual risks.
-
-A user decision pauses the workflow; it does not end it. After the user answers, continue with the saved implementation subagent when fixes remain. If that subagent cannot be resumed and substituting a new writer would lose important context, stop and ask the user.
+Inspect the final diff and validation. Report the result, completed review counts, synthesis files, deferred findings, and residual risks.

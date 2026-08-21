@@ -265,17 +265,12 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 ## Main implementation flow
 
-The `implement` skill is the standard delivery path after a plan is complete and approved. The parent agent owns scope, decisions, review synthesis, and final validation.
+Invoke the `implement` skill with a planning mode and explicit review counts:
 
-1. Identify the approved plan, acceptance checks, repository, stable feature name, and any user-specified review-round count.
-2. Resolve any open product or architecture decision before implementation starts.
-3. Launch one implementation subagent as the only writer for the active worktree.
-4. Inspect the implementation handoff and require its listed validation to pass.
-5. Run `review-panel` as a managed background process against one frozen repository snapshot.
-6. Read the Codex, Claude Code, and GLM reports. Verify each finding against the snapshot instead of counting votes.
-7. Write a versioned synthesis beside the reports. This file becomes the authoritative fix list.
-8. Resume the same implementation subagent with the plan and synthesis. Do not send raw reviewer reports for reinterpretation.
-9. Run exactly the number of rounds the user requests. Without a requested count, default to one and repeat only after broad or high-risk fixes.
-10. Inspect the final diff and validation. Report deferred findings and residual risks.
+```text
+/implement <interview|direct> p<N> i<N> — <task or approved plan>
+```
 
-This flow keeps one writer responsible for the implementation. It also separates independent review from the decision about what to change.
+`interview` raises the few important design decisions and waits for the user. `direct` creates a plan when needed and proceeds when the task is clear. An existing approved plan is used without recreation.
+
+`pN` and `iN` are the required numbers of successful plan-review and implementation-review cycles. Zero means no panel for that phase. The parent agent owns planning, review synthesis, and final validation. One implementation subagent remains the only implementation writer and receives the verified synthesis after each implementation review.
