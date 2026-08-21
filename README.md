@@ -139,9 +139,10 @@ Run the checks:
 
 ```bash
 tests/sync-bb-personal.sh
+tests/firstmate-skills.sh
 ```
 
-The tests build their own throwaway repositories and stub `codex` and `pnpm`. They never touch the real bb checkout and never start a model call.
+The tests build throwaway state and stub `bb`, `codex`, and `pnpm`. They never touch the real bb checkout, run `sync-bb-personal`, change live threads, or start a model call.
 
 ### Update upstream skill sources
 
@@ -272,6 +273,13 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 - `implement` runs the main implementation and review workflow described below.
 - `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
+
+#### Firstmate operations
+
+- `/sync-bb-personal` runs the installed personal branch sync and reports its outcome.
+- `/rotate-firstmate` moves the current Firstmate and all direct children to a fresh pinned root thread.
+
+Both skills require explicit user invocation. `scripts/link-home.sh` exposes them through the shared `skills/` link with the other skills.
 
 #### Review and browser QA
 

@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state="${ROTATE_FIRSTMATE_TEST_STATE:?}"
+command_name="${1:-} ${2:-}"
+
+value() {
+  sed -n '1p' "$state/$1"
+}
+
+set_value() {
+  printf '%s\n' "$2" > "$state/$1"
+}
+
+thread_json() {
+  local id="$1"
+  local parent="null"
+  local pinned="null"
+
+  case "$id" in
+    old)
+      [ "$(value old_pinned)" = true ] && pinned=100
+      ;;
+    new)
+      [ "$(value new_pinned)" = true ] && pinned=200
+      ;;
+    child-a|child-b)
+      parent="\"$(value "${id}_parent")\""
+      ;;
+    *) exit 2 ;;
+  esac
+
+  printf '{"thread":{"id":"%s","projectId":"project","environmentId":"environment","providerId":"pi","parentThreadId":%s,"pinnedAt":%s,"status":"idle"}}\n' "$id" "$parent" "$pinned"
+}
+
+case "$command_name" in
+  "thread show")
+    thread_json "$3"
+    ;;
+  "thread spawn")
+    printf '{"thread":{"id":"new"}}\n'
+    ;;
+  "thread wait")
+    printf '{"status":"idle"}\n'
+    ;;
+  "thread pin")
+    set_value new_pinned true
+    printf '{"ok":true}\n'
+    ;;
+  "thread unpin")
+    set_value "${3}_pinned" false
+    printf '{"ok":true}\n'
+    ;;
+  "thread update")
+    child_id="$3"
+    shift 3
+    target=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --parent-thread ]; then
+        target="$2"
+        break
+      fi
+      shift
+    done
+    if [ "$(value mode)" = fail-child-b ] && [ "$child_id" = child-b ] && [ "$target" = new ]; then
+      exit 1
+    fi
+    set_value "${child_id}_parent" "$target"
+    printf '{"ok":true}\n'
+    ;;
+  "thread list")
+    shift 2
+    parent=""
+    archived=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --parent-thread)
+          parent="$2"
+          shift 2
+          ;;
+        --archived)
+          archived=true
+          shift
+          ;;
+        *) shift ;;
+      esac
+    done
+    if [ "$archived" = false ] && [ "$(value child-a_parent)" = "$parent" ]; then
+      printf '[{"id":"child-a"}]\n'
+    elif [ "$archived" = true ] && [ "$(value child-b_parent)" = "$parent" ]; then
+      printf '[{"id":"child-b"}]\n'
+    else
+      printf '[]\n'
+    fi
+    ;;
+  *)
+    echo "unexpected bb command: $*" >&2
+    exit 2
+    ;;
+esac

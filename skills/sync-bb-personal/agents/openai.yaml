@@ -1,0 +1,5 @@
+interface:
+  display_name: "Sync BB Personal"
+  short_description: "Run the installed personal branch sync"
+policy:
+  allow_implicit_invocation: false
