@@ -140,7 +140,7 @@ fi
 # Stands in for a repository check that fails until the resolver repairs it.
 if [ -n "${PNPM_REQUIRE_FILE:-}" ]; then
   case "$*" in
-    *turbo*) [ -e "$PNPM_REQUIRE_FILE" ] || exit 1 ;;
+    *"${PNPM_REQUIRE_FILE_ON:-turbo}"*) [ -e "$PNPM_REQUIRE_FILE" ] || exit 1 ;;
   esac
 fi
 if [ -n "${PNPM_FAIL_ON:-}" ]; then
@@ -160,6 +160,11 @@ while [ "$#" -gt 1 ]; do
   shift
 done
 printf '%s' "${1:-}" > "$CODEX_PROMPT"
+if [ -n "${CODEX_BLOCK_FILE:-}" ]; then
+  trap 'exit 143' HUP INT TERM
+  printf '%s\n' "$$" > "$CODEX_BLOCK_FILE"
+  while :; do sleep 1; done
+fi
 if [ -n "${CODEX_RESOLVER:-}" ]; then
   exec "$CODEX_RESOLVER"
 fi
@@ -354,6 +359,16 @@ RESOLVER
     "$(cat "$codex_prompt")" "Local commits since the merge base:"
   assert_contains "prompt names the merge base" \
     "$(cat "$codex_prompt")" "$(git -C "$repo" merge-base "$before_personal" main)"
+  assert_contains "prompt starts checks with changed-package typechecking" \
+    "$(cat "$codex_prompt")" "Before tests, typecheck the packages changed since"
+  assert_contains "prompt requires focused tests before the full graph" \
+    "$(cat "$codex_prompt")" "Make these focused checks pass before the complete graph."
+  assert_contains "prompt bounds failures outside the resolution diff" \
+    "$(cat "$codex_prompt")" "reproduce that exact failing task once by itself under stable load before editing code"
+  assert_contains "prompt identifies the full-graph boundary" \
+    "$(cat "$codex_prompt")" "complete-repository-graph sh -c"
+  assert_contains "prompt gives Codex the concise log wrapper" \
+    "$(cat "$codex_prompt")" "short failed-task summary first"
   assert_eq "resolution reached personal" \
     "$(cat "$personal/$two")" "$(source_file merged)"
   assert_adopted "$before_personal"
@@ -512,10 +527,10 @@ RESOLVER
   assert_no_leftover_state
 }
 
-# The whole point of the redesign: the resolver runs the repository checks
-# itself, sees a failure the merge caused, and repairs it before finishing.
+# Codex starts with changed-package typechecking, keeps failed output in a log,
+# repairs a focused test, and runs the complete graph only after both pass.
 t_resolver_repairs_a_failing_repository_check() {
-  local conflicted repair before_personal
+  local conflicted repair before_personal invocations
   conflicted="$(seeded_path 1)"
   repair="$(fresh_path repair)"
   upstream_set "$conflicted" "$(source_file upstream-1)"
@@ -528,22 +543,57 @@ set -euo pipefail
 printf 'export const marker = "merged";\nexport const tail = "stable";\n' > "$conflicted"
 git add -- "$conflicted"
 
-# First attempt at the repository checks fails.
-if pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test; then
-  printf 'checks passed too early\n' >&2
+runner="\$(dirname "\$CHECK_LOG_DIR")/run-logged-check"
+set +e
+"\$runner" missing-command
+runner_status=\$?
+set -e
+[ "\$runner_status" -eq 64 ] || exit 1
+"\$runner" install pnpm install --frozen-lockfile --prefer-offline
+"\$runner" changed-typecheck pnpm exec turbo run typecheck '--filter=...[merge-base]'
+
+if "\$runner" focused-test pnpm exec turbo run test --filter=@fixture/alpha; then
+  printf 'focused test passed too early\n' >&2
   exit 1
 fi
-
-# Diagnose, repair, and try again.
+# The failed command stays available to Codex even though only its summary printed.
+ls "\$CHECK_LOG_DIR"/*focused-test*.log >/dev/null
 printf 'export const marker = "repair";\nexport const tail = "stable";\n' > "$repair"
-pnpm install --frozen-lockfile --prefer-offline
-pnpm exec turbo run typecheck test
+"\$runner" focused-test-retry pnpm exec turbo run test --filter=@fixture/alpha
+"\$runner" complete-repository-graph sh -c 'pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test'
+set +e
+"\$runner" complete-repository-graph sh -c 'exit 0'
+runner_status=\$?
+set -e
+[ "\$runner_status" -eq 65 ] || exit 1
 RESOLVER
 
-  run_sync CODEX_RESOLVER="$fixture/resolver.sh" PNPM_REQUIRE_FILE="$repair"
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh" \
+    PNPM_REQUIRE_FILE="$repair" PNPM_REQUIRE_FILE_ON="turbo run test"
   assert_eq "exit status" "$status" "0"
-  assert_eq "the resolver ran the checks twice and the script confirmed once" \
-    "$(turbo_invocations)" "3"
+  assert_eq "the resolver ran focused checks, one full graph, and the outer full graph" \
+    "$(turbo_invocations)" "5"
+  invocations="$(cat "$pnpm_log")"
+  assert_eq "changed-package typechecking is the first task" \
+    "$(sed -n '2p' "$pnpm_log")" "exec turbo run typecheck --filter=...[merge-base]"
+  assert_eq "the focused failing package follows typechecking" \
+    "$(sed -n '3p' "$pnpm_log")" "exec turbo run test --filter=@fixture/alpha"
+  assert_eq "the focused test passes before the first complete graph" \
+    "$(sed -n '4p' "$pnpm_log")" "exec turbo run test --filter=@fixture/alpha"
+  assert_eq "the nested complete graph follows the focused checks" \
+    "$(sed -n '6p' "$pnpm_log")" "exec turbo run typecheck test"
+  assert_eq "the independent outer graph runs last" \
+    "$(sed -n '8p' "$pnpm_log")" "exec turbo run typecheck test"
+  assert_contains "the wrapper rejects a missing command" "$stderr" \
+    "usage: run-logged-check LABEL COMMAND"
+  assert_contains "the wrapper rejects a second nested complete graph" "$stderr" \
+    "nested complete repository graph may run only once"
+  assert_contains "the wrapper marks the first complete graph" "$stdout" \
+    "SYNC_BB_PERSONAL_FULL_CHECK_BEGIN"
+  assert_eq "the complete graph marker appears once" \
+    "$(printf '%s\n' "$stdout" | grep -c 'SYNC_BB_PERSONAL_FULL_CHECK_BEGIN' | tr -d ' ')" "1"
+  assert_contains "Codex received a short failure summary" "$stderr" "Failed-task summary"
+  assert_contains "the short summary names the available full log" "$stderr" "full log:"
   assert_eq "the repair is in the adopted commit" \
     "$(git -C "$repo" show "personal:$repair")" "$(source_file repair)"
   assert_eq "the repair reached the checkout" \
@@ -807,6 +857,50 @@ t_checks_failure_aborts() {
   assert_no_leftover_state
 }
 
+t_signal_stops_codex_and_cleans_up() {
+  local conflicted before_personal before_rr sync_pid tries
+  conflicted="$(seeded_path 1)"
+  upstream_set "$conflicted" "$(source_file upstream-1)"
+  personal_set "$conflicted" "$(source_file personal-1)"
+  before_personal="$(sha personal)"
+  before_rr="$(rr_entries)"
+  refs_before_origin="$(git -C "$origin_bare" for-each-ref)"
+  refs_before_upstream="$(git -C "$upstream_bare" for-each-ref)"
+
+  env \
+    PATH="$stub_bin:$PATH" \
+    TMPDIR="$run_tmp" \
+    PNPM_LOG="$pnpm_log" \
+    CODEX_LOG="$codex_log" \
+    CODEX_PROMPT="$codex_prompt" \
+    CODEX_ARGV="$codex_argv" \
+    CODEX_BLOCK_FILE="$fixture/codex-started" \
+    "$script" --repo "$repo" > "$stdout_file" 2> "$stderr_file" &
+  sync_pid=$!
+
+  tries=0
+  while [ ! -e "$fixture/codex-started" ] && kill -0 "$sync_pid" >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 200 ] || break
+    sleep 0.05
+  done
+  [ -e "$fixture/codex-started" ] || fail "Codex did not start before the signal test timed out"
+
+  kill -TERM "$sync_pid"
+  set +e
+  wait "$sync_pid"
+  status=$?
+  set -e
+  assert_eq "signal exit status" "$status" "143"
+  assert_personal_unchanged "$before_personal"
+  assert_eq "the reuse cache is untouched" "$(rr_entries)" "$before_rr"
+  assert_no_push
+  assert_no_leftover_state
+  if kill -0 "$(cat "$fixture/codex-started")" >/dev/null 2>&1; then
+    fail "the interrupted Codex process survived cleanup"
+  fi
+}
+
 t_personal_moving_during_checks_aborts() {
   diverge_without_conflict
   local before_personal
@@ -842,6 +936,9 @@ t_no_file_specific_conflict_policy() {
   if grep -qiE 'protected|protocol|contract|wire|dispatch|sidebar|daemon' "$script"; then
     fail "the script names a specific source file or subsystem"
   fi
+  if grep -qiE 'command -v pi|pi_bin|"\$pi_bin"|Pi CLI' "$script"; then
+    fail "the script retains a Pi resolver or fallback"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -869,6 +966,7 @@ tests=(
   t_dirty_personal_stops_before_fetch
   t_main_not_checked_out
   t_checks_failure_aborts
+  t_signal_stops_codex_and_cleans_up
   t_personal_moving_during_checks_aborts
   t_no_file_specific_conflict_policy
 )

@@ -12,11 +12,11 @@ semantics, merges main into personal inside a temporary worktree, runs the
 affected package checks there, and adopts the tested merge into the real
 personal checkout with a fast-forward merge. It never pushes.
 
-Git and rerere resolve what they can. Codex owns whatever is left: it
-resolves the conflicts, installs dependencies, runs the repository checks,
-repairs what the merge broke, and repeats until the checks pass. This command
-then confirms those same checks before adopting anything. A run that does not
-finish leaves the rerere cache exactly as it found it.
+Git and rerere resolve what they can. Codex owns whatever is left: it resolves
+the conflicts, installs dependencies, typechecks changed packages, runs focused
+tests, repairs what the merge broke, and then runs one complete repository
+check. This command confirms the result independently before adopting anything.
+A run that does not finish leaves the rerere cache exactly as it found it.
 
 Options:
   --repo PATH  Git repository that holds the main and personal branches.
@@ -52,8 +52,8 @@ done
 upstream_remote="upstream"
 main_branch="main"
 personal_branch="personal"
-# The repository's own checks. The resolver has to make this pass before it
-# finishes, and this script runs it again afterwards to confirm.
+# The complete repository graph. Codex runs it once after focused checks pass,
+# and this script runs it again afterwards to confirm.
 check_command='pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test'
 
 git_repo() {
@@ -113,6 +113,60 @@ indent() {
 
 run_checks() {
   ( cd "$merge_tree" && sh -c "$check_command" )
+}
+
+write_check_runner() {
+  check_runner="$temp_root/run-logged-check"
+  check_log_dir="$temp_root/check-logs"
+  mkdir -p "$check_log_dir"
+  cat > "$check_runner" <<'RUNNER'
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [ "$#" -lt 2 ]; then
+  echo "usage: run-logged-check LABEL COMMAND [ARG ...]" >&2
+  exit 64
+fi
+label="$1"
+shift
+safe_label="$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')"
+sequence_file="$CHECK_LOG_DIR/.sequence"
+sequence=0
+[ ! -f "$sequence_file" ] || sequence="$(cat "$sequence_file")"
+sequence=$((sequence + 1))
+printf '%s\n' "$sequence" > "$sequence_file"
+log="$CHECK_LOG_DIR/$(printf '%02d' "$sequence")-$safe_label.log"
+
+if [ "$label" = "complete-repository-graph" ]; then
+  if [ -e "$CHECK_LOG_DIR/.complete-repository-graph-started" ]; then
+    echo "the nested complete repository graph may run only once" >&2
+    exit 65
+  fi
+  : > "$CHECK_LOG_DIR/.complete-repository-graph-started"
+  printf 'SYNC_BB_PERSONAL_FULL_CHECK_BEGIN\n'
+fi
+
+set +e
+"$@" > "$log" 2>&1
+status=$?
+set -e
+
+if [ "$status" -eq 0 ]; then
+  printf 'PASS: %s (full log: %s)\n' "$label" "$log"
+  exit 0
+fi
+
+printf 'FAIL: %s (exit %s)\n' "$label" "$status" >&2
+printf 'Failed-task summary (full log: %s):\n' "$log" >&2
+summary="$(grep -E '(^|[[:space:]])(FAIL|FAILED|ERROR|Error:|Tasks:|Failed:|ELIFECYCLE|Command failed)' "$log" | tail -n 20 || true)"
+if [ -n "$summary" ]; then
+  printf '%s\n' "$summary" >&2
+else
+  tail -n 20 "$log" >&2
+fi
+exit "$status"
+RUNNER
+  chmod +x "$check_runner"
 }
 
 # Break the push URL of every remote and switch rerere off, through the
@@ -199,7 +253,12 @@ temp_root="$(mktemp -d "${TMPDIR:-/tmp}/sync-bb-personal.XXXXXX")"
 merge_tree="$temp_root/merge"
 rr_cache_dir="$(git_repo rev-parse --path-format=absolute --git-common-dir)/rr-cache"
 sync_succeeded=0
+resolver_pid=""
 cleanup() {
+  if [ -n "$resolver_pid" ] && kill -0 "$resolver_pid" >/dev/null 2>&1; then
+    kill -TERM "$resolver_pid" >/dev/null 2>&1 || true
+    wait "$resolver_pid" >/dev/null 2>&1 || true
+  fi
   [ "$sync_succeeded" -eq 1 ] || restore_rr_cache
   if [ -d "$merge_tree" ]; then
     git_repo worktree remove --force "$merge_tree" >/dev/null 2>&1 || true
@@ -208,6 +267,9 @@ cleanup() {
   git_repo worktree prune >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 snapshot_rr_cache
 
 git_repo worktree add --quiet --detach "$merge_tree" "$personal_head"
@@ -219,6 +281,7 @@ else
   if [ -n "$remaining" ]; then
     codex_bin="$(command -v codex)" || die "Codex CLI is not installed"
     build_resolver_env
+    write_check_runner
     echo "Handing the merge to Codex. Conflicted paths:"
     indent "$remaining"
 
@@ -243,29 +306,54 @@ $incoming_log
 Local commits since the merge base:
 $local_log
 
-The job is finished when this command passes:
+The complete repository graph is:
 
     $check_command
 
-Work through it:
+Use this log wrapper for every install, typecheck, and test command. It prints a
+short failed-task summary first and keeps the full output at the path it reports:
+
+    $check_runner LABEL COMMAND [ARG ...]
+
+CHECK_LOG_DIR is already set to:
+
+    $check_log_dir
+
+Work through it in this order:
 1. Resolve every conflicted path. Each one keeps its three inputs in the index: 'git show :1:<path>' is the merge base, ':2:<path>' is $personal_branch, ':3:<path>' is $main_branch. Use git log and git diff over the ranges above to find out why each side changed, and decide from that evidence rather than from the conflict markers alone.
-2. Read the repository's own instructions and its package scripts to learn how it expects to be built, checked and worked in. Follow them.
-3. Run the command above. Installing dependencies is part of it and may take a few minutes.
-4. A merge without conflict markers is not a correct merge. Expect failures in files that merged cleanly but no longer agree with the ones you resolved. Read each failure, find the real cause, and fix it wherever it lives.
-5. Run the command again. Keep going until it passes, or until you reach something you genuinely cannot fix.
+2. Read the repository's own instructions and package scripts. Install dependencies through the log wrapper.
+3. Before tests, typecheck the packages changed since $merge_base and their dependants. Use the repository's task runner and package graph to select them; do not typecheck the complete graph at this stage. Fix all real type errors and repeat this focused typecheck until it passes.
+4. Run focused tests for the changed packages and for actual failures that your resolutions can affect. Repeat only the failed task or smallest relevant test while diagnosing it. Make these focused checks pass before the complete graph.
+5. A clean textual merge is not enough. Check files that merged cleanly but no longer agree with the resolutions. AUTO_MERGE is available for comparing your resolution work with Git's automatic merge.
+6. If a failure is in code outside 'git diff --name-only AUTO_MERGE', reproduce that exact failing task once by itself under stable load before editing code. If the isolated rerun passes, treat it as a one-off timeout and do not make an unrelated speculative fix. If it fails again, diagnose it from evidence.
+7. Only after the changed-package typecheck and focused tests pass, run the nested complete repository graph with this exact wrapper label:
+
+    $check_runner complete-repository-graph sh -c '$check_command'
+
+The wrapper permits this graph once. If it fails, apply the isolated-rerun rule above, make evidence-based repairs, and repeat the smallest relevant checks. Leave the second complete graph to the outer script. Keep working until the focused checks pass, or until you reach something you genuinely cannot fix.
 
 You may run any command you need. Rules:
 - Keep the intent of both sides. Do not drop $personal_branch customizations and do not drop upstream changes.
 - Do not weaken a check to make it pass. Do not delete or skip a test, and do not silence a type error, unless the merge genuinely made it obsolete and you say so.
 - Do not commit and do not push. Everything you leave in the worktree is committed for you.
+- Run the nested complete repository graph exactly once and only after focused checks pass.
 
-Finish by saying whether the command above passes. If it does not, say exactly what blocked you."
+Finish by stating the nested complete graph result and any focused repairs made after it. If focused checks still fail, say exactly what blocked you."
 
-    ( cd "$merge_tree" && env "${resolver_env[@]}" "$codex_bin" exec \
+    ( cd "$merge_tree" && exec env "${resolver_env[@]}" \
+        CHECK_LOG_DIR="$check_log_dir" \
+        "$codex_bin" exec \
         --dangerously-bypass-approvals-and-sandbox \
         --ignore-rules \
         --ephemeral \
-        "$prompt" ) ||
+        "$prompt" ) &
+    resolver_pid=$!
+    set +e
+    wait "$resolver_pid"
+    resolver_status=$?
+    set -e
+    resolver_pid=""
+    [ "$resolver_status" -eq 0 ] ||
       die "Codex did not finish; $personal_branch is unchanged"
 
     still_unmerged="$(unmerged_paths)"

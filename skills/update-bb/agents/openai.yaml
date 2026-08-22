@@ -1,0 +1,5 @@
+interface:
+  display_name: "Update BB"
+  short_description: "Start the bb personal update in the background"
+policy:
+  allow_implicit_invocation: false

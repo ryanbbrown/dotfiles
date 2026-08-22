@@ -112,6 +112,22 @@ The review panel reads `FIREWORKS_API_KEY` from `~/.dotfiles/.env`. Create that 
 doppler-to-env --project api-keys --config dev_personal --output ~/.dotfiles/.env FIREWORKS_API_KEY
 ```
 
+### Update bb from Firstmate
+
+In a Firstmate thread that loaded the installed skills, run:
+
+```text
+/update-bb
+```
+
+This manual-only skill checks for an existing `update-bb` managed process, starts `sync-bb-personal` in the background when needed, and returns immediately. A process notification brings Firstmate back to report success or failure. Skills load when a thread starts, so a running Firstmate does not discover a newly installed skill.
+
+Test the skill without running the sync:
+
+```bash
+tests/update-bb-skill.sh
+```
+
 ### Sync the bb personal branch
 
 Run on demand from anywhere:
@@ -128,12 +144,14 @@ What it does, in order:
 2. Fetches `upstream` and advances local `main` with fast-forward-only semantics. It finds the `main` worktree with `git worktree list --porcelain`, so it works whether `main` is checked out or not. It stops if `main` is behind and its checkout is dirty, or if `main` has diverged.
 3. Merges `main` into `personal` inside a temporary worktree. The real checkout is never in a merge state.
 4. Lets Git merge and rerere replay whatever cached resolutions match. rerere runs with autoupdate, so replayed resolutions are staged.
-5. Hands the rest to the installed Codex CLI, once, non-interactively with full permission. Codex gets the unresolved set, the merge base, and the commit history of both sides. It owns the whole job from there: resolve the conflicts, read the repository's own instructions and package scripts, install dependencies, run the repository checks, repair what the merge broke anywhere in the tree, and repeat until the checks pass.
-6. Rejects the merge if Git still reports an unresolved path, if any file the merge touched still holds conflict markers, or if Codex fails.
-7. Commits everything Codex left in the worktree, then runs the same repository checks again to confirm the result independently.
-8. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit the merge started from and is still clean.
+5. Hands the rest to the installed Codex CLI once, non-interactively with full permission. Codex gets the unresolved set, merge base, and commit history of both sides.
+6. Codex resolves the conflicts, installs dependencies, and typechecks the changed packages and their dependants. It then runs focused tests for affected packages and real failures. Only after those checks pass does it run the nested complete repository graph, which is limited to one run.
+7. Each Codex check writes its complete output to a temporary log. A failed check prints a short failed-task summary and the full log path. A failure outside the merge resolution diff must fail once more by itself under stable load before Codex edits code. A one-off timeout does not justify an unrelated speculative fix.
+8. Rejects the merge if Git still reports an unresolved path, if any file the merge touched still holds conflict markers, or if Codex fails.
+9. Commits everything Codex left in the worktree, then runs the complete repository graph again as an independent outer check.
+10. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit the merge started from and is still clean.
 
-The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. A run that does not reach the end leaves the rerere cache exactly as it found it, so a resolution it could not verify is never replayed later. The temporary worktree is always removed. Nothing is ever pushed: the push URL of every remote is broken through the environment for the duration of the resolver, rather than by restricting what Codex may run.
+The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. A run that does not reach the end leaves the rerere cache exactly as it found it, so a resolution it could not verify is never replayed later. The temporary worktree and check logs are always removed. Nothing is ever pushed: the push URL of every remote is broken through the environment for the duration of the resolver, rather than by restricting what Codex may run.
 
 Run the checks:
 
@@ -141,7 +159,7 @@ Run the checks:
 tests/sync-bb-personal.sh
 ```
 
-The tests build their own throwaway repositories and stub `codex` and `pnpm`. They never touch the real bb checkout and never start a model call.
+The tests build their own throwaway repositories and stub `codex` and `pnpm`. They verify the exact non-interactive, full-permission Codex invocation without starting a model call. They never touch the real bb checkout.
 
 ### Update upstream skill sources
 
@@ -267,6 +285,7 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 #### Planning and delivery
 
+- `update-bb` starts the installed bb personal sync as a managed background process. It runs only when invoked as `/update-bb`.
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
