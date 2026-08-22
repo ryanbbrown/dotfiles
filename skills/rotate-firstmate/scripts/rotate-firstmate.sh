@@ -156,7 +156,7 @@ provider_id="$(printf '%s' "$old_json" | jq -er '.thread.providerId | select(typ
 state_dir="$(mktemp -d "${TMPDIR:-/tmp}/rotate-firstmate.XXXXXX")"
 : > "$state_dir/moved"
 
-prompt='You are the new root Firstmate for this project. Read .bb/AGENTS.md and FIRSTMATE-QUEUE.md now; they are the sources of truth. This is a context handoff, not a new task. Do not copy or reconstruct the old transcript. Do not start or delegate queue work in this turn. Existing child threads are being transferred to you. Confirm that you are ready and report any missing source-of-truth file.'
+prompt='You are the new root Firstmate for this project. Read .bb/AGENTS.md and FIRSTMATE-QUEUE.md now; they are the sources of truth. This is a context handoff, not a new task. Do not copy or reconstruct the old transcript. Do not start or delegate queue work in this turn. Existing child threads are being transferred to you. Confirm that you are ready, report any missing source-of-truth file, and give the user a clickable Markdown link to the absolute FIRSTMATE-QUEUE.md path so they can open the queue.'
 spawn_json="$("$bb_bin" thread spawn \
   --project "$project_id" \
   --environment "$environment_id" \

@@ -138,7 +138,7 @@ From the pinned root Firstmate, run:
 
 This manual-only skill creates a fresh root Firstmate in the same project and environment. It copies the current BB provider and Pi model route, reasoning level, and explicit full permission. After the replacement is ready and pinned, it moves all direct children, including hidden, archived, and cross-project children. It then unpins the old Firstmate. The handoff points to `.bb/AGENTS.md` and `FIRSTMATE-QUEUE.md`; it does not copy the transcript.
 
-The script stops before it creates a thread if its execution identity is missing or malformed. A later failure triggers a best-effort rollback and reports exact thread IDs when manual recovery is necessary.
+The replacement Firstmate confirms it is ready and gives you a clickable link to `FIRSTMATE-QUEUE.md`. The script stops before it creates a thread if its execution identity is missing or malformed. A later failure triggers a best-effort rollback and reports exact thread IDs when manual recovery is necessary.
 
 Test the lifecycle against the fixture stub. The test does not change live threads or start a model call:
 

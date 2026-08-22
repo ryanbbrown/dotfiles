@@ -94,6 +94,7 @@ assert_arg_value "$state/spawn_args" --permission-mode full
 assert_arg_value "$state/spawn_args" --title Firstmate
 assert_file_contains "$state/spawn_args" '.bb/AGENTS.md'
 assert_file_contains "$state/spawn_args" 'FIRSTMATE-QUEUE.md'
+assert_file_contains "$state/spawn_args" 'clickable Markdown link to the absolute FIRSTMATE-QUEUE.md path'
 if grep -Fx -- --parent-thread "$state/spawn_args" >/dev/null || grep -Fx -- --parent-self "$state/spawn_args" >/dev/null; then
   fail "replacement Firstmate was not spawned as a root"
 fi
