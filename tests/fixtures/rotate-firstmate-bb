@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state="${ROTATE_FIRSTMATE_TEST_STATE:?}"
+command_name="${1:-} ${2:-}"
+old_id=thr_old
+new_id=thr_new
+child_a=thr_childa
+child_b=thr_childb
+
+value() {
+  sed -n '1p' "$state/$1"
+}
+
+set_value() {
+  printf '%s\n' "$2" > "$state/$1"
+}
+
+pin_file() {
+  case "$1" in
+    "$old_id") printf '%s\n' old_pinned ;;
+    "$new_id") printf '%s\n' new_pinned ;;
+    *) return 1 ;;
+  esac
+}
+
+parent_file() {
+  case "$1" in
+    "$child_a") printf '%s\n' child_a_parent ;;
+    "$child_b") printf '%s\n' child_b_parent ;;
+    *) return 1 ;;
+  esac
+}
+
+thread_json() {
+  local id="$1"
+  local parent="null"
+  local pinned="null"
+  local project=proj_current
+  local environment=env_current
+  local title=Worker
+  local provider=pi
+
+  case "$id" in
+    "$old_id")
+      title=Firstmate
+      provider="$(value old_provider)"
+      [ "$(value old_pinned)" = true ] && pinned=100
+      ;;
+    "$new_id")
+      title=Firstmate
+      provider="$(value spawned_provider)"
+      [ "$(value new_pinned)" = true ] && pinned=200
+      ;;
+    "$child_a"|"$child_b")
+      parent="\"$(value "$(parent_file "$id")")\""
+      [ "$id" = "$child_b" ] && project=proj_other
+      ;;
+    *) exit 2 ;;
+  esac
+
+  printf '{"thread":{"id":"%s","title":"%s","projectId":"%s","environmentId":"%s","providerId":"%s","parentThreadId":%s,"pinnedAt":%s,"status":"idle"}}\n' \
+    "$id" "$title" "$project" "$environment" "$provider" "$parent" "$pinned"
+}
+
+case "$command_name" in
+  "thread show")
+    thread_json "$3"
+    ;;
+  "thread spawn")
+    : > "$state/spawn_args"
+    previous=""
+    for arg in "$@"; do
+      printf '%s\n' "$arg" >> "$state/spawn_args"
+      [ "$previous" != --provider ] || set_value spawned_provider "$arg"
+      previous="$arg"
+    done
+    printf 'spawned\n' >> "$state/spawn_calls"
+    printf '{"thread":{"id":"%s"}}\n' "$new_id"
+    ;;
+  "thread wait")
+    printf '{"status":"idle"}\n'
+    ;;
+  "thread pin")
+    set_value "$(pin_file "$3")" true
+    printf '{"ok":true}\n'
+    ;;
+  "thread unpin")
+    if [ "$(value mode)" = fail-child-b-replacement-unpin ] && [ "$3" = "$new_id" ]; then
+      exit 1
+    fi
+    set_value "$(pin_file "$3")" false
+    printf '{"ok":true}\n'
+    ;;
+  "thread update")
+    child_id="$3"
+    shift 3
+    target=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --parent-thread ]; then
+        target="$2"
+        break
+      fi
+      shift
+    done
+    if { [ "$(value mode)" = fail-child-b ] || [ "$(value mode)" = fail-child-b-replacement-unpin ]; } &&
+      [ "$child_id" = "$child_b" ] && [ "$target" = "$new_id" ]; then
+      exit 1
+    fi
+    if [ "$(value mode)" = fail-child-b-rollback-a ]; then
+      if [ "$child_id" = "$child_b" ] && [ "$target" = "$new_id" ]; then
+        exit 1
+      fi
+      if [ "$child_id" = "$child_a" ] && [ "$target" = "$old_id" ]; then
+        exit 1
+      fi
+    fi
+    set_value "$(parent_file "$child_id")" "$target"
+    printf '{"ok":true}\n'
+    ;;
+  "thread list")
+    shift 2
+    parent=""
+    archived=false
+    include_hidden=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --parent-thread)
+          parent="$2"
+          shift 2
+          ;;
+        --archived)
+          archived=true
+          shift
+          ;;
+        --include-hidden)
+          include_hidden=true
+          shift
+          ;;
+        --project)
+          echo "child discovery must not use a project filter" >&2
+          exit 2
+          ;;
+        *) shift ;;
+      esac
+    done
+    [ "$include_hidden" = true ] || {
+      echo "child discovery must include hidden threads" >&2
+      exit 2
+    }
+    if [ "$archived" = false ] && [ "$(value child_a_parent)" = "$parent" ]; then
+      printf '[{"id":"%s"}]\n' "$child_a"
+    elif [ "$archived" = true ] && [ "$(value child_b_parent)" = "$parent" ]; then
+      printf '[{"id":"%s"}]\n' "$child_b"
+    else
+      printf '[]\n'
+    fi
+    ;;
+  *)
+    echo "unexpected bb command: $*" >&2
+    exit 2
+    ;;
+esac

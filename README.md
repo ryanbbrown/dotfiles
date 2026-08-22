@@ -128,6 +128,24 @@ Test the skill without running the sync:
 tests/update-bb-skill.sh
 ```
 
+### Rotate Firstmate
+
+From the pinned root Firstmate, run:
+
+```text
+/rotate-firstmate
+```
+
+This manual-only skill creates a fresh root Firstmate in the same project and environment. It copies the current BB provider and Pi model route, reasoning level, and explicit full permission. After the replacement is ready and pinned, it moves all direct children, including hidden, archived, and cross-project children. It then unpins the old Firstmate. The handoff points to `.bb/AGENTS.md` and `FIRSTMATE-QUEUE.md`; it does not copy the transcript.
+
+The script stops before it creates a thread if its execution identity is missing or malformed. A later failure triggers a best-effort rollback and reports exact thread IDs when manual recovery is necessary.
+
+Test the lifecycle against the fixture stub. The test does not change live threads or start a model call:
+
+```bash
+tests/firstmate-skills.sh
+```
+
 ### Sync the bb personal branch
 
 Run on demand from anywhere:
@@ -283,9 +301,15 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 ### Major skills
 
+#### Firstmate operations
+
+- `update-bb` starts the installed bb personal sync as a managed background process.
+- `rotate-firstmate` transfers the pinned root Firstmate to a fresh thread without copying its transcript.
+
+Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
+
 #### Planning and delivery
 
-- `update-bb` starts the installed bb personal sync as a managed background process. It runs only when invoked as `/update-bb`.
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
