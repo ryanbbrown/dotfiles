@@ -1,0 +1,5 @@
+interface:
+  display_name: "Update BB"
+  short_description: "Run the bb personal update durably"
+policy:
+  allow_implicit_invocation: false
