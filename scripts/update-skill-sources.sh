@@ -154,5 +154,8 @@ if [ "$branch" != "main" ]; then
   die "refusing to push from branch '$branch'; expected main"
 fi
 
-git push || die "push failed; leaving local commit in place"
+git \
+  -c credential.https://github.com.helper= \
+  -c credential.https://github.com.helper=osxkeychain \
+  push || die "push failed; leaving local commit in place"
 log "Pushed skill submodule update"

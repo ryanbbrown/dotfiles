@@ -197,6 +197,9 @@ The daily cron uses:
 $HOME/.dotfiles/scripts/update-skill-sources.sh --push
 ```
 
+The scheduled push reads the existing GitHub credential from macOS Keychain.
+It does not store a token in the script or cron environment.
+
 Update the Destructive Command Guard binary separately:
 
 ```bash
