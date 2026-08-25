@@ -161,12 +161,12 @@ What it does, in order:
 2. Fetches `upstream` and advances local `main` with fast-forward-only semantics. It finds the `main` worktree with `git worktree list --porcelain`, so it works whether `main` is checked out or not. It stops if `main` is behind and its checkout is dirty, or if `main` has diverged.
 3. Merges `main` into `personal` inside a temporary worktree. The real checkout is never in a merge state.
 4. Lets Git merge and rerere replay whatever cached resolutions match. rerere runs with autoupdate, so replayed resolutions are staged.
-5. Hands the rest to the installed Codex CLI once, non-interactively with full permission. Codex gets the unresolved set, merge base, and commit history of both sides.
+5. If textual conflicts remain, hands the merge to the installed Codex CLI once, non-interactively with full permission. Codex gets the unresolved set, merge base, and commit history of both sides.
 6. Codex resolves the conflicts, installs dependencies, and typechecks the changed packages and their dependants. It then runs focused tests for affected packages and real failures. Only after those checks pass does it run the nested complete repository graph, which is limited to one run.
-7. Each Codex check writes its complete output to a temporary log. A failed check prints a short failed-task summary and the full log path. A failure outside the merge resolution diff must fail once more by itself under stable load before Codex edits code. A one-off timeout does not justify an unrelated speculative fix.
-8. Rejects the merge if Git still reports an unresolved path, if any file the merge touched still holds conflict markers, or if Codex fails.
-9. Commits everything Codex left in the worktree, then runs the complete repository graph again as an independent outer check.
-10. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit the merge started from and is still clean.
+7. Commits the merge in the temporary worktree and runs the complete repository graph. A clean automatic merge that passes stays agent-free.
+8. If a clean automatic merge fails the checks, launches Codex in the same temporary worktree. Codex gets the failed check log and output, plus the same merge base and branch history. Codex repairs and validates the merge before the script amends the merge commit and confirms the complete graph again.
+9. Rejects the merge if Git still reports an unresolved path, if any file the merge touched holds conflict markers, if Codex fails, or if the independent check fails. Each Codex check writes its complete output to a temporary log and prints a short failed-task summary with the log path.
+10. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit where the merge started and is still clean.
 
 The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. A run that does not reach the end leaves the rerere cache exactly as it found it, so a resolution it could not verify is never replayed later. The temporary worktree and check logs are always removed. Nothing is ever pushed: the push URL of every remote is broken through the environment for the duration of the resolver, rather than by restricting what Codex may run.
 

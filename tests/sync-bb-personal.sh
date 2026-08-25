@@ -140,12 +140,20 @@ fi
 # Stands in for a repository check that fails until the resolver repairs it.
 if [ -n "${PNPM_REQUIRE_FILE:-}" ]; then
   case "$*" in
-    *"${PNPM_REQUIRE_FILE_ON:-turbo}"*) [ -e "$PNPM_REQUIRE_FILE" ] || exit 1 ;;
+    *"${PNPM_REQUIRE_FILE_ON:-turbo}"*)
+      if [ ! -e "$PNPM_REQUIRE_FILE" ]; then
+        [ -z "${PNPM_FAIL_MESSAGE:-}" ] || printf '%s\n' "$PNPM_FAIL_MESSAGE" >&2
+        exit 1
+      fi
+      ;;
   esac
 fi
 if [ -n "${PNPM_FAIL_ON:-}" ]; then
   case "$*" in
-    *"$PNPM_FAIL_ON"*) exit 1 ;;
+    *"$PNPM_FAIL_ON"*)
+      [ -z "${PNPM_FAIL_MESSAGE:-}" ] || printf '%s\n' "$PNPM_FAIL_MESSAGE" >&2
+      exit 1
+      ;;
   esac
 fi
 exit 0
@@ -842,17 +850,61 @@ t_main_not_checked_out() {
   assert_no_leftover_state
 }
 
-t_checks_failure_aborts() {
+t_clean_check_failure_goes_to_codex_and_is_repaired() {
   diverge_without_conflict
-  local before_personal
+  local repair before_personal
+  repair="$(fresh_path clean-repair)"
   before_personal="$(sha personal)"
 
-  run_sync PNPM_FAIL_ON="turbo"
+  make_resolver <<RESOLVER
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f "\$FAILED_CHECK_LOG" ]
+grep -F 'fixture clean-merge check failure' "\$FAILED_CHECK_LOG" >/dev/null
+[ -z "\$(git diff --name-only --diff-filter=U)" ]
+printf 'export const marker = "repair";\nexport const tail = "stable";\n' > "$repair"
+runner="\$(dirname "\$CHECK_LOG_DIR")/run-logged-check"
+"\$runner" complete-repository-graph sh -c \
+  'pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test'
+RESOLVER
+
+  run_sync CODEX_RESOLVER="$fixture/resolver.sh" \
+    PNPM_REQUIRE_FILE="$repair" PNPM_REQUIRE_FILE_ON="turbo" \
+    PNPM_FAIL_MESSAGE="fixture clean-merge check failure"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "Codex was used once" "$(cat "$codex_log")" "called"
+  assert_contains "prompt identifies automatic-merge recovery" \
+    "$(cat "$codex_prompt")" "merged without textual conflicts"
+  assert_contains "prompt includes the failed check output" \
+    "$(cat "$codex_prompt")" "fixture clean-merge check failure"
+  assert_eq "the failed check, Codex validation, and outer confirmation ran" \
+    "$(turbo_invocations)" "3"
+  assert_eq "the repair is in the adopted merge" \
+    "$(git -C "$repo" show "personal:$repair")" "$(source_file repair)"
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_clean_check_recovery_failure_leaves_personal_unchanged() {
+  diverge_without_conflict
+  local before_personal before_rr
+  before_personal="$(sha personal)"
+  before_rr="$(rr_entries)"
+
+  # Codex reports success but leaves the failing merge unchanged. The script's
+  # independent check must still reject it.
+  run_sync PNPM_FAIL_ON="turbo" PNPM_FAIL_MESSAGE="fixture unrepaired check failure"
   assert_ne "exit status" "$status" "0"
-  assert_contains "error explains the failure" "$stderr" "checks failed"
+  assert_eq "Codex was used once" "$(cat "$codex_log")" "called"
+  assert_contains "Codex received the failed check output" \
+    "$(cat "$codex_prompt")" "fixture unrepaired check failure"
+  assert_contains "error explains the recovery failure" "$stderr" \
+    "checks still fail after Codex recovery"
   assert_personal_unchanged "$before_personal"
   assert_eq "the upstream change never reached personal" \
     "$(cat "$personal/$(seeded_path 1)")" "$(source_file base-1)"
+  assert_eq "the reuse cache is untouched" "$(rr_entries)" "$before_rr"
   assert_no_push
   assert_no_leftover_state
 }
@@ -965,7 +1017,8 @@ tests=(
   t_dirty_main_stops
   t_dirty_personal_stops_before_fetch
   t_main_not_checked_out
-  t_checks_failure_aborts
+  t_clean_check_failure_goes_to_codex_and_is_repaired
+  t_clean_check_recovery_failure_leaves_personal_unchanged
   t_signal_stops_codex_and_cleans_up
   t_personal_moving_during_checks_aborts
   t_no_file_specific_conflict_policy

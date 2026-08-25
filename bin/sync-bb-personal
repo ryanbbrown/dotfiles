@@ -12,11 +12,12 @@ semantics, merges main into personal inside a temporary worktree, runs the
 affected package checks there, and adopts the tested merge into the real
 personal checkout with a fast-forward merge. It never pushes.
 
-Git and rerere resolve what they can. Codex owns whatever is left: it resolves
-the conflicts, installs dependencies, typechecks changed packages, runs focused
-tests, repairs what the merge broke, and then runs one complete repository
-check. This command confirms the result independently before adopting anything.
-A run that does not finish leaves the rerere cache exactly as it found it.
+Git and rerere resolve what they can. Textual conflicts launch Codex for
+resolution and validation. A clean merge runs its checks without an agent; if
+they fail, Codex gets the failed output and repairs the merge in the same
+scratch worktree. This command confirms every recovered result independently
+before adoption. A run that does not finish leaves the rerere cache exactly as
+it found it.
 
 Options:
   --repo PATH  Git repository that holds the main and personal branches.
@@ -115,6 +116,19 @@ run_checks() {
   ( cd "$merge_tree" && sh -c "$check_command" )
 }
 
+run_checks_logged() {
+  local log="$1" command_status tee_status
+  local -a statuses
+  set +e
+  run_checks 2>&1 | tee "$log"
+  statuses=("${PIPESTATUS[@]}")
+  set -e
+  command_status="${statuses[0]}"
+  tee_status="${statuses[1]}"
+  [ "$tee_status" -eq 0 ] || return "$tee_status"
+  return "$command_status"
+}
+
 write_check_runner() {
   check_runner="$temp_root/run-logged-check"
   check_log_dir="$temp_root/check-logs"
@@ -185,6 +199,34 @@ build_resolver_env() {
   resolver_env+=("GIT_CONFIG_VALUE_$count=false")
   count=$((count + 1))
   resolver_env+=("GIT_CONFIG_COUNT=$count")
+}
+
+prepare_merge_context() {
+  merge_base="$(git_repo merge-base "$personal_head" "$main_branch")"
+  incoming_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$main_branch")"
+  local_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$personal_head")"
+}
+
+run_codex() {
+  local prompt="$1" codex_bin resolver_status
+  codex_bin="$(command -v codex)" || die "Codex CLI is not installed"
+  build_resolver_env
+
+  ( cd "$merge_tree" && exec env "${resolver_env[@]}" \
+      CHECK_LOG_DIR="$check_log_dir" \
+      FAILED_CHECK_LOG="${failed_check_log:-}" \
+      "$codex_bin" exec \
+      --dangerously-bypass-approvals-and-sandbox \
+      --ignore-rules \
+      --ephemeral \
+      "$prompt" ) &
+  resolver_pid=$!
+  set +e
+  wait "$resolver_pid"
+  resolver_status=$?
+  set -e
+  resolver_pid=""
+  return "$resolver_status"
 }
 
 # A failed attempt must leave the reuse cache exactly as it was, so a
@@ -273,22 +315,20 @@ trap 'exit 143' TERM
 snapshot_rr_cache
 
 git_repo worktree add --quiet --detach "$merge_tree" "$personal_head"
+write_check_runner
+automatic_merge=0
+failed_check_log=""
 
 if git_merge_tree merge --no-ff --no-edit "$main_branch" >/dev/null; then
+  automatic_merge=1
   echo "Merged $main_branch into $personal_branch without conflicts."
 else
   remaining="$(unmerged_paths)"
   if [ -n "$remaining" ]; then
-    codex_bin="$(command -v codex)" || die "Codex CLI is not installed"
-    build_resolver_env
-    write_check_runner
     echo "Handing the merge to Codex. Conflicted paths:"
     indent "$remaining"
 
-    merge_base="$(git_repo merge-base "$personal_head" "$main_branch")"
-    incoming_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$main_branch")"
-    local_log="$(git_repo log --oneline --no-decorate --max-count=60 "$merge_base..$personal_head")"
-
+    prepare_merge_context
     prompt="You own a Git merge from start to finish, inside an isolated scratch worktree. Your working directory is that worktree. It is disposable and it is safe to change anything in it.
 
 The merge brings branch $main_branch into branch $personal_branch.
@@ -340,20 +380,7 @@ You may run any command you need. Rules:
 
 Finish by stating the nested complete graph result and any focused repairs made after it. If focused checks still fail, say exactly what blocked you."
 
-    ( cd "$merge_tree" && exec env "${resolver_env[@]}" \
-        CHECK_LOG_DIR="$check_log_dir" \
-        "$codex_bin" exec \
-        --dangerously-bypass-approvals-and-sandbox \
-        --ignore-rules \
-        --ephemeral \
-        "$prompt" ) &
-    resolver_pid=$!
-    set +e
-    wait "$resolver_pid"
-    resolver_status=$?
-    set -e
-    resolver_pid=""
-    [ "$resolver_status" -eq 0 ] ||
+    run_codex "$prompt" ||
       die "Codex did not finish; $personal_branch is unchanged"
 
     still_unmerged="$(unmerged_paths)"
@@ -384,9 +411,100 @@ merge_commit="$(git -C "$merge_tree" rev-parse HEAD)"
 [ "$(git -C "$merge_tree" rev-parse "$merge_commit^1")" = "$personal_head" ] ||
   die "the merge commit does not build on $personal_branch; nothing was adopted"
 
-# The resolver was told to leave these passing. Run them again to confirm.
+# A clean textual merge gets one agent-free check. Codex joins only when that
+# check fails, and it repairs the existing merge inside the same worktree.
 echo "Confirming the repository checks."
-run_checks || die "checks failed; $personal_branch is unchanged"
+failed_check_log="$check_log_dir/automatic-merge-check.log"
+if run_checks_logged "$failed_check_log"; then
+  :
+elif [ "$automatic_merge" -eq 1 ]; then
+  echo "The automatic merge failed its checks. Handing the same worktree to Codex."
+  prepare_merge_context
+  failed_check_output="$(tail -n 80 "$failed_check_log")"
+  prompt="You own recovery of a Git merge inside an isolated scratch worktree. Your working directory is that worktree. It is disposable and it is safe to change anything in it.
+
+The merge brings branch $main_branch into branch $personal_branch. Git merged without textual conflicts, but the complete repository checks failed.
+
+Merge base:              $merge_base
+Incoming ($main_branch): $(git_repo rev-parse "$main_branch")
+Local ($personal_branch): $personal_head
+Automatic merge commit:  $merge_commit
+
+Incoming commits since the merge base:
+$incoming_log
+
+Local commits since the merge base:
+$local_log
+
+The failed check was:
+
+    $check_command
+
+Its full output is available at:
+
+    $failed_check_log
+
+The last 80 lines are:
+
+$failed_check_output
+
+The complete repository graph is:
+
+    $check_command
+
+Use this log wrapper for every install, typecheck, and test command. It prints a
+short failed-task summary first and keeps the full output at the path it reports:
+
+    $check_runner LABEL COMMAND [ARG ...]
+
+CHECK_LOG_DIR is already set to:
+
+    $check_log_dir
+
+Work through it in this order:
+1. Read the failed check log and diagnose how the merge made the two branches disagree.
+2. Read the repository's own instructions and package scripts. Use Git history and diffs over the ranges above to preserve the intent of both sides.
+3. Before tests, typecheck the packages changed since $merge_base and their dependants. Use the repository's task runner and package graph to select them; do not typecheck the complete graph at this stage. Fix all real type errors and repeat this focused typecheck until it passes.
+4. Run focused tests for the changed packages and for actual failures that your repairs can affect. Repeat only the failed task or smallest relevant test while diagnosing it. Make these focused checks pass before the complete graph.
+5. If a failure is outside the merge diff, reproduce that exact failing task once by itself under stable load before editing code. If the isolated rerun passes, treat it as a one-off timeout and do not make an unrelated speculative fix.
+6. Only after the changed-package typecheck and focused tests pass, run the nested complete repository graph with this exact wrapper label:
+
+    $check_runner complete-repository-graph sh -c '$check_command'
+
+The wrapper permits this graph once. If it fails, make evidence-based repairs and repeat the smallest relevant checks. Leave the final complete graph to the outer script. Keep working until the focused checks pass, or until you reach something you genuinely cannot fix.
+
+You may run any command you need. Rules:
+- Keep the intent of both sides. Do not drop $personal_branch customizations and do not drop upstream changes.
+- Do not weaken a check to make it pass. Do not delete or skip a test, and do not silence a type error, unless the merge genuinely made it obsolete and you say so.
+- Do not commit and do not push. Everything you leave in the worktree is committed for you.
+- Run the nested complete repository graph exactly once and only after focused checks pass.
+
+Finish by stating the nested complete graph result and the repairs you made. If focused checks still fail, say exactly what blocked you."
+
+  run_codex "$prompt" ||
+    die "Codex did not finish after the failed checks; $personal_branch is unchanged"
+  [ "$(git -C "$merge_tree" rev-parse HEAD)" = "$merge_commit" ] ||
+    die "Codex changed the merge history; $personal_branch is unchanged"
+  marked="$(files_with_conflict_markers)"
+  if [ -n "$marked" ]; then
+    echo "These files contain conflict markers after check recovery:" >&2
+    indent "$marked" >&2
+    die "stopped without changing $personal_branch"
+  fi
+  git -C "$merge_tree" add -A
+  git_merge_tree commit --amend --no-edit >/dev/null ||
+    die "could not record the check repairs; $personal_branch is unchanged"
+  merge_commit="$(git -C "$merge_tree" rev-parse HEAD)"
+  [ "$(git -C "$merge_tree" rev-parse "$merge_commit^1")" = "$personal_head" ] ||
+    die "the repaired merge does not build on $personal_branch; nothing was adopted"
+
+  echo "Confirming the repository checks after Codex recovery."
+  failed_check_log="$check_log_dir/recovered-merge-check.log"
+  run_checks_logged "$failed_check_log" ||
+    die "checks still fail after Codex recovery; $personal_branch is unchanged"
+else
+  die "checks failed; $personal_branch is unchanged"
+fi
 
 # The real checkout is live. Adopt only if it is still exactly where the merge
 # started, and only by fast-forward, so a half-updated tree cannot happen.
