@@ -13,7 +13,7 @@ Invoke as:
 
 Require both counts. `pN` is the number of successful plan-review cycles. `iN` is the number of successful implementation-review cycles. Zero means no panel for that phase. Run exactly the requested counts and no extra cycles.
 
-The main agent owns planning, decisions, review synthesis, and final validation. Use one implementation subagent as the only implementation writer.
+The main agent owns planning, decisions, review synthesis, and final validation. Use one BB child thread in the current environment as the only implementation writer.
 
 ## Plan
 
@@ -28,11 +28,13 @@ For each requested plan-review cycle, run `review-panel` in plan mode, verify an
 
 If implementation reviews are requested, require a clean worktree and record the pre-implementation Git SHA after the plan is settled.
 
-Launch one implementation subagent with the plan, acceptance checks, validation requirements, and review base when needed. Inspect its handoff and resume the same subagent until the implementation and required validation are complete.
+Spawn the implementation writer with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --model openai-codex/gpt-5.6-sol --reasoning-level high --permission-mode full`. Give it the plan, acceptance checks, validation requirements, and review base when needed. Keep the brief focused on this work only.
 
-For each requested implementation-review cycle, run `review-panel` in implementation mode against the original review base. Read every report, verify findings against the frozen snapshot, and write a synthesis beside the reports. Resume the same implementation subagent with required fixes and validation. A cycle succeeds when the panel succeeds, required fixes are complete, and required validation passes. A failed panel does not count.
+Return control after spawning. BB reports the child's blockers and completion to this thread; do not poll or wait. Inspect its handoff and continue the same child with `bb thread tell <id> "..." --reasoning-level high --mode auto` until the implementation and required validation are complete.
 
-Decide findings by evidence rather than reviewer count. Send the implementation subagent the synthesis, not the raw reports.
+For each requested implementation-review cycle, run `review-panel` in implementation mode against the original review base. Read every report, verify findings against the frozen snapshot, and write a synthesis beside the reports. Continue the same implementation child with required fixes and validation. A cycle succeeds when the panel succeeds, required fixes are complete, and required validation passes. A failed panel does not count.
+
+Decide findings by evidence rather than reviewer count. Send the implementation child the synthesis, not the raw reports.
 
 ## Stop boundaries
 

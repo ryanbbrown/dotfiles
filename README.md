@@ -74,7 +74,6 @@ Codex
 Pi
   ~/.pi/agent/settings.json
   ~/.pi/agent/mcp.json
-  ~/.pi/agent/APPEND_SYSTEM.md
 
 Other
   ~/.local/bin/claude
@@ -261,10 +260,7 @@ The tracked Pi settings install these packages:
 | --- | --- |
 | [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt. |
 | [`pi-web-access`](https://github.com/nicobailon/pi-web-access) | Adds web search, source checks, page extraction, repository fetching, and video analysis. |
-| [`pi-openai-server-compaction`](https://github.com/ryanbbrown/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, including custom wake messages, with higher token and downstream context costs. |
-| [`pi-processes`](https://github.com/aliou/pi-processes) | Runs servers, watchers, builds, and review panels as managed background processes. |
-| [`pi-subagents`](https://github.com/nicobailon/pi-subagents) | Adds focused child agents for scouting, implementation, review, research, and second opinions. |
-| [`pi-goal`](https://github.com/narumiruna/pi-extensions/tree/main/packages/pi-goal) | Keeps Pi working toward a session goal until it completes, pauses, or reaches a safety limit. |
+| [`pi-openai-server-compaction`](https://github.com/ryanbbrown/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
 
 The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
 
@@ -316,7 +312,7 @@ Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
-- `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot.
+- `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot in a persistent BB terminal.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 
 #### Review and browser QA
@@ -352,4 +348,4 @@ Invoke the `implement` skill with a planning mode and explicit review counts:
 
 `interview` raises the few important design decisions and waits for the user. `direct` creates a plan when needed and proceeds when the task is clear. An existing approved plan is used without recreation.
 
-`pN` and `iN` are the required numbers of successful plan-review and implementation-review cycles. Zero means no panel for that phase. The parent agent owns planning, review synthesis, and final validation. One implementation subagent remains the only implementation writer and receives the verified synthesis after each implementation review.
+`pN` and `iN` are the required numbers of successful plan-review and implementation-review cycles. Zero means no panel for that phase. The parent agent owns planning, review synthesis, and final validation. One BB child thread in the current environment remains the only implementation writer and receives the verified synthesis after each implementation review.

@@ -7,14 +7,14 @@ description: Run independent Codex, Claude Code, and GLM reviews against one fro
 
 This skill only runs the review script. The calling workflow owns interpreting the reports, synthesizing findings, deciding what to change, and coordinating writers.
 
-## Run in the background
+## Run in a BB terminal
 
-Run from the repository being reviewed. Check managed processes first so you do not start a duplicate review for the same feature. Use the harness's managed background-process support; in Pi, use `process start` with a specific name such as `review-panel-<feature-slug>`, the repository as `cwd`, and exit notifications enabled. Do not use shell background syntax such as `&` or poll for completion.
+Run from the repository being reviewed. Check `bb terminal list --thread "$BB_THREAD_ID"` first so you do not start a duplicate review for the same feature. Launch the panel with the bundled wrapper and return control immediately. The review runs in a persistent BB terminal; when it exits, the wrapper sends this thread a queued completion message through `bb thread tell`. Do not poll, wait, or use shell background syntax such as `&`.
 
 For an implementation review:
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round.sh --feature "feature name" --plan-file .plans/<plan-slug>.md --base-ref <pre-implementation-sha>
+~/.claude/skills/review-panel/scripts/review-round-bb.sh --title "review-panel-<feature-slug>" -- --feature "feature name" --plan-file .plans/<plan-slug>.md --base-ref <pre-implementation-sha>
 ```
 
 Capture the base SHA before implementation starts. The implementation writer may commit before review, so the current `HEAD` cannot define the feature range. The launcher rejects an implementation review without a base or with an empty base-to-snapshot diff.
@@ -24,18 +24,18 @@ Claude reviews use Claude Code OAuth only. The launcher removes Anthropic API ke
 For a plan review:
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round.sh --feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
+~/.claude/skills/review-panel/scripts/review-round-bb.sh --title "review-panel-<feature-slug>-plan" -- --feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
 ```
 
 For a custom review of any repository file:
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round.sh --feature "architecture suggestions" --mode custom --target-file .html/architecture-suggestions.html --prompt "Assess each recommendation and state whether you agree, with repository evidence."
+~/.claude/skills/review-panel/scripts/review-round-bb.sh --title "review-panel-architecture-suggestions" -- --feature "architecture suggestions" --mode custom --target-file .html/architecture-suggestions.html --prompt "Assess each recommendation and state whether you agree, with repository evidence."
 ```
 
 Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The custom text defines the review objective. The launcher still supplies the frozen snapshot, read-only rules, and repository context.
 
-When the background process exits, report whether it succeeded and identify the output directory and review round. On failure, inspect the managed process output and report the error. Do not synthesize or act on findings as part of this skill.
+When the terminal completion message arrives, inspect the generated manifest and reports. Report whether it succeeded and identify the output directory and review round. On failure, inspect the retained review logs and report the error. Do not synthesize or act on findings as part of this skill.
 
 ## Options
 
@@ -57,8 +57,6 @@ When the background process exits, report whether it succeeded and identify the 
 
 ```text
 MAX_ROUNDS=3                 Hard cap; defaults to 3.
-FIREWORKS_API_KEY=...        Optional override for GLM. When unset, the launcher
-                             reads FIREWORKS_API_KEY from ~/.dotfiles/.env.
 CODEX_MODEL=gpt-5.6-sol      Default Codex reviewer model.
 GLM_MODEL=accounts/fireworks/models/glm-5p2
                              Default GLM reviewer model.
@@ -66,7 +64,7 @@ REVIEW_TIMEOUT_SECONDS=900   Per-reviewer timeout.
 SKIP_PREFLIGHT=1             Optional escape hatch for local debugging.
 ```
 
-`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer. The launcher passes the Fireworks credential only to the separate GLM reviewer and removes it from Codex and first-party Claude reviewer environments.
+`ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer.
 
 ## Output
 

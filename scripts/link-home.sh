@@ -65,7 +65,6 @@ clean_legacy_codex_skill_links() {
 [ -f "$home_source/.codex/hooks.json" ] || die "missing Codex hooks"
 [ -f "$home_source/.pi/agent/settings.json" ] || die "missing $home_source/.pi/agent/settings.json"
 [ -f "$home_source/.pi/agent/mcp.json" ] || die "missing $home_source/.pi/agent/mcp.json"
-[ -f "$home_source/.pi/agent/APPEND_SYSTEM.md" ] || die "missing $home_source/.pi/agent/APPEND_SYSTEM.md"
 
 if [ "$repo_root" != "$HOME/.dotfiles" ]; then
   create_symlink "$repo_root" "$HOME/.dotfiles"
@@ -85,7 +84,6 @@ create_symlink "$home_source/.claude/mcp.json" "$HOME/.claude/mcp.json"
 create_symlink "$home_source/.codex/hooks.json" "$HOME/.codex/hooks.json"
 create_symlink "$home_source/.pi/agent/settings.json" "$HOME/.pi/agent/settings.json"
 create_symlink "$home_source/.pi/agent/mcp.json" "$HOME/.pi/agent/mcp.json"
-create_symlink "$home_source/.pi/agent/APPEND_SYSTEM.md" "$HOME/.pi/agent/APPEND_SYSTEM.md"
 
 clean_legacy_codex_skill_links
 

@@ -23,6 +23,14 @@
 - Add a comment only when it conveys information the code cannot express clearly. Keep it to one line when possible and two lines when necessary.
 - Comments may explain a current constraint or the reason it exists. They must not describe the edit history.
 
+## BB
+
+- You run inside BB. Put user-facing content only in the final assistant response; use intermediate messages only for operational coordination.
+- Use BB child threads instead of in-process subagents. Spawn them with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model openai-codex/gpt-5.6-sol --reasoning-level high`; use `--new-environment worktree` when a task needs isolated edits.
+- Keep each child brief focused on the objective, relevant constraints, expected result, and validation. Return control after spawning; BB reports child blockers and completion to the parent.
+- Use `bb thread tell <id> "..." --mode steer` to redirect active work and `bb thread stop <id>` to stop stuck work. Do not poll or wait for child threads.
+- Use `bb terminal create --thread "$BB_THREAD_ID" --title "..." --command "..."` for servers, watchers, and other long-running commands so they remain visible and stoppable in BB.
+
 ## Other
 
 - Store global coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
