@@ -51,6 +51,44 @@ source_file() {
   printf 'export const marker = "%s";\nexport const tail = "stable";' "$1"
 }
 
+promptbox_test_source() {
+  case "$1" in
+    flaky)
+      cat <<'EOF_PROMPTBOX'
+describe("PromptBoxInternal selection reveal", () => {
+  it("reveals the moving selection head, not the anchor, when a selection extends upward", async () => {
+    await focusPromptEnd(promptBoxRef);
+    await nextAnimationFrame();
+    const coordsAtPosSpy = vi
+      .spyOn(EditorView.prototype, "coordsAtPos");
+    await waitFor(() => expect(view).not.toBeNull());
+    await nextAnimationFrame();
+  });
+});
+
+describe("PromptBoxInternal prompt actions", () => {
+EOF_PROMPTBOX
+      ;;
+    stable)
+      cat <<'EOF_PROMPTBOX'
+describe("PromptBoxInternal selection reveal", () => {
+  it("reveals the moving selection head, not the anchor, when a selection extends upward", async () => {
+    const coordsAtPosSpy = vi
+      .spyOn(EditorView.prototype, "coordsAtPos");
+    await focusPromptEnd(promptBoxRef);
+    await nextAnimationFrame();
+    await waitFor(() => expect(view).not.toBeNull());
+    await nextAnimationFrame();
+  });
+});
+
+describe("PromptBoxInternal prompt actions", () => {
+EOF_PROMPTBOX
+      ;;
+    *) fail "unknown PromptBox test order: $1" ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # Fixture
 # ---------------------------------------------------------------------------
@@ -84,6 +122,7 @@ new_fixture() {
   codex_log="$fixture/codex.log"
   codex_prompt="$fixture/codex-prompt.txt"
   codex_argv="$fixture/codex-argv.txt"
+  known_flake_log="$fixture/known-flake.log"
   run_tmp="$fixture/tmp"
   stdout_file="$fixture/stdout.txt"
   stderr_file="$fixture/stderr.txt"
@@ -98,6 +137,7 @@ new_fixture() {
     > "$GIT_CONFIG_GLOBAL"
   : > "$pnpm_log"
   : > "$codex_log"
+  write_known_flake_failure > "$known_flake_log"
 
   install_stubs
 
@@ -111,6 +151,8 @@ new_fixture() {
   write_file "$seed/packages/beta/package.json" '{"name":"@fixture/beta"}'
   write_file "$seed/apps/gamma/package.json" '{"name":"@fixture/gamma"}'
   write_file "$seed/docs/notes.md" 'Fixture notes.'
+  write_file "$seed/apps/app/src/components/promptbox/PromptBoxInternal.test.tsx" \
+    "$(promptbox_test_source flaky)"
   for index in 1 2 3 4; do
     write_file "$seed/$(seeded_path "$index")" "$(source_file "base-$index")"
   done
@@ -136,6 +178,9 @@ install_stubs() {
 printf '%s\n' "$*" >> "$PNPM_LOG"
 if [ -n "${PNPM_HOOK:-}" ]; then
   "$PNPM_HOOK"
+fi
+if [ -n "${PNPM_DRIVER:-}" ]; then
+  exec "$PNPM_DRIVER" "$@"
 fi
 # Stands in for a repository check that fails until the resolver repairs it.
 if [ -n "${PNPM_REQUIRE_FILE:-}" ]; then
@@ -244,6 +289,59 @@ make_resolver() {
   chmod +x "$fixture/resolver.sh"
 }
 
+write_known_flake_failure() {
+  cat <<'EOF_FAILURE'
+@bb/app:test:  ❯ @bb/app:isolated src/components/promptbox/PromptBoxInternal.test.tsx (104 tests | 1 failed)
+@bb/app:test:      × reveals the moving selection head, not the anchor, when a selection extends upward 1084ms
+@bb/app:test: Failed Tests 1
+@bb/app:test: FAIL @bb/app:isolated src/components/promptbox/PromptBoxInternal.test.tsx > PromptBoxInternal selection reveal > reveals the moving selection head, not the anchor, when a selection extends upward
+@bb/app:test: AssertionError: expected null not to be null
+@bb/app:test:  ❯ src/components/promptbox/PromptBoxInternal.test.tsx:3032:44
+@bb/app:test: Test Files  1 failed | 434 passed (435)
+@bb/app:test:      Tests  1 failed | 3378 passed | 3 skipped (3382)
+
+ Tasks:    15 successful, 17 total
+Failed:    @bb/app#test
+EOF_FAILURE
+}
+
+make_known_flake_pnpm_driver() {
+  local initial_failure="$1" retry_status="$2"
+  cat > "$fixture/pnpm-driver.sh" <<DRIVER
+#!/usr/bin/env bash
+set -euo pipefail
+case "\$*" in
+  'install --frozen-lockfile --prefer-offline') exit 0 ;;
+  'exec turbo run typecheck test')
+    case "$initial_failure" in
+      known) cat "$known_flake_log" ;;
+      multiple)
+        sed -e 's/Failed Tests 1/Failed Tests 2/' \
+          -e 's/Test Files  1 failed/Test Files  2 failed/' \
+          -e 's/Tests  1 failed/Tests  2 failed/' "$known_flake_log"
+        printf '%s\n' '@bb/app:test: FAIL @bb/app:isolated src/other.test.ts > another failing test'
+        ;;
+      other-cause)
+        sed 's/AssertionError: expected null not to be null/AssertionError: expected 500 to be less than 500/' \
+          "$known_flake_log"
+        ;;
+    esac
+    exit 1
+    ;;
+  'exec vitest run --config vitest.config.ts src/components/promptbox/PromptBoxInternal.test.tsx --testNamePattern ^PromptBoxInternal selection reveal reveals the moving selection head, not the anchor, when a selection extends upward$')
+    if [ "$retry_status" -eq 0 ]; then
+      printf '%s\n' 'Test Files  1 passed (1)' 'Tests  1 passed | 103 skipped (104)'
+    else
+      cat "$known_flake_log"
+    fi
+    exit "$retry_status"
+    ;;
+  *) printf 'unexpected pnpm command: %s\n' "\$*" >&2; exit 91 ;;
+esac
+DRIVER
+  chmod +x "$fixture/pnpm-driver.sh"
+}
+
 prompt_conflict_list() {
   awk '/^Git could not resolve these paths:$/ { flag = 1; next }
        /^$/ { if (flag) exit }
@@ -316,6 +414,99 @@ t_clean_sync() {
     "exec turbo run typecheck test"
   assert_contains "output reports adoption" "$stdout" "Adopted"
   assert_contains "output reports no push" "$stdout" "Nothing was pushed."
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_sole_known_flake_passes_one_exact_retry() {
+  diverge_without_conflict
+  local before_personal
+  before_personal="$(sha personal)"
+  make_known_flake_pnpm_driver known 0
+
+  run_sync PNPM_DRIVER="$fixture/pnpm-driver.sh"
+  assert_eq "exit status" "$status" "0"
+  assert_eq "the complete graph and exact retry ran" "$(cat "$pnpm_log")" \
+    "$(printf '%s\n' \
+      'install --frozen-lockfile --prefer-offline' \
+      'exec turbo run typecheck test' \
+      'exec vitest run --config vitest.config.ts src/components/promptbox/PromptBoxInternal.test.tsx --testNamePattern ^PromptBoxInternal selection reveal reveals the moving selection head, not the anchor, when a selection extends upward$')"
+  assert_eq "Codex was not used" "$(cat "$codex_log")" ""
+  assert_contains "output identifies the narrow retry" "$stdout" \
+    "sole failure is the known flaky PromptBox selection-reveal test"
+  assert_contains "output requires the retry to pass" "$stdout" \
+    "known flaky test passed on its one retry"
+  assert_adopted "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_known_flake_failed_retry_goes_to_codex() {
+  diverge_without_conflict
+  local before_personal
+  before_personal="$(sha personal)"
+  make_known_flake_pnpm_driver known 1
+
+  run_sync PNPM_DRIVER="$fixture/pnpm-driver.sh" CODEX_EXIT=1
+  assert_ne "exit status" "$status" "0"
+  assert_eq "the exact retry ran once" \
+    "$(grep -c -- '--testNamePattern' "$pnpm_log" | tr -d ' ')" "1"
+  assert_eq "Codex was used after the failed retry" "$(cat "$codex_log")" "called"
+  assert_contains "output reports the failed retry" "$stderr" \
+    "known flaky test failed its one retry"
+  assert_contains "existing recovery path reports its failure" "$stderr" \
+    "Codex did not finish after the failed checks"
+  assert_personal_unchanged "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_multiple_failures_do_not_retry() {
+  diverge_without_conflict
+  local before_personal
+  before_personal="$(sha personal)"
+  make_known_flake_pnpm_driver multiple 0
+
+  run_sync PNPM_DRIVER="$fixture/pnpm-driver.sh" CODEX_EXIT=1
+  assert_ne "exit status" "$status" "0"
+  assert_eq "no test was retried" \
+    "$(grep -c -- '--testNamePattern' "$pnpm_log" || true)" "0"
+  assert_eq "Codex received multiple failures" "$(cat "$codex_log")" "called"
+  assert_personal_unchanged "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_same_test_with_another_cause_does_not_retry() {
+  diverge_without_conflict
+  local before_personal
+  before_personal="$(sha personal)"
+  make_known_flake_pnpm_driver other-cause 0
+
+  run_sync PNPM_DRIVER="$fixture/pnpm-driver.sh" CODEX_EXIT=1
+  assert_ne "exit status" "$status" "0"
+  assert_eq "no test was retried" \
+    "$(grep -c -- '--testNamePattern' "$pnpm_log" || true)" "0"
+  assert_eq "Codex received the other failure" "$(cat "$codex_log")" "called"
+  assert_personal_unchanged "$before_personal"
+  assert_no_push
+  assert_no_leftover_state
+}
+
+t_stable_test_order_does_not_use_flake_policy() {
+  diverge_without_conflict
+  personal_set "apps/app/src/components/promptbox/PromptBoxInternal.test.tsx" \
+    "$(promptbox_test_source stable)"
+  local before_personal
+  before_personal="$(sha personal)"
+  make_known_flake_pnpm_driver known 0
+
+  run_sync PNPM_DRIVER="$fixture/pnpm-driver.sh" CODEX_EXIT=1
+  assert_ne "exit status" "$status" "0"
+  assert_eq "no test was retried" \
+    "$(grep -c -- '--testNamePattern' "$pnpm_log" || true)" "0"
+  assert_eq "Codex received the failure" "$(cat "$codex_log")" "called"
+  assert_personal_unchanged "$before_personal"
   assert_no_push
   assert_no_leftover_state
 }
@@ -979,14 +1170,15 @@ HOOK
   assert_no_leftover_state
 }
 
-# The tool must not know which files conflict or what a conflict in them means.
-# Any source path baked into the script would be exactly that knowledge.
-t_no_file_specific_conflict_policy() {
+# Conflict handling remains generic. The only source path in the script is the
+# exact test covered by the approved validation retry.
+t_only_known_validation_retry_is_file_specific() {
   local literals
-  literals="$(grep -oE '[A-Za-z0-9_.$-]+/[A-Za-z0-9_.$-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|yaml|yml)' "$script" | sort -u)"
-  assert_eq "the script names no source path at all" "$literals" ""
+  literals="$(grep -oE '([A-Za-z0-9_.$-]+/)+[A-Za-z0-9_.$-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|yaml|yml)' "$script" | sort -u)"
+  assert_eq "the script names only the approved flaky test" "$literals" \
+    "apps/app/src/components/promptbox/PromptBoxInternal.test.tsx"
   if grep -qiE 'protected|protocol|contract|wire|dispatch|sidebar|daemon' "$script"; then
-    fail "the script names a specific source file or subsystem"
+    fail "the script names a specific conflict file or subsystem"
   fi
   if grep -qiE 'command -v pi|pi_bin|"\$pi_bin"|Pi CLI' "$script"; then
     fail "the script retains a Pi resolver or fallback"
@@ -999,6 +1191,11 @@ t_no_file_specific_conflict_policy() {
 
 tests=(
   t_clean_sync
+  t_sole_known_flake_passes_one_exact_retry
+  t_known_flake_failed_retry_goes_to_codex
+  t_multiple_failures_do_not_retry
+  t_same_test_with_another_cause_does_not_retry
+  t_stable_test_order_does_not_use_flake_policy
   t_already_current
   t_modify_modify_conflicts_go_to_codex
   t_add_add_conflict_goes_to_codex
@@ -1021,7 +1218,7 @@ tests=(
   t_clean_check_recovery_failure_leaves_personal_unchanged
   t_signal_stops_codex_and_cleans_up
   t_personal_moving_during_checks_aborts
-  t_no_file_specific_conflict_policy
+  t_only_known_validation_retry_is_file_specific
 )
 
 failures=0

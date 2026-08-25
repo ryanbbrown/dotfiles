@@ -56,6 +56,9 @@ personal_branch="personal"
 # The complete repository graph. Codex runs it once after focused checks pass,
 # and this script runs it again afterwards to confirm.
 check_command='pnpm install --frozen-lockfile --prefer-offline && pnpm exec turbo run typecheck test'
+known_flaky_test_path='apps/app/src/components/promptbox/PromptBoxInternal.test.tsx'
+known_flaky_test_suite='PromptBoxInternal selection reveal'
+known_flaky_test_name='reveals the moving selection head, not the anchor, when a selection extends upward'
 
 git_repo() {
   git -C "$repo" "$@"
@@ -127,6 +130,87 @@ run_checks_logged() {
   tee_status="${statuses[1]}"
   [ "$tee_status" -eq 0 ] || return "$tee_status"
   return "$command_status"
+}
+
+known_flaky_test_has_upstream_order() {
+  local source="$merge_tree/$known_flaky_test_path"
+  local section="$temp_root/known-flaky-test-source.txt"
+  local start end focus frame spy wait
+  [ -f "$source" ] || return 1
+
+  start="$(grep -nFx 'describe("PromptBoxInternal selection reveal", () => {' "$source" | cut -d: -f1)"
+  [ -n "$start" ] && [ "${start//$'\n'/}" = "$start" ] || return 1
+  end="$(awk -v start="$start" 'NR > start && /^describe\("/ { print NR; exit }' "$source")"
+  [ -n "$end" ] || return 1
+  sed -n "${start},${end}p" "$source" > "$section"
+
+  [ "$(grep -cFx '  it("reveals the moving selection head, not the anchor, when a selection extends upward", async () => {' "$section" || true)" -eq 1 ] || return 1
+  [ "$(grep -cF 'await focusPromptEnd(promptBoxRef);' "$section" || true)" -eq 1 ] || return 1
+  [ "$(grep -cF 'await nextAnimationFrame();' "$section" || true)" -eq 2 ] || return 1
+  [ "$(grep -cF '.spyOn(EditorView.prototype, "coordsAtPos")' "$section" || true)" -eq 1 ] || return 1
+  [ "$(grep -cF 'await waitFor(() => expect(view).not.toBeNull());' "$section" || true)" -eq 1 ] || return 1
+
+  focus="$(grep -nF 'await focusPromptEnd(promptBoxRef);' "$section" | cut -d: -f1)"
+  frame="$(grep -nF 'await nextAnimationFrame();' "$section" | head -n 1 | cut -d: -f1)"
+  spy="$(grep -nF '.spyOn(EditorView.prototype, "coordsAtPos")' "$section" | cut -d: -f1)"
+  wait="$(grep -nF 'await waitFor(() => expect(view).not.toBeNull());' "$section" | cut -d: -f1)"
+  [ "$focus" -lt "$frame" ] && [ "$frame" -lt "$spy" ] && [ "$spy" -lt "$wait" ]
+}
+
+known_flaky_test_is_sole_failure() {
+  local log="$1" clean_log="$temp_root/known-flaky-test-output.txt"
+  local failure_identity
+  known_flaky_test_has_upstream_order || return 1
+  failure_identity="${known_flaky_test_path#apps/app/} > $known_flaky_test_suite > $known_flaky_test_name"
+  sed -E $'s/\033\\[[0-9;?]*[ -\\/]*[@-~]//g' "$log" > "$clean_log"
+
+  [ "$(grep -cF "$failure_identity" "$clean_log" || true)" -eq 1 ] || return 1
+  [ "$(grep -cF 'AssertionError: expected null not to be null' "$clean_log" || true)" -eq 1 ] || return 1
+  [ "$(grep -cE 'Failed Tests[[:space:]]+1([[:space:]]|$)' "$clean_log" || true)" -eq 1 ] || return 1
+  [ "$(grep -cE 'Test Files[[:space:]]+1 failed([[:space:]]|$)' "$clean_log" || true)" -eq 1 ] || return 1
+  [ "$(grep -cE 'Tests[[:space:]]+1 failed([[:space:]]|$)' "$clean_log" || true)" -eq 1 ] || return 1
+  [ "$(grep -cE '^[[:space:]]*Failed:[[:space:]]+@bb/app#test[[:space:]]*$' "$clean_log" || true)" -eq 1 ]
+}
+
+retry_known_flaky_test_logged() {
+  local log="$1" command_status tee_status
+  local -a statuses
+  printf '\nRetrying the sole known flaky test once.\n' | tee -a "$log"
+  set +e
+  ( cd "$merge_tree/apps/app" &&
+    pnpm exec vitest run \
+      --config vitest.config.ts \
+      "${known_flaky_test_path#apps/app/}" \
+      --testNamePattern "^$known_flaky_test_suite $known_flaky_test_name\$" ) \
+    2>&1 | tee -a "$log"
+  statuses=("${PIPESTATUS[@]}")
+  set -e
+  command_status="${statuses[0]}"
+  tee_status="${statuses[1]}"
+  [ "$tee_status" -eq 0 ] || return "$tee_status"
+  return "$command_status"
+}
+
+run_checks_with_known_retry() {
+  local log="$1" check_status retry_status
+  set +e
+  run_checks_logged "$log"
+  check_status=$?
+  set -e
+  [ "$check_status" -ne 0 ] || return 0
+  known_flaky_test_is_sole_failure "$log" || return "$check_status"
+
+  echo "The sole failure is the known flaky PromptBox selection-reveal test."
+  set +e
+  retry_known_flaky_test_logged "$log"
+  retry_status=$?
+  set -e
+  if [ "$retry_status" -eq 0 ]; then
+    echo "The known flaky test passed on its one retry."
+    return 0
+  fi
+  echo "The known flaky test failed its one retry." >&2
+  return "$retry_status"
 }
 
 write_check_runner() {
@@ -415,7 +499,7 @@ merge_commit="$(git -C "$merge_tree" rev-parse HEAD)"
 # check fails, and it repairs the existing merge inside the same worktree.
 echo "Confirming the repository checks."
 failed_check_log="$check_log_dir/automatic-merge-check.log"
-if run_checks_logged "$failed_check_log"; then
+if run_checks_with_known_retry "$failed_check_log"; then
   :
 elif [ "$automatic_merge" -eq 1 ]; then
   echo "The automatic merge failed its checks. Handing the same worktree to Codex."
@@ -500,7 +584,7 @@ Finish by stating the nested complete graph result and the repairs you made. If 
 
   echo "Confirming the repository checks after Codex recovery."
   failed_check_log="$check_log_dir/recovered-merge-check.log"
-  run_checks_logged "$failed_check_log" ||
+  run_checks_with_known_retry "$failed_check_log" ||
     die "checks still fail after Codex recovery; $personal_branch is unchanged"
 else
   die "checks failed; $personal_branch is unchanged"
