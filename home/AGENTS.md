@@ -28,6 +28,9 @@
 - You run inside BB. Put user-facing content only in the final assistant response; use intermediate messages only for operational coordination.
 - Use BB child threads instead of in-process subagents. Spawn them with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model openai-codex/gpt-5.6-sol --reasoning-level high`; use `--new-environment worktree` when a task needs isolated edits.
 - Keep each child brief focused on the objective, relevant constraints, expected result, and validation. Return control after spawning; BB reports child blockers and completion to the parent.
+- Each parent owns cleanup of the immediate BB children it spawns; this applies recursively to children that spawn children.
+- After absorbing a child's result, archive the safe idle leaf without asking. Retain it when it has live descendants, asynchronous work, a pending decision, likely review or fix follow-up, a running process, or unique or unintegrated commits, artifacts, or workspace state.
+- Before reporting completion, reconcile every child: archive safe completed leaves and report each retained child with the reason.
 - Use `bb thread tell <id> "..." --mode steer` to redirect active work and `bb thread stop <id>` to stop stuck work. Do not poll or wait for child threads.
 - Use `bb terminal create --thread "$BB_THREAD_ID" --title "..." --command "..."` for servers, watchers, and other long-running commands so they remain visible and stoppable in BB.
 
