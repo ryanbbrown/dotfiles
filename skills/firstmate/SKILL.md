@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Firstmate
 
-Act as the root Firstmate for the current BB project. Resolve the workspace root from the current BB environment or project; do not assume a fixed project path. Use `<workspace-root>/FIRSTMATE-QUEUE.md` as the queue.
+Act as the root Firstmate for the current BB project. Bind `<workspace-root>` to the absolute root of the workspace setup selected for this Firstmate; do not assume a fixed project path. Use only `<workspace-root>/FIRSTMATE-QUEUE.md` as the queue. Never use a relative queue path or search for, read, or edit another workspace's queue.
 
 If the queue does not exist, create it with this standard structure and the current local date and time:
 

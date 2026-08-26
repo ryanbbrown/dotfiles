@@ -26,135 +26,188 @@ assert_file_contains() {
   grep -F -- "$text" "$file" >/dev/null || fail "$file does not contain: $text"
 }
 
-assert_arg_value() {
+assert_file_lacks() {
+  local file="$1"
+  local text="$2"
+  ! grep -F -- "$text" "$file" >/dev/null || fail "$file unexpectedly contains: $text"
+}
+
+arg_value() {
   local file="$1"
   local flag="$2"
-  local expected="$3"
   local line
-  local actual
 
   line="$(grep -nFx -- "$flag" "$file" | cut -d: -f1)"
   [ -n "$line" ] || fail "spawn omitted $flag"
   [ "${line#*$'\n'}" = "$line" ] || fail "spawn repeated $flag"
-  actual="$(sed -n "$((line + 1))p" "$file")"
-  [ "$actual" = "$expected" ] || fail "$flag was $actual, expected $expected"
+  sed -n "$((line + 1))p" "$file"
+}
+
+assert_arg_value() {
+  local actual
+  actual="$(arg_value "$1" "$2")"
+  [ "$actual" = "$3" ] || fail "$2 was $actual, expected $3"
+}
+
+assert_no_arg() {
+  ! grep -Fx -- "$2" "$1" >/dev/null || fail "spawn unexpectedly included $2"
 }
 
 reset_state() {
-  rm -rf "$state"
-  mkdir -p "$state"
-  printf '%s\n' "$1" > "$state/mode"
-  printf '%s\n' true > "$state/old_pinned"
+  local mode="$1"
+  local pinned="$2"
+  local parent="$3"
+  local workspace="$4"
+
+  rm -rf "$state" "$workspace"
+  mkdir -p "$state" "$workspace"
+  printf '%s\n' "$mode" > "$state/mode"
+  printf '%s\n' "$pinned" > "$state/old_pinned"
   printf '%s\n' false > "$state/new_pinned"
+  printf '%s\n' 'Deck Captain' > "$state/old_title"
+  printf '%s\n' proj_current > "$state/old_project"
+  printf '%s\n' env_current > "$state/old_environment"
   printf '%s\n' pi > "$state/old_provider"
+  printf '%s\n' "$parent" > "$state/old_parent"
+  printf '%s\n' sec_review > "$state/old_section"
+  printf '%s\n' hidden > "$state/old_visibility"
+  printf '%s\n' "$workspace" > "$state/workspace_path"
+  printf '%s\n' anthropic/claude-test > "$state/old_model"
+  printf '%s\n' medium > "$state/old_reasoning"
+  printf '%s\n' auto > "$state/old_permission"
+  printf '%s\n' default > "$state/old_tier"
   printf '%s\n' "$old_id" > "$state/child_a_parent"
   printf '%s\n' "$old_id" > "$state/child_b_parent"
+  : > "$state/pin_calls"
+  : > "$state/unpin_calls"
+}
+
+supply_local_firstmate_rules() {
+  local workspace="$1"
+  mkdir -p "$workspace/.bb"
+  cat > "$workspace/.bb/AGENTS.md" <<'RULES'
+# Firstmate
+
+Read FIRSTMATE-QUEUE.md at the start of every turn.
+RULES
 }
 
 run_rotation() {
   ROTATE_FIRSTMATE_TEST_STATE="$state" \
     BB_CLI="$stub_bb" \
     BB_THREAD_ID="$old_id" \
-    BB_PROJECT_ID=proj_current \
-    BB_ENVIRONMENT_ID=env_current \
-    PI_PROVIDER="${TEST_PI_PROVIDER-openai-codex}" \
-    PI_MODEL="${TEST_PI_MODEL-gpt-5.6-sol}" \
-    PI_REASONING_LEVEL="${TEST_PI_REASONING_LEVEL-high}" \
     "$rotate_script"
 }
 
 trap cleanup EXIT
 
-for skill in update-bb rotate-firstmate; do
+for skill in update-bb rotate-firstmate firstmate; do
   skill_file="$repo_root/skills/$skill/SKILL.md"
-  policy_file="$repo_root/skills/$skill/agents/openai.yaml"
   [ -f "$skill_file" ] || fail "missing $skill_file"
-  [ -f "$policy_file" ] || fail "missing $policy_file"
   assert_file_contains "$skill_file" "name: $skill"
   assert_file_contains "$skill_file" "disable-model-invocation: true"
+done
+
+for skill in update-bb rotate-firstmate; do
+  policy_file="$repo_root/skills/$skill/agents/openai.yaml"
+  [ -f "$policy_file" ] || fail "missing $policy_file"
   assert_file_contains "$policy_file" "allow_implicit_invocation: false"
 done
 
 [ ! -e "$repo_root/skills/sync-bb-personal" ] || fail "the superseded sync-bb-personal skill still exists"
 assert_file_contains "$repo_root/skills/rotate-firstmate/SKILL.md" '~/.agents/skills/rotate-firstmate/scripts/rotate-firstmate.sh'
+assert_file_contains "$repo_root/skills/firstmate/SKILL.md" 'Never use a relative queue path'
+assert_file_contains "$repo_root/home/.config/git/ignore" 'FIRSTMATE-QUEUE.md'
 
-reset_state success
-run_rotation > "$test_root/success.out"
-assert_file_contains "$test_root/success.out" "Firstmate rotation succeeded."
-[ "$(sed -n '1p' "$state/old_pinned")" = false ] || fail "old Firstmate stayed pinned"
-[ "$(sed -n '1p' "$state/new_pinned")" = true ] || fail "replacement Firstmate was not pinned"
-[ "$(sed -n '1p' "$state/child_a_parent")" = "$new_id" ] || fail "hidden active child was not moved"
-[ "$(sed -n '1p' "$state/child_b_parent")" = "$new_id" ] || fail "archived cross-project child was not moved"
+git_test="$test_root/git-ignore"
+mkdir -p "$git_test"
+git -C "$git_test" init -q
+touch "$git_test/FIRSTMATE-QUEUE.md"
+git -C "$git_test" -c core.excludesFile="$repo_root/home/.config/git/ignore" check-ignore -q FIRSTMATE-QUEUE.md ||
+  fail "global excludes file did not ignore FIRSTMATE-QUEUE.md"
+
+local_workspace="$test_root/local workspace"
+reset_state success true null "$local_workspace"
+supply_local_firstmate_rules "$local_workspace"
+run_rotation > "$test_root/pinned-root.out"
+assert_file_contains "$test_root/pinned-root.out" "Firstmate rotation succeeded."
+[ "$(<"$state/old_pinned")" = false ] || fail "old pinned root stayed pinned"
+[ "$(<"$state/new_pinned")" = true ] || fail "replacement of pinned root was not pinned"
+[ "$(<"$state/child_a_parent")" = "$new_id" ] || fail "hidden active child was not moved"
+[ "$(<"$state/child_b_parent")" = "$new_id" ] || fail "archived cross-project child was not moved"
 assert_arg_value "$state/spawn_args" --project proj_current
 assert_arg_value "$state/spawn_args" --environment env_current
 assert_arg_value "$state/spawn_args" --provider pi
-assert_arg_value "$state/spawn_args" --model openai-codex/gpt-5.6-sol
-assert_arg_value "$state/spawn_args" --reasoning-level high
-assert_arg_value "$state/spawn_args" --permission-mode full
-assert_arg_value "$state/spawn_args" --title Firstmate
-assert_file_contains "$state/spawn_args" '.bb/AGENTS.md'
-assert_file_contains "$state/spawn_args" 'FIRSTMATE-QUEUE.md'
-assert_file_contains "$state/spawn_args" 'clickable Markdown link to the absolute FIRSTMATE-QUEUE.md path'
-if grep -Fx -- --parent-thread "$state/spawn_args" >/dev/null || grep -Fx -- --parent-self "$state/spawn_args" >/dev/null; then
-  fail "replacement Firstmate was not spawned as a root"
-fi
+assert_arg_value "$state/spawn_args" --model anthropic/claude-test
+assert_arg_value "$state/spawn_args" --reasoning-level medium
+assert_arg_value "$state/spawn_args" --permission-mode auto
+assert_arg_value "$state/spawn_args" --service-tier default
+assert_arg_value "$state/spawn_args" --title 'Deck Captain'
+assert_arg_value "$state/spawn_args" --section sec_review
+assert_arg_value "$state/spawn_args" --visibility hidden
+assert_no_arg "$state/spawn_args" --parent-thread
+assert_file_contains "$state/spawn_prompt" "$local_workspace/.bb/AGENTS.md"
+assert_file_contains "$state/spawn_prompt" "$local_workspace/FIRSTMATE-QUEUE.md"
+assert_file_lacks "$state/spawn_prompt" 'installed `firstmate` skill'
+[ "$(<"$state/pin_calls")" = "$new_id" ] || fail "pinned rotation did not pin only the replacement"
+[ "$(<"$state/unpin_calls")" = "$old_id" ] || fail "pinned rotation did not unpin only the old thread"
 
-reset_state fail-child-b
-if run_rotation > "$test_root/failure.out" 2>&1; then
+dynamic_workspace="$test_root/dynamic workspace"
+decoy_workspace="$test_root/other workspace"
+mkdir -p "$decoy_workspace"
+printf 'do not access\n' > "$decoy_workspace/FIRSTMATE-QUEUE.md"
+reset_state success false null "$dynamic_workspace"
+printf '%s\n' null > "$state/old_section"
+printf '%s\n' visible > "$state/old_visibility"
+run_rotation > "$test_root/unpinned-root.out"
+[ "$(<"$state/old_pinned")" = false ] || fail "unpinned old root became pinned"
+[ "$(<"$state/new_pinned")" = false ] || fail "unpinned replacement became pinned"
+[ ! -s "$state/pin_calls" ] || fail "unpinned rotation called pin"
+[ ! -s "$state/unpin_calls" ] || fail "unpinned rotation called unpin"
+assert_no_arg "$state/spawn_args" --parent-thread
+assert_no_arg "$state/spawn_args" --section
+assert_file_contains "$state/spawn_prompt" 'installed `firstmate` skill'
+assert_file_contains "$state/spawn_prompt" "absolute path \`$dynamic_workspace\`"
+assert_file_contains "$state/spawn_prompt" "$dynamic_workspace/FIRSTMATE-QUEUE.md"
+assert_file_lacks "$state/spawn_prompt" "$decoy_workspace"
+assert_file_lacks "$state/spawn_prompt" 'Read .bb/AGENTS.md'
+
+parented_workspace="$test_root/parented"
+reset_state success false thr_parent "$parented_workspace"
+printf '%s\n' 'Child Firstmate' > "$state/old_title"
+run_rotation > "$test_root/parented.out"
+assert_arg_value "$state/spawn_args" --parent-thread thr_parent
+assert_arg_value "$state/spawn_args" --title 'Child Firstmate'
+
+rollback_workspace="$test_root/rollback"
+reset_state fail-child-b true null "$rollback_workspace"
+supply_local_firstmate_rules "$rollback_workspace"
+if run_rotation > "$test_root/rollback.out" 2>&1; then
   fail "rotation succeeded after a child move failed"
 fi
-assert_file_contains "$test_root/failure.out" "Rollback complete."
-[ "$(sed -n '1p' "$state/old_pinned")" = true ] || fail "old Firstmate was not pinned after rollback"
-[ "$(sed -n '1p' "$state/new_pinned")" = false ] || fail "replacement Firstmate stayed pinned after rollback"
-[ "$(sed -n '1p' "$state/child_a_parent")" = "$old_id" ] || fail "moved child was not returned"
-[ "$(sed -n '1p' "$state/child_b_parent")" = "$old_id" ] || fail "failed child changed parent"
+assert_file_contains "$test_root/rollback.out" "Rollback complete."
+[ "$(<"$state/old_pinned")" = true ] || fail "rollback did not restore old pin"
+[ "$(<"$state/new_pinned")" = false ] || fail "rollback left replacement pinned"
+[ "$(<"$state/child_a_parent")" = "$old_id" ] || fail "rollback did not return moved child"
+[ "$(<"$state/child_b_parent")" = "$old_id" ] || fail "failed child changed parent"
 
-reset_state fail-child-b-rollback-a
+reset_state fail-child-b false null "$rollback_workspace"
+if run_rotation > "$test_root/unpinned-rollback.out" 2>&1; then
+  fail "unpinned rotation succeeded after a child move failed"
+fi
+[ "$(<"$state/old_pinned")" = false ] || fail "unpinned rollback pinned the old thread"
+[ "$(<"$state/new_pinned")" = false ] || fail "unpinned rollback pinned the replacement"
+[ ! -s "$state/pin_calls" ] || fail "unpinned rollback called pin"
+[ ! -s "$state/unpin_calls" ] || fail "unpinned rollback called unpin"
+
+reset_state fail-child-b-rollback-a true null "$rollback_workspace"
+supply_local_firstmate_rules "$rollback_workspace"
 if run_rotation > "$test_root/incomplete.out" 2>&1; then
   fail "rotation succeeded after an incomplete rollback"
 fi
 assert_file_contains "$test_root/incomplete.out" "Rollback incomplete."
-assert_file_contains "$test_root/incomplete.out" "Old Firstmate: $old_id"
-assert_file_contains "$test_root/incomplete.out" "Replacement Firstmate: $new_id"
+assert_file_contains "$test_root/incomplete.out" "Old thread: $old_id"
+assert_file_contains "$test_root/incomplete.out" "Replacement thread: $new_id"
 assert_file_contains "$test_root/incomplete.out" "Child not returned to $old_id: $child_a"
-[ "$(sed -n '1p' "$state/new_pinned")" = false ] || fail "incomplete child rollback did not unpin the replacement"
-
-reset_state fail-child-b-replacement-unpin
-if run_rotation > "$test_root/unpin-incomplete.out" 2>&1; then
-  fail "rotation succeeded after replacement unpin failed"
-fi
-assert_file_contains "$test_root/unpin-incomplete.out" "Rollback incomplete."
-assert_file_contains "$test_root/unpin-incomplete.out" "Replacement Firstmate: $new_id"
-assert_file_contains "$test_root/unpin-incomplete.out" "Replacement Firstmate unpin could not be verified: $new_id"
-[ "$(sed -n '1p' "$state/child_a_parent")" = "$old_id" ] || fail "child was not returned when replacement unpin failed"
-
-reset_state success
-if TEST_PI_MODEL='bad model' run_rotation > "$test_root/malformed-model.out" 2>&1; then
-  fail "rotation accepted a malformed PI_MODEL"
-fi
-assert_file_contains "$test_root/malformed-model.out" "PI_MODEL is missing or malformed"
-[ ! -e "$state/spawn_calls" ] || fail "rotation spawned a thread before model validation completed"
-
-reset_state success
-if TEST_PI_PROVIDER='' run_rotation > "$test_root/missing-provider.out" 2>&1; then
-  fail "rotation accepted a missing PI_PROVIDER"
-fi
-assert_file_contains "$test_root/missing-provider.out" "PI_PROVIDER is missing or malformed"
-[ ! -e "$state/spawn_calls" ] || fail "rotation spawned a thread before route provider validation completed"
-
-reset_state success
-if TEST_PI_REASONING_LEVEL=none run_rotation > "$test_root/malformed-reasoning.out" 2>&1; then
-  fail "rotation accepted a malformed PI_REASONING_LEVEL"
-fi
-assert_file_contains "$test_root/malformed-reasoning.out" "PI_REASONING_LEVEL is missing or malformed"
-[ ! -e "$state/spawn_calls" ] || fail "rotation spawned a thread before reasoning validation completed"
-
-reset_state success
-printf '%s\n' 'bad provider' > "$state/old_provider"
-if run_rotation > "$test_root/malformed-bb-provider.out" 2>&1; then
-  fail "rotation accepted a malformed BB provider"
-fi
-assert_file_contains "$test_root/malformed-bb-provider.out" "current Firstmate provider is missing or malformed"
-[ ! -e "$state/spawn_calls" ] || fail "rotation spawned a thread before BB provider validation completed"
 
 printf '%s\n' "Firstmate skill tests passed."

@@ -34,58 +34,146 @@ parent_file() {
 
 thread_json() {
   local id="$1"
-  local parent="null"
-  local pinned="null"
+  local title=Worker
   local project=proj_current
   local environment=env_current
-  local title=Worker
   local provider=pi
+  local parent=null
+  local section=null
+  local visibility=visible
+  local pinned=false
+  local workspace
 
+  workspace="$(value workspace_path)"
   case "$id" in
     "$old_id")
-      title=Firstmate
+      title="$(value old_title)"
+      project="$(value old_project)"
+      environment="$(value old_environment)"
       provider="$(value old_provider)"
-      [ "$(value old_pinned)" = true ] && pinned=100
+      parent="$(value old_parent)"
+      section="$(value old_section)"
+      visibility="$(value old_visibility)"
+      pinned="$(value old_pinned)"
       ;;
     "$new_id")
-      title=Firstmate
-      provider="$(value spawned_provider)"
-      [ "$(value new_pinned)" = true ] && pinned=200
+      title="$(value spawn_title)"
+      project="$(value spawn_project)"
+      environment="$(value spawn_environment)"
+      provider="$(value spawn_provider)"
+      parent="$(value spawn_parent)"
+      section="$(value spawn_section)"
+      visibility="$(value spawn_visibility)"
+      pinned="$(value new_pinned)"
       ;;
     "$child_a"|"$child_b")
-      parent="\"$(value "$(parent_file "$id")")\""
+      parent="$(value "$(parent_file "$id")")"
       [ "$id" = "$child_b" ] && project=proj_other
       ;;
     *) exit 2 ;;
   esac
 
-  printf '{"thread":{"id":"%s","title":"%s","projectId":"%s","environmentId":"%s","providerId":"%s","parentThreadId":%s,"pinnedAt":%s,"status":"idle"}}\n' \
-    "$id" "$title" "$project" "$environment" "$provider" "$parent" "$pinned"
+  jq -cn \
+    --arg id "$id" \
+    --arg title "$title" \
+    --arg project "$project" \
+    --arg environment "$environment" \
+    --arg provider "$provider" \
+    --arg parent "$parent" \
+    --arg section "$section" \
+    --arg visibility "$visibility" \
+    --argjson pinned "$pinned" \
+    --arg workspace "$workspace" '
+      {
+        thread: {
+          id: $id,
+          title: $title,
+          projectId: $project,
+          environmentId: $environment,
+          providerId: $provider,
+          parentThreadId: (if $parent == "null" then null else $parent end),
+          sectionId: (if $section == "null" then null else $section end),
+          visibility: $visibility,
+          pinnedAt: (if $pinned then 100 else null end),
+          status: "idle"
+        },
+        environment: {path: $workspace}
+      }
+    '
+}
+
+execution_json() {
+  local prefix="$1"
+  jq -cn \
+    --arg model "$(value "${prefix}_model")" \
+    --arg reasoning "$(value "${prefix}_reasoning")" \
+    --arg permission "$(value "${prefix}_permission")" \
+    --arg tier "$(value "${prefix}_tier")" '
+      [{type: "client/turn/requested", data: {execution: {
+        model: $model,
+        reasoningLevel: $reasoning,
+        permissionMode: $permission,
+        serviceTier: $tier
+      }}}]
+    '
+}
+
+record_spawn() {
+  : > "$state/spawn_args"
+  set_value spawn_parent null
+  set_value spawn_section null
+  set_value spawn_visibility visible
+
+  local previous=""
+  local arg
+  for arg in "$@"; do
+    printf '%s\n' "$arg" >> "$state/spawn_args"
+    case "$previous" in
+      --project) set_value spawn_project "$arg" ;;
+      --environment) set_value spawn_environment "$arg" ;;
+      --provider) set_value spawn_provider "$arg" ;;
+      --model) set_value spawn_model "$arg" ;;
+      --reasoning-level) set_value spawn_reasoning "$arg" ;;
+      --permission-mode) set_value spawn_permission "$arg" ;;
+      --service-tier) set_value spawn_tier "$arg" ;;
+      --title) set_value spawn_title "$arg" ;;
+      --prompt) set_value spawn_prompt "$arg" ;;
+      --parent-thread) set_value spawn_parent "$arg" ;;
+      --section) set_value spawn_section "$arg" ;;
+      --visibility) set_value spawn_visibility "$arg" ;;
+    esac
+    previous="$arg"
+  done
+  printf 'spawned\n' >> "$state/spawn_calls"
 }
 
 case "$command_name" in
   "thread show")
     thread_json "$3"
     ;;
+  "thread log")
+    if [ "$3" = "$old_id" ]; then
+      execution_json old
+    elif [ "$3" = "$new_id" ]; then
+      execution_json spawn
+    else
+      exit 2
+    fi
+    ;;
   "thread spawn")
-    : > "$state/spawn_args"
-    previous=""
-    for arg in "$@"; do
-      printf '%s\n' "$arg" >> "$state/spawn_args"
-      [ "$previous" != --provider ] || set_value spawned_provider "$arg"
-      previous="$arg"
-    done
-    printf 'spawned\n' >> "$state/spawn_calls"
+    record_spawn "$@"
     printf '{"thread":{"id":"%s"}}\n' "$new_id"
     ;;
   "thread wait")
     printf '{"status":"idle"}\n'
     ;;
   "thread pin")
+    printf '%s\n' "$3" >> "$state/pin_calls"
     set_value "$(pin_file "$3")" true
     printf '{"ok":true}\n'
     ;;
   "thread unpin")
+    printf '%s\n' "$3" >> "$state/unpin_calls"
     if [ "$(value mode)" = fail-child-b-replacement-unpin ] && [ "$3" = "$new_id" ]; then
       exit 1
     fi

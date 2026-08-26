@@ -129,15 +129,15 @@ tests/update-bb-skill.sh
 
 ### Rotate Firstmate
 
-From the pinned root Firstmate, run:
+From the Firstmate thread to replace, run:
 
 ```text
 /rotate-firstmate
 ```
 
-This manual-only skill creates a fresh root Firstmate in the same project and environment. It copies the current BB provider and Pi model route, reasoning level, and explicit full permission. After the replacement is ready and pinned, it moves all direct children, including hidden, archived, and cross-project children. It then unpins the old Firstmate. The handoff points to `.bb/AGENTS.md` and `FIRSTMATE-QUEUE.md`; it does not copy the transcript.
+This manual-only skill creates a fresh thread in the same project and environment. It preserves the current title, parent or root relationship, provider, model, reasoning level, service tier, permission mode, visibility, section, and pinned or unpinned state. It moves all direct children, including hidden, archived, and cross-project children. Pin changes occur only when the old thread was pinned.
 
-The replacement Firstmate confirms it is ready and gives you a clickable link to `FIRSTMATE-QUEUE.md`. The script stops before it creates a thread if its execution identity is missing or malformed. A later failure triggers a best-effort rollback and reports exact thread IDs when manual recovery is necessary.
+The handoff always names the absolute workspace queue path. A workspace `.bb/AGENTS.md` that supplies Firstmate rules remains the source of truth. Other workspaces bootstrap through the installed `firstmate` skill. The script does not copy the transcript or inspect another workspace's queue. A later failure triggers a best-effort rollback and reports exact thread IDs when manual recovery is necessary.
 
 Test the lifecycle against the fixture stub. The test does not change live threads or start a model call:
 
@@ -303,7 +303,8 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 #### Firstmate operations
 
 - `update-bb` runs the installed bb personal sync in a durable BB terminal.
-- `rotate-firstmate` transfers the pinned root Firstmate to a fresh thread without copying its transcript.
+- `firstmate` promotes an explicitly selected root thread to manage its workspace queue.
+- `rotate-firstmate` replaces the current Firstmate thread without copying its transcript or changing its BB route.
 
 Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
 

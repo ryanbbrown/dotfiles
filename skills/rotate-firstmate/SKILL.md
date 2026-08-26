@@ -1,10 +1,12 @@
 ---
 name: rotate-firstmate
-description: "Replace the pinned root Firstmate with a fresh thread."
+description: "Replace the current Firstmate thread with a fresh thread while preserving its BB route and relationships."
 disable-model-invocation: true
 ---
 
 # Rotate Firstmate
+
+Replace the current thread. It can be root or parented, pinned or unpinned, and can have any title.
 
 Run the deterministic script from the installed shared skill tree:
 

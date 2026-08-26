@@ -1,5 +1,5 @@
 interface:
   display_name: "Rotate Firstmate"
-  short_description: "Move Firstmate work to a fresh root thread"
+  short_description: "Replace the current Firstmate thread safely"
 policy:
   allow_implicit_invocation: false
