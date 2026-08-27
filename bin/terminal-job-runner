@@ -169,8 +169,13 @@ async function main() {
 
   let forwardedSignal = null;
   const forward = (signal) => {
-    forwardedSignal = signal;
-    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+    if (
+      child.exitCode === null &&
+      child.signalCode === null &&
+      child.kill(signal)
+    ) {
+      forwardedSignal = signal;
+    }
   };
   for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"]) {
     process.on(signal, () => forward(signal));

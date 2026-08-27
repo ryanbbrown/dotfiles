@@ -14,6 +14,8 @@ fail() {
 [ -x "$runner" ] || fail "runner is not executable"
 grep -F '[ -x "$repo_root/bin/terminal-job-runner" ]' "$repo_root/scripts/link-home.sh" >/dev/null ||
   fail "link-home has no runner executable guard"
+grep -F '[ -f "$repo_root/bin/terminal-job-schema.cjs" ]' "$repo_root/scripts/link-home.sh" >/dev/null ||
+  fail "link-home has no runner schema guard"
 grep -F 'When `bb terminal-job` is installed' "$repo_root/home/AGENTS.md" >/dev/null ||
   fail "shared instructions do not make the durable-command rule conditional"
 grep -F 'every agent-started command that can outlive its tool call' "$repo_root/home/AGENTS.md" >/dev/null ||
@@ -55,12 +57,18 @@ if (outcome.jobId !== "job_shell" || outcome.terminalId !== "term_shell") proces
 if (outcome.result !== "failure" || outcome.commandExitCode !== 3 || outcome.status !== 3) process.exit(1);
 ' "$artifact_root/job_shell/outcome.json" || fail "runner outcome is wrong"
 
+command -v rg >/dev/null 2>&1 || fail "rg is required for direct-terminal inventory"
 direct_terminal_pattern='(^|["[:space:]])bb["[:space:]]+terminal["[:space:]]+create|terminal_'"create"
-if rg -n "$direct_terminal_pattern" \
-  "$repo_root/bin" "$repo_root/home" "$repo_root/scripts" "$repo_root/skills" "$repo_root/tests" \
-  --glob '*.sh' --glob '*.md' --glob '*.json' --glob '*.yaml' >/dev/null; then
-  fail "agent-side direct terminal creation remains"
+scan_roots=("$repo_root/bin" "$repo_root/home" "$repo_root/scripts" "$repo_root/skills" "$repo_root/tests")
+if rg -n "$direct_terminal_pattern" "${scan_roots[@]}" \
+  --glob '*.sh' --glob '*.md' --glob '*.json' --glob '*.yaml' --glob '*.yml' >/dev/null; then
+  fail "agent-side direct terminal creation remains in instructions or configured source"
 fi
+while IFS= read -r executable; do
+  if rg -n "$direct_terminal_pattern" "$executable" >/dev/null; then
+    fail "agent-side direct terminal creation remains in executable: $executable"
+  fi
+done < <(find "${scan_roots[@]}" -type f -perm -111 -print)
 
 count="$(rg -l 'sdk\.terminals\.create' "$repo_root/plugins" \
   --glob '!terminal-jobs/node_modules/**' --glob '*.ts' | wc -l | tr -d ' ')"

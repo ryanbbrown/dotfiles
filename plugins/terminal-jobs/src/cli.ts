@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { BbPluginApi, PluginCliContext, PluginCliResult } from "@get-bb/plugin-sdk";
 import { ARTIFACT_SCHEMA_VERSION } from "./artifacts.js";
-import { TerminalJobService, definiteCreateFailure } from "./service.js";
+import { definiteCreateFailure } from "./service.js";
 import { JobStore, type DeliveryMode, type Job, type Scope } from "./store.js";
 
 class CliError extends Error {}
@@ -236,7 +236,6 @@ export class TerminalJobCli {
   constructor(
     private readonly bb: BbPluginApi,
     private readonly store: JobStore,
-    private readonly service: TerminalJobService,
     private readonly wake: () => void,
   ) {}
 
@@ -294,8 +293,9 @@ export class TerminalJobCli {
       terminalState: "preparing",
       outcomeState: "unchecked",
     });
+    let terminal: Awaited<ReturnType<BbPluginApi["sdk"]["terminals"]["create"]>>;
     try {
-      const terminal = await this.bb.sdk.terminals.create({
+      terminal = await this.bb.sdk.terminals.create({
         cols: 120,
         rows: 30,
         scope: terminalScope(resolved.scope),
@@ -310,28 +310,29 @@ export class TerminalJobCli {
           }),
         },
       });
-      job = this.store.update(jobId, {
-        terminalId: terminal.id,
-        terminalState: "observing",
-        lastBbStatus: terminal.status,
-        observedAt: Date.now(),
-      });
-      await this.service.processPass(`cli_${randomUUID()}`);
-      job = this.store.get(jobId)!;
     } catch (error) {
-      if (definiteCreateFailure(error)) {
-        job = this.store.update(jobId, {
-          terminalState: "unavailable",
-          lastObservationError: `terminal creation was rejected: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        await this.service.processPass(`cli_${randomUUID()}`);
-        job = this.store.get(jobId)!;
-      } else {
-        job = this.store.update(jobId, {
-          lastObservationError: `terminal create response is unknown: ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
+      job = definiteCreateFailure(error)
+        ? this.store.update(jobId, {
+            terminalState: "unavailable",
+            lastObservationError: `terminal creation was rejected: ${error instanceof Error ? error.message : String(error)}`,
+          })
+        : this.store.update(jobId, {
+            lastObservationError: `terminal create response is unknown: ${error instanceof Error ? error.message : String(error)}`,
+          });
+      this.wake();
+      return { exitCode: 0, stdout: render(job, parsed.flags.has("--json")) };
     }
+
+    const observedAt = Date.now();
+    job = this.store.update(jobId, {
+      terminalId: terminal.id,
+      terminalState: terminal.status === "exited" ? "exited" : "observing",
+      lastBbStatus: terminal.status,
+      exitCode: terminal.status === "exited" ? terminal.exitCode : null,
+      closeReason: terminal.status === "exited" ? terminal.closeReason : null,
+      observedAt,
+      exitedAt: terminal.status === "exited" ? observedAt : null,
+    });
     this.wake();
     return { exitCode: 0, stdout: render(job, parsed.flags.has("--json")) };
   }
@@ -375,8 +376,6 @@ export class TerminalJobCli {
         observedAt: now,
         exitedAt: now,
       });
-      await this.service.processPass(`cli_${randomUUID()}`);
-      job = this.store.get(job.jobId)!;
     }
     this.wake();
     return { exitCode: 0, stdout: render(job, parsed.flags.has("--json")) };

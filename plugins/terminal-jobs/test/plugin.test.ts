@@ -68,6 +68,12 @@ async function load(options: {
   return host;
 }
 
+async function processJobs(host: FakePluginHost, token = "service_test", now = Date.now()) {
+  const store = new JobStore(host.bb.storage.database());
+  await new TerminalJobService(host.bb, store).processPass(token, now);
+  return store;
+}
+
 async function runJob(
   host: FakePluginHost,
   extra: string[] = [],
@@ -166,6 +172,7 @@ describe("terminal jobs plugin", () => {
       [["run", "--title", "bad\nname", "--artifact-root", "/tmp/a", "--", "true"], "control characters"],
       [["run", "--title", "x", "--artifact-root", "/tmp/a"], "literal --"],
       [["run", "--title", "x", "--artifact-root", "/tmp/a", "--"], "missing command"],
+      [["watch", "term_target", "--notify-thread", "thr_owner", "--log", "relative.log"], "absolute POSIX"],
     ] as const) {
       const result = await host.harness.behavior.runCli([...argv], { threadId: "thr_owner" });
       expect(result.exitCode).toBe(1);
@@ -214,7 +221,10 @@ describe("terminal jobs plugin", () => {
       { threadId: "thr_owner" },
     );
     expect(result.exitCode, result.stderr).toBe(0);
-    const value = JSON.parse(result.stdout);
+    const initial = JSON.parse(result.stdout);
+    await processJobs(host);
+    const shown = await host.harness.behavior.runCli(["show", initial.jobId, "--json"]);
+    const value = JSON.parse(shown.stdout);
     expect(value.terminal).toMatchObject({ state: "exited", bbStatus: "exited", exitCode: 0 });
     expect(value.outcome).toMatchObject({ state: "present", result: "success", commandExitCode: 0 });
     expect(value.delivery).toMatchObject({ state: "delivered", acceptedKind: "queued", attemptCount: 1 });
@@ -296,7 +306,10 @@ describe("terminal jobs plugin", () => {
       "steer",
       "--json",
     ]);
-    const value = JSON.parse(result.stdout);
+    const initial = JSON.parse(result.stdout);
+    await processJobs(host);
+    const shown = await host.harness.behavior.runCli(["show", initial.jobId, "--json"]);
+    const value = JSON.parse(shown.stdout);
     expect(value.outcome.state).toBe("not-applicable");
     expect(value.delivery).toMatchObject({ state: "delivered", acceptedKind: "deferred" });
     expect(value.terminal).toMatchObject({ exitCode: null, closeReason: "daemon-disconnect" });
@@ -322,7 +335,10 @@ describe("terminal jobs plugin", () => {
     const first = await host.harness.behavior.runCli([
       "watch", "term_target", "--notify-thread", "thr_owner", "--log", "/tmp/a.log", "--json",
     ]);
-    const retryWait = JSON.parse(first.stdout);
+    const firstJobId = JSON.parse(first.stdout).jobId;
+    await processJobs(host);
+    const retryWaitResult = await host.harness.behavior.runCli(["show", firstJobId, "--json"]);
+    const retryWait = JSON.parse(retryWaitResult.stdout);
     expect(retryWait.delivery.state).toBe("retry_wait");
     expect(retryWait.delivery.nextAttemptAt).toBeTypeOf("number");
 
@@ -339,7 +355,10 @@ describe("terminal jobs plugin", () => {
     const second = await host.harness.behavior.runCli([
       "watch", "term_target", "--notify-thread", "thr_owner", "--log", "/tmp/b.log", "--json",
     ]);
-    const abandoned = JSON.parse(second.stdout);
+    const secondJobId = JSON.parse(second.stdout).jobId;
+    await processJobs(host, "service_permanent");
+    const abandonedResult = await host.harness.behavior.runCli(["show", secondJobId, "--json"]);
+    const abandoned = JSON.parse(abandonedResult.stdout);
     expect(abandoned.delivery.state).toBe("abandoned");
     const reset = await host.harness.behavior.runCli(["retry-notification", abandoned.jobId, "--json"]);
     expect(JSON.parse(reset.stdout).delivery.state).toBe("retry_wait");
@@ -365,6 +384,13 @@ describe("terminal jobs plugin", () => {
     ).run(value.jobId);
     const store = new JobStore(db);
     const service = new TerminalJobService(host.bb, store);
+    await service.processPass("new", Date.now());
+    expect(store.get(value.jobId)).toMatchObject({
+      deliveryState: "delivering",
+      reservationToken: "old",
+      ambiguousAttemptCount: 0,
+    });
+    service.recoverReservations("new", Date.now());
     await service.processPass("new", Date.now());
     expect(store.get(value.jobId)).toMatchObject({
       deliveryState: "delivered",
@@ -420,7 +446,10 @@ describe("terminal jobs plugin", () => {
       get: { status: "exited", exitCode: 0, closeReason: "process-exit" },
     });
     const missing = await runJob(missingHost);
-    expect(JSON.parse(missing.stdout).outcome).toMatchObject({
+    const missingJobId = JSON.parse(missing.stdout).jobId;
+    await processJobs(missingHost);
+    const missingShown = await missingHost.harness.behavior.runCli(["show", missingJobId, "--json"]);
+    expect(JSON.parse(missingShown.stdout).outcome).toMatchObject({
       state: "missing",
       result: null,
       error: expect.stringContaining("success is unknown"),
@@ -439,7 +468,10 @@ describe("terminal jobs plugin", () => {
       }),
     });
     const invalid = await runJob(invalidHost);
-    expect(JSON.parse(invalid.stdout).outcome).toMatchObject({
+    const invalidJobId = JSON.parse(invalid.stdout).jobId;
+    await processJobs(invalidHost);
+    const invalidShown = await invalidHost.harness.behavior.runCli(["show", invalidJobId, "--json"]);
+    expect(JSON.parse(invalidShown.stdout).outcome).toMatchObject({
       state: "invalid",
       result: null,
     });

@@ -58,6 +58,7 @@ clean_legacy_codex_skill_links() {
 [ -x "$repo_root/bin/sync-bb-personal" ] || die "missing executable $repo_root/bin/sync-bb-personal"
 [ -x "$repo_root/bin/doppler-to-env" ] || die "missing executable $repo_root/bin/doppler-to-env"
 [ -x "$repo_root/bin/terminal-job-runner" ] || die "missing executable $repo_root/bin/terminal-job-runner"
+[ -f "$repo_root/bin/terminal-job-schema.cjs" ] || die "missing $repo_root/bin/terminal-job-schema.cjs"
 [ -x "$repo_root/bin/claude" ] || die "missing executable $repo_root/bin/claude"
 [ -x "$repo_root/bin/codex" ] || die "missing executable $repo_root/bin/codex"
 [ -d "$skills_source" ] || die "missing $skills_source"

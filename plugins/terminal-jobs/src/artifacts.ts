@@ -1,4 +1,31 @@
 export const ARTIFACT_SCHEMA_VERSION = 1;
+export const LAUNCH_ARTIFACT_FIELDS = [
+  "schemaVersion",
+  "jobId",
+  "terminalId",
+  "ownerThreadId",
+  "argv",
+  "startedAt",
+  "artifactRoot",
+  "jobDirectory",
+  "launchPath",
+  "logPath",
+  "outcomePath",
+] as const;
+export const OUTCOME_ARTIFACT_FIELDS = [
+  "schemaVersion",
+  "jobId",
+  "terminalId",
+  "ownerThreadId",
+  "commandExitCode",
+  "signal",
+  "status",
+  "result",
+  "startedAt",
+  "finishedAt",
+  "durationMs",
+  "logPath",
+] as const;
 
 export interface LaunchArtifact {
   schemaVersion: 1;
@@ -82,23 +109,7 @@ function iso(value: unknown, field: string): string {
 
 export function decodeLaunchArtifact(content: string): LaunchArtifact {
   const value = record(JSON.parse(content), "launch artifact");
-  exactKeys(
-    value,
-    [
-      "schemaVersion",
-      "jobId",
-      "terminalId",
-      "ownerThreadId",
-      "argv",
-      "startedAt",
-      "artifactRoot",
-      "jobDirectory",
-      "launchPath",
-      "logPath",
-      "outcomePath",
-    ],
-    "launch artifact",
-  );
+  exactKeys(value, LAUNCH_ARTIFACT_FIELDS, "launch artifact");
   if (value.schemaVersion !== ARTIFACT_SCHEMA_VERSION) {
     throw new Error("unsupported launch schema version");
   }
@@ -122,24 +133,7 @@ export function decodeLaunchArtifact(content: string): LaunchArtifact {
 
 export function decodeOutcomeArtifact(content: string): OutcomeArtifact {
   const value = record(JSON.parse(content), "outcome artifact");
-  exactKeys(
-    value,
-    [
-      "schemaVersion",
-      "jobId",
-      "terminalId",
-      "ownerThreadId",
-      "commandExitCode",
-      "signal",
-      "status",
-      "result",
-      "startedAt",
-      "finishedAt",
-      "durationMs",
-      "logPath",
-    ],
-    "outcome artifact",
-  );
+  exactKeys(value, OUTCOME_ARTIFACT_FIELDS, "outcome artifact");
   if (value.schemaVersion !== ARTIFACT_SCHEMA_VERSION) {
     throw new Error("unsupported outcome schema version");
   }

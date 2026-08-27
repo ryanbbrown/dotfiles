@@ -13,38 +13,15 @@ EOF
 }
 
 run_review() {
-  local notify_thread="$1"
-  local bb_cli="$2"
-  local terminal_title="$3"
-  shift 3
   [ "${1:-}" = "--" ] || usage
   shift
 
-  # shellcheck disable=SC2329 # Called by the EXIT trap.
-  notify_on_exit() {
-    local status=$?
-    local outcome="succeeded"
-    trap - EXIT
-    [ "$status" -eq 0 ] || outcome="failed with exit status $status"
-    if ! "$bb_cli" thread tell "$notify_thread" \
-      "BB terminal '$terminal_title' $outcome. Inspect its review files and retained logs." \
-      --mode queue; then
-      echo "warning: could not notify BB thread $notify_thread" >&2
-    fi
-    exit "$status"
-  }
-
-  trap notify_on_exit EXIT
   "$review_script" "$@"
 }
 
 if [ "${1:-}" = "--run" ]; then
-  [ "$#" -ge 5 ] || usage
-  notify_thread="$2"
-  bb_cli="$3"
-  terminal_title="$4"
-  shift 4
-  run_review "$notify_thread" "$bb_cli" "$terminal_title" "$@"
+  shift
+  run_review "$@"
   exit $?
 fi
 
@@ -78,4 +55,4 @@ bb_cli="${BB_CLI:-$(command -v bb || true)}"
   --json \
   -- \
   "$script_dir/review-round-bb.sh" \
-  --run "$thread_id" "$bb_cli" "$terminal_title" -- "$@"
+  --run -- "$@"

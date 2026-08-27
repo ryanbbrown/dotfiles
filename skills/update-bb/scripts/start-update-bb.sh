@@ -56,8 +56,11 @@ process.stdin.on("data", chunk => input += chunk);
 process.stdin.on("end", () => {
   const status = JSON.parse(input);
   if (typeof status.jobId !== "string" || status.jobId.length === 0) process.exit(1);
-  if (typeof status.terminal?.id !== "string" || status.terminal.id.length === 0) process.exit(1);
-  process.stdout.write(`${status.jobId} ${status.terminal.id}\n`);
+  const terminalId =
+    typeof status.terminal?.id === "string" && status.terminal.id.length > 0
+      ? status.terminal.id
+      : "unknown";
+  process.stdout.write(`${status.jobId} ${terminalId}\n`);
 });
 ')
 

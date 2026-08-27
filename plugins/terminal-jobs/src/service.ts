@@ -7,6 +7,7 @@ const POLL_MS = 1_000;
 const NOT_FOUND_WINDOW_MS = 30_000;
 const LAUNCH_DEADLINE_MS = 120_000;
 const MAX_BACKOFF_MS = 300_000;
+const OUTCOME_INSPECTION_DEADLINE_MS = 30_000;
 const MESSAGE_MAX_CHARS = 12_000;
 
 function errorText(error: unknown, max = 1_000): string {
@@ -14,30 +15,58 @@ function errorText(error: unknown, max = 1_000): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-function statusCode(error: unknown): number | null {
-  if (typeof error !== "object" || error === null) return null;
-  for (const key of ["status", "statusCode"]) {
-    const value = (error as Record<string, unknown>)[key];
-    if (Number.isInteger(value)) return value as number;
+function structuredValue(error: unknown, keys: readonly string[]): unknown {
+  let current = error;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof current !== "object" || current === null) return undefined;
+    const record = current as Record<string, unknown>;
+    for (const key of keys) {
+      if (record[key] !== undefined) return record[key];
+    }
+    current = record.cause ?? record.response;
   }
-  const match = errorText(error).match(/\b(4\d\d|5\d\d)\b/u);
-  return match ? Number(match[1]) : null;
+  return undefined;
+}
+
+function statusCode(error: unknown): number | null {
+  const value = structuredValue(error, ["status", "statusCode"]);
+  return Number.isInteger(value) ? (value as number) : null;
+}
+
+function errorCode(error: unknown): string | null {
+  const value = structuredValue(error, ["code"]);
+  return typeof value === "string" ? value : null;
+}
+
+function isRetryableHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
 function isNotFound(error: unknown): boolean {
-  const code = statusCode(error);
-  return code === 404 || /\bnot found\b|\bno such file\b|\bunknown terminal\b/iu.test(errorText(error));
+  const code = errorCode(error);
+  return statusCode(error) === 404 || code === "ENOENT" || code === "not_found" || code === "terminal_not_found";
 }
 
 function isDefiniteCreateRejection(error: unknown): boolean {
-  const code = statusCode(error);
-  return code !== null && code >= 400 && code < 500;
+  const status = statusCode(error);
+  return status !== null && status >= 400 && status < 500 && !isRetryableHttpStatus(status);
 }
 
 function isPermanentDeliveryError(error: unknown): boolean {
-  const code = statusCode(error);
-  if (code !== null && code >= 400 && code < 500) return true;
-  return /\b(archived|deleted|permission denied|not writable|not found)\b/iu.test(errorText(error));
+  const status = statusCode(error);
+  if (status !== null) {
+    if (isRetryableHttpStatus(status)) return false;
+    return status >= 400 && status < 500;
+  }
+  return [
+    "archived",
+    "deleted",
+    "forbidden",
+    "not_found",
+    "permission_denied",
+    "thread_archived",
+    "thread_deleted",
+  ].includes(errorCode(error) ?? "");
 }
 
 function decodeFileContent(file: { content: string; contentEncoding: "base64" | "utf8" }): string {
@@ -79,37 +108,65 @@ function validateOutcome(job: Job, content: string) {
   return outcome;
 }
 
-function displayedPath(path: string): string {
-  if (path.length <= 1_000) return path;
-  return `${path.slice(0, 480)}…${path.slice(-480)}`;
+function bounded(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const side = Math.floor((max - 1) / 2);
+  return `${value.slice(0, side)}…${value.slice(-side)}`;
+}
+
+function displayedPath(path: string, max = 1_000): string {
+  return bounded(path, max);
 }
 
 export function formatCompletion(job: Job): string {
   const terminal = job.terminalId ?? "unknown";
-  const status = job.lastBbStatus ?? "unknown";
+  const status = bounded(job.lastBbStatus ?? "unknown", 256);
   const exitCode = job.exitCode === null ? "unknown" : String(job.exitCode);
-  const closeReason = job.closeReason ?? "unknown";
+  const closeReason = bounded(job.closeReason ?? "unknown", 256);
   let outcome: string;
-  let duration = "";
+  let duration: string | null = null;
   if (job.outcomeState === "present" && job.outcome) {
     const commandResult =
       job.outcome.signal !== null
-        ? `signal ${job.outcome.signal}, shell status ${job.outcome.status}`
+        ? `signal ${bounded(job.outcome.signal, 128)}, shell status ${job.outcome.status}`
         : `exit ${job.outcome.commandExitCode ?? "unknown"}, shell status ${job.outcome.status}`;
     const terminalMarker = job.outcome.terminalId === null ? "; terminal marker unknown" : "";
     outcome = `${job.outcome.result} (${commandResult}${terminalMarker})`;
-    duration = `\nDuration: ${job.outcome.durationMs} ms`;
+    duration = `Duration: ${job.outcome.durationMs} ms`;
   } else if (job.outcomeState === "not-applicable") {
     outcome = "not applicable; watched terminals have no runner outcome and no scrollback was recovered";
   } else {
-    outcome = `${job.outcomeState}; command success is unknown${job.outcomeError ? ` (${job.outcomeError})` : ""}`;
+    const detail = job.outcomeError ? ` (${bounded(job.outcomeError, 1_000)})` : "";
+    outcome = `${job.outcomeState}; command success is unknown${detail}`;
   }
-  const title = job.title.length > 1_000 ? `${job.title.slice(0, 999)}…` : job.title;
-  let message = `${job.marker}\nTerminal job completed: ${title}\nTerminal: ${terminal}\nBB status: ${status}; exit: ${exitCode}; close reason: ${closeReason}\nRunner outcome: ${outcome}${duration}\nLog: ${displayedPath(job.logPath)}\nOutcome: ${job.outcomePath ? displayedPath(job.outcomePath) : "not applicable"}\nStatus: bb terminal-job show ${job.jobId} --json`;
+
+  const mandatory = [
+    job.marker,
+    `Terminal: ${terminal}`,
+    `BB status: ${status}; exit: ${exitCode}; close reason: ${closeReason}`,
+    `Runner outcome: ${outcome}`,
+    `Status: bb terminal-job show ${job.jobId} --json`,
+  ];
+  const optional = [
+    `Terminal job completed: ${bounded(job.title, 1_000)}`,
+    ...(duration ? [duration] : []),
+    `Log: ${displayedPath(job.logPath)}`,
+    `Outcome: ${job.outcomePath ? displayedPath(job.outcomePath) : "not applicable"}`,
+  ];
+  let message = [...mandatory.slice(0, 1), ...optional, ...mandatory.slice(1)].join("\n");
   if (message.length > MESSAGE_MAX_CHARS) {
-    message = `${job.marker}\nTerminal job completed.\nTerminal: ${terminal}\nBB status: ${status}; exit: ${exitCode}; close reason: ${closeReason}\nRunner outcome: ${outcome}\nLog: ${displayedPath(job.logPath)}\nOutcome: ${job.outcomePath ? displayedPath(job.outcomePath) : "not applicable"}\nStatus: bb terminal-job show ${job.jobId} --json`;
+    message = [
+      ...mandatory.slice(0, 1),
+      "Terminal job completed.",
+      `Log: ${displayedPath(job.logPath, 200)}`,
+      `Outcome: ${job.outcomePath ? displayedPath(job.outcomePath, 200) : "not applicable"}`,
+      ...mandatory.slice(1),
+    ].join("\n");
   }
-  return message.slice(0, MESSAGE_MAX_CHARS);
+  if (message.length > MESSAGE_MAX_CHARS) {
+    throw new Error(`completion message invariant exceeded ${MESSAGE_MAX_CHARS} characters`);
+  }
+  return message;
 }
 
 export class TerminalJobService {
@@ -118,8 +175,11 @@ export class TerminalJobService {
     private readonly store: JobStore,
   ) {}
 
+  recoverReservations(serviceToken: string, now = Date.now()): number {
+    return this.store.recoverForeignReservations(serviceToken, now);
+  }
+
   async processPass(serviceToken: string, now = Date.now()): Promise<void> {
-    this.store.recoverForeignReservations(serviceToken, now);
     for (const initial of this.store.unresolved(100)) {
       await this.reconcile(initial, now);
     }
@@ -144,42 +204,83 @@ export class TerminalJobService {
     }
   }
 
+  private settleLaunchAmbiguous(job: Job, detail: string, now: number): Job {
+    return this.store.update(
+      job.jobId,
+      {
+        terminalState: "launch_ambiguous",
+        lastObservationError: detail,
+        observedAt: now,
+      },
+      now,
+    );
+  }
+
   private async recoverPreparing(job: Job, now: number): Promise<Job> {
     if (!job.launchPath) throw new Error(`preparing job ${job.jobId} has no launch path`);
+    let content: string;
     try {
       const file = await this.bb.sdk.files.read({
         hostId: job.hostId,
         rootPath: job.artifactRoot,
         path: job.launchPath,
       });
-      const launch = validateLaunch(job, decodeFileContent(file));
-      if (launch.terminalId) {
-        return this.store.update(job.jobId, {
-          terminalId: launch.terminalId,
-          terminalState: "observing",
-          lastObservationError: null,
-        }, now);
-      }
-      return this.store.update(job.jobId, {
-        lastObservationError: "launch marker has no terminal ID; launch acceptance remains unknown",
-      }, now);
+      content = decodeFileContent(file);
     } catch (error) {
+      if (now - job.createdAt >= LAUNCH_DEADLINE_MS) {
+        return this.settleLaunchAmbiguous(
+          job,
+          "Terminal creation acceptance and terminal identity are unknown; an orphan terminal is possible.",
+          now,
+        );
+      }
       const message = isNotFound(error)
         ? "launch marker is not available"
         : `launch reconciliation failed: ${errorText(error)}`;
-      if (now - job.createdAt < LAUNCH_DEADLINE_MS) {
-        return this.store.update(job.jobId, { lastObservationError: message }, now);
-      }
+      return this.store.update(
+        job.jobId,
+        { lastObservationError: message, observedAt: now },
+        now,
+      );
+    }
+
+    let launch: ReturnType<typeof decodeLaunchArtifact>;
+    try {
+      launch = validateLaunch(job, content);
+    } catch (error) {
+      return this.settleLaunchAmbiguous(
+        job,
+        `Launch marker is invalid: ${errorText(error)}`,
+        now,
+      );
+    }
+    if (launch.terminalId) {
       return this.store.update(
         job.jobId,
         {
-          terminalState: "launch_ambiguous",
-          lastObservationError:
-            "Terminal creation acceptance and terminal identity are unknown; an orphan terminal is possible.",
+          terminalId: launch.terminalId,
+          terminalState: "observing",
+          lastObservationError: null,
+          observedAt: now,
         },
         now,
       );
     }
+    if (now - job.createdAt >= LAUNCH_DEADLINE_MS) {
+      return this.settleLaunchAmbiguous(
+        job,
+        "Launch marker has no terminal ID after the launch deadline; terminal identity is unknown.",
+        now,
+      );
+    }
+    return this.store.update(
+      job.jobId,
+      {
+        lastObservationError: "launch marker has no terminal ID; launch acceptance remains unknown",
+        observedAt: now,
+      },
+      now,
+    );
   }
 
   private async pollTerminal(job: Job, now: number): Promise<Job> {
@@ -272,9 +373,25 @@ export class TerminalJobService {
       }
     } catch (error) {
       if (!isNotFound(error)) {
+        const inspectionStartedAt = job.exitedAt ?? job.observedAt ?? job.createdAt;
+        const detail = errorText(error);
+        if (now - inspectionStartedAt >= OUTCOME_INSPECTION_DEADLINE_MS) {
+          return this.store.update(
+            job.jobId,
+            {
+              outcomeState: "invalid",
+              outcomeError: `outcome read failed through inspection deadline: ${detail}`,
+              outcomeCheckedAt: now,
+            },
+            now,
+          );
+        }
         return this.store.update(
           job.jobId,
-          { outcomeError: `outcome read failed and will retry: ${errorText(error)}` },
+          {
+            outcomeError: `outcome read failed and will retry: ${detail}`,
+            outcomeCheckedAt: now,
+          },
           now,
         );
       }
@@ -341,6 +458,7 @@ export function createServiceLoop(
 ) {
   return async (signal: AbortSignal): Promise<void> => {
     const token = `service_${randomUUID()}`;
+    service.recoverReservations(token);
     while (!signal.aborted) {
       await service.processPass(token);
       const next = store.nextDeliveryAt();

@@ -19,6 +19,7 @@ chmod +x "$scripts/review-round.sh"
 cat > "$test_root/bb" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$1 $2" >> "$BB_CALLS_FILE"
 if [ "$1 $2" = "terminal-job run" ]; then
   printf '%s\n' "$@" > "$TERMINAL_JOB_ARGS_FILE"
   shift 2
@@ -28,10 +29,6 @@ if [ "$1 $2" = "terminal-job run" ]; then
   printf '%q ' "$@" > "$TERMINAL_COMMAND_FILE"
   printf '\n' >> "$TERMINAL_COMMAND_FILE"
   printf '%s\n' '{"jobId":"job_review","terminal":{"id":"term_review"}}'
-  exit 0
-fi
-if [ "$1 $2" = "thread tell" ]; then
-  printf '%s\n' "$@" > "$THREAD_TELL_FILE"
   exit 0
 fi
 echo "unexpected bb command: $*" >&2
@@ -45,7 +42,7 @@ export BB_CLI="$test_root/bb"
 export REVIEW_ARGS_FILE="$test_root/review-args"
 export TERMINAL_JOB_ARGS_FILE="$test_root/terminal-job-args"
 export TERMINAL_COMMAND_FILE="$test_root/terminal-command"
-export THREAD_TELL_FILE="$test_root/thread-tell"
+export BB_CALLS_FILE="$test_root/bb-calls"
 
 export BB_TERMINAL_SESSION_ID="term_outer"
 set +e
@@ -79,10 +76,14 @@ BB_THREAD_ID="thr_wrong" BB_TERMINAL_SESSION_ID="term_inner" \
 
 grep -Fxq -- "--feature" "$REVIEW_ARGS_FILE"
 grep -Fxq -- "demo feature" "$REVIEW_ARGS_FILE"
-grep -Fxq -- "thread" "$THREAD_TELL_FILE"
-grep -Fxq -- "thr_test" "$THREAD_TELL_FILE"
-grep -Fxq -- "BB terminal 'review-panel-demo' succeeded. Inspect its review files and retained logs." "$THREAD_TELL_FILE"
-grep -Fxq -- "queue" "$THREAD_TELL_FILE"
+[ "$(grep -Fxc 'terminal-job run' "$BB_CALLS_FILE")" -eq 1 ] || {
+  echo "expected one terminal-job completion path" >&2
+  exit 1
+}
+if grep -Fq 'thread tell' "$BB_CALLS_FILE"; then
+  echo "wrapper sent a duplicate completion" >&2
+  exit 1
+fi
 
 export REVIEW_EXIT=7
 set +e
@@ -91,6 +92,9 @@ BB_THREAD_ID="thr_wrong" BB_TERMINAL_SESSION_ID="term_inner" \
 status=$?
 set -e
 [ "$status" -eq 7 ] || { echo "review exit status was not preserved" >&2; exit 1; }
-grep -Fxq -- "BB terminal 'review-panel-demo' failed with exit status 7. Inspect its review files and retained logs." "$THREAD_TELL_FILE"
+if grep -Fq 'thread tell' "$BB_CALLS_FILE"; then
+  echo "wrapper sent a duplicate failure completion" >&2
+  exit 1
+fi
 
-echo "review-panel terminal-job notification test passed."
+echo "review-panel single terminal-job completion test passed."

@@ -150,6 +150,38 @@ describe("terminal-job-runner", () => {
     });
   });
 
+  it("preserves normal exit when a signal arrives after child exit but before stdio close", async () => {
+    const artifactRoot = await root();
+    const jobId = "job_post_exit_signal";
+    const child = spawn(
+      runner,
+      [
+        "--job-id",
+        jobId,
+        "--owner-thread",
+        "thr_owner",
+        "--artifact-root",
+        artifactRoot,
+        "--",
+        "/bin/sh",
+        "-c",
+        "(sleep 0.5) & printf exited",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    await new Promise<void>((resolve) => child.stdout.once("data", () => resolve()));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    child.kill("SIGTERM");
+    const status = await new Promise<number | null>((resolve) => child.once("close", resolve));
+    expect(status).toBe(0);
+    expect(decodeOutcomeArtifact(readFileSync(paths(artifactRoot, jobId).outcome, "utf8"))).toMatchObject({
+      commandExitCode: 0,
+      signal: null,
+      status: 0,
+      result: "success",
+    });
+  });
+
   it("leaves partial output without a false outcome after forced runner loss", async () => {
     const artifactRoot = await root();
     const jobId = "job_forced_loss";

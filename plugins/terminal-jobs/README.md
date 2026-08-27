@@ -11,6 +11,7 @@ Each target host needs:
 - a POSIX shell
 - Node.js 22 or later
 - the linked `~/.local/bin/terminal-job-runner`
+- `bin/terminal-job-schema.cjs` beside the runner's real repository target; keep the runner as the `link-home.sh` symlink rather than copying it alone
 - write access to the selected absolute artifact root
 
 Command arguments and logs are sensitive local data. Use environment variables or mode-0600 secret files instead of secrets in argv.
@@ -27,7 +28,7 @@ npm test
 npm run build
 ```
 
-`npm test` uses the official fake-plugin host, real temporary SQLite storage, and real runner child processes. The package has its own lockfile and no runtime dependencies.
+`npm test` uses the official fake-plugin host, real temporary SQLite storage, and real runner child processes. The package has its own lockfile and no runtime dependencies. Its test-only `cron-parser`, `hono`, and `zod` packages are optional peers that the SDK 0.4.18 fake host imports eagerly.
 
 ## Commands
 

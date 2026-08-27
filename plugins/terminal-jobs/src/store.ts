@@ -286,12 +286,40 @@ export interface NewJob {
 }
 
 export class JobStore {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly logDecodeError: (message: string) => void = () => {},
+  ) {}
 
   static open(bb: BbPluginApi): JobStore {
     const db = bb.storage.database();
     bb.storage.migrate(db, MIGRATIONS);
-    return new JobStore(db);
+    return new JobStore(db, (message) => bb.log.error(message));
+  }
+
+  private decodeRows(rows: unknown[], operation: string): Job[] {
+    const jobs: Job[] = [];
+    for (const row of rows) {
+      try {
+        jobs.push(decodeJob(row));
+      } catch (error) {
+        const jobId = isRecord(row) && typeof row.job_id === "string" ? row.job_id : "unknown";
+        const detail = error instanceof Error ? error.message : String(error);
+        this.logDecodeError(`Skipped corrupt terminal job ${jobId} during ${operation}: ${detail}`);
+        if (jobId !== "unknown") {
+          const bounded = `Corrupt persisted row: ${detail}`.slice(0, 1_000);
+          this.db
+            .prepare(
+              `UPDATE jobs SET terminal_state = 'unavailable', outcome_state = 'invalid',
+                 outcome_json = NULL, outcome_error = ?, delivery_state = 'abandoned',
+                 delivery_last_error = ?, next_attempt_at = NULL, reservation_token = NULL,
+                 updated_at = ? WHERE job_id = ?`,
+            )
+            .run(bounded, bounded, Date.now(), jobId);
+        }
+      }
+    }
+    return jobs;
   }
 
   insert(job: NewJob): Job {
@@ -329,30 +357,33 @@ export class JobStore {
   }
 
   unresolved(limit = 100): Job[] {
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT * FROM jobs
          WHERE terminal_state IN ('preparing', 'observing')
             OR (terminal_state IN ('exited', 'launch_ambiguous', 'unavailable')
               AND outcome_state = 'unchecked')
-         ORDER BY created_at LIMIT ?`,
+         ORDER BY CASE
+           WHEN terminal_state IN ('preparing', 'observing') THEN COALESCE(observed_at, 0)
+           ELSE updated_at
+         END, job_id LIMIT ?`,
       )
-      .all(limit)
-      .map(decodeJob);
+      .all(limit);
+    return this.decodeRows(rows, "terminal reconciliation");
   }
 
   dueDeliveries(now: number, limit = 100): Job[] {
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT * FROM jobs
          WHERE terminal_state IN ('exited', 'launch_ambiguous', 'unavailable')
            AND outcome_state <> 'unchecked'
            AND (delivery_state = 'pending'
              OR (delivery_state = 'retry_wait' AND next_attempt_at <= ?))
-         ORDER BY created_at LIMIT ?`,
+         ORDER BY created_at, job_id LIMIT ?`,
       )
-      .all(now, limit)
-      .map(decodeJob);
+      .all(now, limit);
+    return this.decodeRows(rows, "notification delivery");
   }
 
   nextDeliveryAt(): number | null {

@@ -41,7 +41,11 @@ fi
 
 if [ "$1 $2" = "terminal-job run" ]; then
   printf '%s\n' "$@" > "$UPDATE_BB_TEST_STATE/create-args"
-  printf '%s\n' '{"jobId":"job_new","terminal":{"id":"term_new"}}'
+  if [ "${UPDATE_BB_TEST_NULL_TERMINAL:-0}" = 1 ]; then
+    printf '%s\n' '{"jobId":"job_without_terminal","terminal":{"id":null}}'
+  else
+    printf '%s\n' '{"jobId":"job_new","terminal":{"id":"term_new"}}'
+  fi
   exit 0
 fi
 
@@ -98,6 +102,23 @@ if grep -Fx 'create' "$state/create-args" >/dev/null; then
   fail "launcher called raw terminal create"
 fi
 [ -f "$test_root/storage/update-bb/latest.txt" ] || fail "latest run pointer was not written"
+
+PATH="$fake_bin:$PATH" \
+  BB_CLI="$fake_bin/bb" \
+  BB_THREAD_ID=thr_test \
+  BB_THREAD_STORAGE="$test_root/null-storage" \
+  UPDATE_BB_TEST_STATE="$state" \
+  UPDATE_BB_TEST_NULL_TERMINAL=1 \
+  "$launcher" > "$test_root/null-terminal-output"
+assert_contains "$test_root/null-terminal-output" "job_id: job_without_terminal"
+assert_contains "$test_root/null-terminal-output" "terminal_id: unknown"
+null_latest="$test_root/null-storage/update-bb/latest.txt"
+[ -f "$null_latest" ] || fail "null-terminal latest pointer was not written"
+null_run_dir="$(cat "$null_latest")"
+assert_contains "$null_run_dir/launch.txt" "job_id: job_without_terminal"
+assert_contains "$null_run_dir/launch.txt" "terminal_id: unknown"
+assert_contains "$null_run_dir/launch.txt" "log:"
+assert_contains "$null_run_dir/launch.txt" "outcome:"
 
 success_log="$test_root/runner-success.log"
 success_outcome="$test_root/runner-success.txt"

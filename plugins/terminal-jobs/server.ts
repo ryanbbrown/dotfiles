@@ -33,7 +33,7 @@ export default function terminalJobsPlugin(bb: BbPluginApi): void {
   const store = JobStore.open(bb);
   const service = new TerminalJobService(bb, store);
   const wakeSignal = createWakeSignal();
-  const cli = new TerminalJobCli(bb, store, service, () => wakeSignal.wake());
+  const cli = new TerminalJobCli(bb, store, () => wakeSignal.wake());
 
   bb.cli.register({
     name: "terminal-job",
