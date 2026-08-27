@@ -5,37 +5,60 @@ description: Run independent Codex, Claude Code, and GLM reviews against one fro
 
 # Review panel
 
-This skill only runs the review script. The calling workflow owns interpreting the reports, synthesizing findings, deciding what to change, and coordinating writers.
+This skill starts the review. The calling workflow interprets the reports, decides what to change, and coordinates writers.
 
-## Launch rule
+## Durable launch in BB
 
-Run from the repository being reviewed. Check `bb terminal list --thread "$BB_THREAD_ID"` first so you do not start a duplicate review for the same feature. Invoke the bundled wrapper directly from the owning agent process. The wrapper owns its `terminal-job run` call; never wrap it in another terminal job. Do not put it inside `bb terminal create`, `nohup`, shell background syntax such as `&`, `bb terminal wait`, or another durable terminal. After the wrapper returns the job and terminal identity, return control to BB. Terminal-jobs sends the one queued stable-marker completion. Do not poll or wait.
+Run from the repository to review. Choose a terminal title that is unique to the feature and mode. Check `bb terminal list --thread "$BB_THREAD_ID" --json` for an active terminal with that exact title. If one exists, report it instead of starting a duplicate.
 
-For an implementation review:
-
-```bash
-~/.claude/skills/review-panel/scripts/review-round-bb.sh --title "review-panel-<feature-slug>" -- --feature "feature name" --plan-file .plans/<plan-slug>.md --base-ref <pre-implementation-sha>
-```
-
-Capture the base SHA before implementation starts. The implementation writer may commit before review, so the current `HEAD` cannot define the feature range. The launcher rejects an implementation review without a base or with an empty base-to-snapshot diff.
-
-Claude reviews use Claude Code OAuth only. The launcher removes Anthropic API key variables and verifies a first-party OAuth login before preflight. If OAuth is unavailable, stop and ask the user to run `claude auth login`. Do not add an API key fallback and do not bypass the OAuth failure.
-
-For a plan review:
+Launch exactly once for the request from the owning agent process. Use one `bb terminal-job run` call. The Terminal Jobs plugin owns the durable terminal, command log, outcome, and completion notice to the explicit owner thread.
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round-bb.sh --title "review-panel-<feature-slug>-plan" -- --feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
+bb terminal-job run \
+  --title "review-panel-<feature-slug>" \
+  --thread "$BB_THREAD_ID" \
+  --notify-thread "$BB_THREAD_ID" \
+  --artifact-root "$BB_THREAD_STORAGE/terminal-jobs" \
+  --delivery queue \
+  --json \
+  -- \
+  ~/.claude/skills/review-panel/scripts/review-round.sh \
+  --feature "feature name" \
+  --plan-file .plans/<plan-slug>.md \
+  --base-ref <pre-implementation-sha>
 ```
 
-For a custom review of any repository file:
+Replace only the review arguments after `review-round.sh` for plan or custom mode. The result must contain a job ID; report a launch error and stop if it does not. The terminal ID can be null while the plugin resolves an uncertain launch. Keep the job ID. Then return control to BB. The plugin sends the queued stable-marker completion. Do not poll or wait.
+
+Capture the base SHA before implementation starts. The implementation writer can commit before review, so current `HEAD` cannot define the feature range. The review command rejects an implementation review without a base or with an empty base-to-snapshot diff.
+
+For a plan review, use these review arguments and a title that ends in `-plan`:
+
+```text
+--feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
+```
+
+For a custom review, use these review arguments:
+
+```text
+--feature "architecture suggestions" --mode custom --target-file .html/architecture-suggestions.html --prompt "Assess each recommendation and state whether you agree, with repository evidence."
+```
+
+Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The custom text defines the review objective. The command still supplies the frozen snapshot, read-only rules, and repository context.
+
+Claude reviews use Claude Code OAuth only. The command removes Anthropic API key variables and verifies a first-party OAuth login before preflight. If OAuth is unavailable, stop and ask the user to run `claude auth login`.
+
+When the completion message arrives, run `bb terminal-job show <job-id> --json`. On success, inspect the review manifest and reports. On failure, inspect the terminal-job `output.log` and the retained review logs. Report the result, output directory, and review round. This skill does not synthesize or act on findings.
+
+## Direct local use
+
+Outside BB, or when durable execution is not needed, run the review command in the foreground:
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round-bb.sh --title "review-panel-architecture-suggestions" -- --feature "architecture suggestions" --mode custom --target-file .html/architecture-suggestions.html --prompt "Assess each recommendation and state whether you agree, with repository evidence."
+~/.claude/skills/review-panel/scripts/review-round.sh <review arguments>
 ```
 
-Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The custom text defines the review objective. The launcher still supplies the frozen snapshot, read-only rules, and repository context.
-
-When the terminal completion message arrives, inspect the generated manifest and reports. Report whether it succeeded and identify the output directory and review round. On failure, inspect the retained review logs and report the error. Do not synthesize or act on findings as part of this skill.
+It writes the same review artifacts and returns a non-zero status when preflight or a reviewer fails. It does not send a BB completion notice.
 
 ## Options
 
@@ -61,14 +84,23 @@ CODEX_MODEL=gpt-5.6-sol      Default Codex reviewer model.
 GLM_MODEL=accounts/fireworks/models/glm-5p2
                              Default GLM reviewer model.
 REVIEW_TIMEOUT_SECONDS=900   Per-reviewer timeout.
-SKIP_PREFLIGHT=1             Optional escape hatch for local debugging.
+SKIP_PREFLIGHT=1             Optional local debugging switch.
 ```
 
 `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer.
 
-## Output
+## Artifacts
 
-The script chooses the next `vN` for the feature and writes:
+Terminal Jobs writes durable execution evidence to:
+
+```text
+$BB_THREAD_STORAGE/terminal-jobs/<job-id>/
+  launch.json
+  output.log
+  outcome.json
+```
+
+The review command chooses the next `vN` and writes:
 
 ```text
 .reviews/plans/<feature-slug>/                  # plan mode
@@ -79,7 +111,7 @@ The script chooses the next `vN` for the feature and writes:
   <feature-slug>-claude-vN.md
   <feature-slug>-glm-5p2-vN.md
   .logs/vN/*.stdout
-  .logs/vN/*.stderr                    # Retained only after a failure, timeout, or missing report.
+  .logs/vN/*.stderr                    # Retained after a failure, timeout, or missing report.
 ```
 
-The script freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot and review configuration.
+The command freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot and review configuration.

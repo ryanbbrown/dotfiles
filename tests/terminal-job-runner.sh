@@ -24,8 +24,10 @@ skill="$repo_root/plugins/terminal-jobs/skills/terminal-jobs/SKILL.md"
 for required in 'finite command' 'server or watcher' 'terminal-job watch' 'terminal-job show' 'retry-notification'; do
   grep -F "$required" "$skill" >/dev/null || fail "terminal-jobs skill is missing: $required"
 done
-grep -F 'never wrap it in another terminal job' "$repo_root/skills/review-panel/SKILL.md" >/dev/null ||
-  fail "review-panel does not prohibit recursive wrapping"
+grep -F 'bb terminal-job run' "$repo_root/skills/review-panel/SKILL.md" >/dev/null ||
+  fail "review-panel does not use the terminal-jobs launch path"
+[ ! -e "$repo_root/skills/review-panel/scripts/review-round-bb.sh" ] ||
+  fail "review-panel still has an obsolete terminal wrapper"
 
 mkdir -p "$test_root/home/.local/bin"
 printf '%s\n' "existing runner" > "$test_root/home/.local/bin/terminal-job-runner"

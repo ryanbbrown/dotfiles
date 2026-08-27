@@ -32,7 +32,7 @@
 - After absorbing a child's result, archive the safe idle leaf without asking. Retain it when it has live descendants, asynchronous work, a pending decision, likely review or fix follow-up, a running process, or unique or unintegrated commits, artifacts, or workspace state.
 - Before reporting completion, reconcile every child: archive safe completed leaves and report each retained child with the reason.
 - Use `bb thread tell <id> "..." --mode steer` to redirect active work and `bb thread stop <id>` to stop stuck work. Do not poll or wait for child threads.
-- When `bb terminal-job` is installed, use a skill-owned launcher when available. Otherwise, use `bb terminal-job run` for every agent-started command that can outlive its tool call. Invoke each launcher directly. Raw terminal creation is plugin-internal.
+- When `bb terminal-job` is installed, follow a skill's durable launch command when it has one. Otherwise, use `bb terminal-job run` for every agent-started command that can outlive its tool call. Raw terminal creation is plugin-internal.
 
 ## Other
 

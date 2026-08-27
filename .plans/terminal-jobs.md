@@ -6,7 +6,7 @@ Add an opt-in, backend-only `bb-plugin-terminal-jobs` package and a small target
 
 This change does not install or reload the plugin, recover deleted BB scrollback, add UI, publish, push, or update canonical `main`.
 
-Once installed, this plugin is the mandatory path for every agent-started command that can outlive its current tool call. Raw `bb terminal create` is an internal plugin implementation detail. A user-created interactive terminal in the BB UI is outside this agent policy. This candidate migrates every current dotfiles agent-owned durable launcher (`review-panel` and `update-bb`) and the shared AGENTS rule; no direct agent-side terminal creation can remain.
+Once installed, this plugin is the mandatory path for every agent-started command that can outlive its current tool call. Raw `bb terminal create` is an internal plugin implementation detail. A user-created interactive terminal in the BB UI is outside this agent policy. Review-panel uses the plugin directly, update-bb uses it through its domain launcher, and the shared AGENTS rule requires this path; no direct agent-side terminal creation can remain.
 
 ## Package and interface
 
@@ -16,12 +16,12 @@ Create:
 - `bin/terminal-job-runner`: a small Node 22 executable used inside the target terminal.
 - a `scripts/link-home.sh` executable guard and link from that runner to `~/.local/bin/terminal-job-runner`, an isolated link/backup test, and matching README layout, inventory, install, and operator sections;
 - `plugins/terminal-jobs/skills/terminal-jobs/SKILL.md`, which gives agents the one standard `terminal-job run` path for finite jobs, servers, and watchers, plus status and retry behavior;
-- migrated review-panel and update-bb launchers that keep their existing public commands but call `terminal-job run` internally;
-- a concise conditional rule in `home/AGENTS.md`: when `bb terminal-job` is installed, use a skill-owned launcher when available and otherwise use it for every agent-started durable command; never call `bb terminal create` directly.
+- review-panel instructions that call `terminal-job run` directly, plus an update-bb launcher that keeps its domain-specific public command and calls `terminal-job run` internally;
+- a concise conditional rule in `home/AGENTS.md`: when `bb terminal-job` is installed, follow a specialized skill's durable launch command when available and otherwise use it for every agent-started durable command; never call `bb terminal create` directly.
 
 `plugins/terminal-jobs` is a standalone npm package with its own lockfile and package-local ignores for `node_modules`, `dist`, coverage, and runtime artifacts. It is not a root workspace member. The plugin ID is `terminal-jobs`; its one CLI registration is `terminal-job`. It has no `bb.app`, `bb.host`, RPC, HTTP, settings, or agent tools. Its one bundled skill documents and routes the mandatory agent launch policy.
 
-This review candidate remains uninstalled. After the candidate is integrated into canonical dotfiles, activate it in this order: (1) run `npm ci` and all documented build/tests in `~/.dotfiles/plugins/terminal-jobs`; (2) run `~/.dotfiles/scripts/link-home.sh` on each target host to link the runner; (3) run `bb plugin install ~/.dotfiles/plugins/terminal-jobs`; (4) verify `bb terminal-job help`, plugin status, and one harmless completion job. The shared AGENTS rule is conditional on the command being installed, so the command exists before the universal rule becomes live. BB registers the local path in place; later source changes require `bb plugin reload terminal-jobs`. These commands are the atomic activation plan, not actions authorized for this implementation.
+For a fresh dotfiles checkout or target host, activate it in this order: (1) run `npm ci` and all documented build/tests in `~/.dotfiles/plugins/terminal-jobs`; (2) run `~/.dotfiles/scripts/link-home.sh` on each target host to link the runner; (3) run `bb plugin install ~/.dotfiles/plugins/terminal-jobs`; (4) verify `bb terminal-job help`, plugin status, and one harmless completion job. The shared AGENTS rule is conditional on the command being installed, so the command exists before the universal rule becomes live. BB registers the local path in place; later source changes require `bb plugin reload terminal-jobs`.
 
 ```text
 bb terminal-job run \
@@ -160,8 +160,8 @@ Message size is bounded below the plugin CLI/output limits. Truncation drops tit
 - Pass command arguments only after literal `--`; preserve empty strings, spaces, Unicode, quotes, glob characters, substitutions, and newlines as data. The runner uses only the fixed POSIX-shell fd-merger described above; it never interpolates or evaluates command text.
 - The runner does not elevate privileges, alter the command environment, or read BB scrollback.
 - Pin the current installed SDK package and declare honest `engines.bb` / `engines.bbPluginSdk` floors from `bb plugin types`. Authoritative installed SDK 0.4.18 confirms terminal nullable exit/close fields, delivery modes, and accepted response enum. Keep runtime dependencies empty unless authoritative types or build behavior prove one is required.
-- V1 has deliberate unbounded audit retention: it never deletes plugin rows or caller-owned artifact directories. Operators remove selected artifact directories themselves and remove the plugin to delete its database. This avoids silent evidence loss but creates a documented sensitive-disk-growth residual risk.
-- Review-panel keeps its direct wrapper invocation and review-specific report/log behavior, but its wrapper calls `bb terminal-job run` internally and its skill says to invoke the wrapper directly and never wrap it. Update-bb keeps its public launcher and update-specific artifact behavior, but calls `bb terminal-job run` internally. Their tests reject any direct `terminal create` call.
+- V1 has deliberate unbounded audit retention: it never deletes plugin rows or caller-owned artifact directories. Operators remove selected artifact directories themselves. Plugin removal keeps its SQLite database and key-value rows but deletes settings, secrets, and schedules, so plugin data cleanup is a separate explicit operation. This avoids silent evidence loss but creates a documented sensitive-disk-growth residual risk.
+- Review-panel calls `bb terminal-job run` directly from its skill and keeps review-specific report/log behavior in `review-round.sh`. Update-bb keeps its public launcher and update-specific artifact behavior, but calls `bb terminal-job run` internally. Their tests reject any direct `terminal create` call.
 - Repository validation inventories all non-vendor executable source with `rg`; any remaining direct agent-side `bb terminal create` is blocking. Only the plugin backend may call `bb.sdk.terminals.create`.
 
 ## High-value tests
@@ -184,7 +184,7 @@ Tests enter through the runner process, plugin CLI harness, real SQLite reposito
 14. Status tests pin the complete public JSON shape, unknown-job errors, retry state matrix, sensitive argv omission, and bounded errors/messages so inspection cannot overflow the plugin CLI contract.
 15. Launch-boundary restart tests cover before create, create accepted without response, and response received before terminal-ID persistence. Missing runner, unwritable artifact root, absent `BB_TERMINAL_SESSION_ID`, transient host-file errors, root confinement, and runner/plugin schema drift each remain explicit uncertainty without false success.
 16. The generated terminal command runs through a real POSIX shell with a spaced `HOME`; it proves expansion, `exec`, exact hostile argv, exit status, and signal delivery. An isolated link-home fixture proves the executable guard, runner link, and existing-file backup behavior.
-17. Plugin-skill and shared-instruction tests pin the mandatory conditional rule and standard finite/server/watcher launch path. Review-panel and update-bb launcher tests prove each public launcher calls `terminal-job run`, preserves exact owner/artifact arguments, never recursively wraps the launcher, and never calls raw `terminal create`.
+17. Plugin-skill and shared-instruction tests pin the mandatory conditional rule and standard finite/server/watcher launch path. Review-panel launch-contract tests prove its skill defines one direct `terminal-job run` call with exact owner and artifact arguments. Update-bb launcher tests prove its public launcher preserves its owner and artifact contract. Both paths reject raw `terminal create`.
 
 ## Validation and acceptance
 
@@ -200,6 +200,6 @@ Before implementation review:
 - inspect package contents/boundaries (`npm pack --dry-run` or equivalent) so no app/host entry, source secret, test artifact, runtime database, or unrelated file ships;
 - scan the feature diff and package for common credential/private-key patterns;
 - document standalone `npm ci`, `npm test`, typecheck, build, status/retry, artifact cleanup, target-host prerequisites, mandatory agent policy, and the ordered install/activation/reload commands in `plugins/terminal-jobs/README.md`;
-- run `git diff --check` and verify the review candidate is clean after its final commit.
+- run `git diff --check` and verify the implementation is clean after its final commit.
 
 Acceptance requires durable exact-owner job rows, target-host artifacts, real terminal/outcome uncertainty, restart reconciliation, default queued completion, explicit retry/status, stable-marker at-least-once behavior, and all validation above. Exactly one successful plan review and one successful implementation review are recorded. Required review findings are resolved within those same cycles; deferred findings are only non-required and are listed with evidence.

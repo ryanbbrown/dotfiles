@@ -5,7 +5,7 @@ description: Run any agent-started command that can outlive the current tool cal
 
 # Terminal jobs
 
-Use `bb terminal-job run` for each new durable command. Use a specialized skill-owned launcher when one exists. That launcher owns its `terminal-job` call; invoke it directly and do not wrap it.
+Use `bb terminal-job run` for each new durable command. Follow a specialized skill's durable launch command when it has one. A skill can call Terminal Jobs directly or provide a domain launcher; use only the path that skill specifies.
 
 For a finite command in the current thread:
 

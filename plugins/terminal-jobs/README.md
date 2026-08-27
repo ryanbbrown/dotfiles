@@ -79,15 +79,15 @@ A run writes these target-host files:
 
 The directory is mode `0700`; files are mode `0600`. `launch.json` and `outcome.json` use same-directory atomic renames after fsync. A forced runner or daemon loss can leave a partial log and no outcome. Missing or invalid outcomes never become success.
 
-V1 retains plugin rows and artifact directories without a limit. This preserves audit evidence but can grow sensitive disk use. Remove selected caller-owned `<artifact-root>/<job-id>` directories after their retention period. Removing the plugin deletes its plugin-owned database.
+V1 retains plugin rows and artifact directories without a limit. This preserves audit evidence but can grow sensitive disk use. Remove selected caller-owned `<artifact-root>/<job-id>` directories after their retention period. Plugin removal does not delete its SQLite database or key-value rows; settings, secrets, and schedules are removed. Treat plugin data cleanup as a separate explicit operation.
 
 ## Mandatory agent policy
 
-After activation, every agent-started command that can outlive its current tool call uses a skill-owned launcher or `bb terminal-job run`. Raw terminal creation is internal to this plugin. Review-panel and update-bb keep their public wrappers; each wrapper owns its terminal-job invocation and must not be wrapped again.
+After activation, every agent-started command that can outlive its current tool call follows its specialized skill's durable launch command or uses `bb terminal-job run`. Raw terminal creation is internal to this plugin. Review-panel calls Terminal Jobs directly because it needs no launch adapter. Update-bb keeps its domain launcher for duplicate detection and update-specific artifacts.
 
 ## Ordered activation
 
-This review candidate must stay uninstalled. After it is integrated into canonical dotfiles, activate it in this order:
+For a fresh dotfiles checkout or target host, activate the plugin in this order:
 
 1. Run `npm ci`, `npm test`, `npm run typecheck`, and `npm run build` in `~/.dotfiles/plugins/terminal-jobs`.
 2. Run `~/.dotfiles/scripts/link-home.sh` on each target host.

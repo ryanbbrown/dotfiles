@@ -36,6 +36,10 @@ if [ -n "${MUTATE_PROMPT_FILE:-}" ] && [ "$prompt" = "Reply with exactly: ok. Do
   printf 'Assess the prompt content captured after preflight.\n' > "$MUTATE_PROMPT_FILE"
 fi
 printf '%s' "$prompt" > "$PROMPT_CAPTURE"
+if [ "${FAKE_REVIEW_STATUS:-0}" -ne 0 ]; then
+  printf 'fake reviewer failure\n' >&2
+  exit "$FAKE_REVIEW_STATUS"
+fi
 printf '# Review\n\nThe objective was assessed.\n'
 EOF_FAKE_CLAUDE
 chmod +x "$fake_bin/claude"
@@ -121,5 +125,28 @@ PATH="$fake_bin:$PATH" \
     --skip codex,claude >/dev/null
 test -s "$repo/.reviews/plans/plan-regression/plan-regression-manifest-v1.md"
 test -s "$repo/.reviews/implementations/implementation-regression/implementation-regression-manifest-v1.md"
+
+set +e
+PATH="$fake_bin:$PATH" \
+  PROMPT_CAPTURE="$capture" \
+  FIREWORKS_API_KEY=test-key \
+  SKIP_PREFLIGHT=1 \
+  FAKE_REVIEW_STATUS=7 \
+  REVIEW_TIMEOUT_SECONDS=10 \
+  "$script" \
+    --repo "$repo" \
+    --feature retained-failure-logs \
+    --mode custom \
+    --target-file .html/architecture.html \
+    --prompt 'Check failure artifacts.' \
+    --skip codex,claude >"$test_root/failure.out" 2>"$test_root/failure.err"
+failure_status=$?
+set -e
+test "$failure_status" -eq 1
+failure_dir="$repo/.reviews/custom/retained-failure-logs"
+test -s "$failure_dir/retained-failure-logs-manifest-v1.md"
+test ! -e "$failure_dir/retained-failure-logs-glm-5p2-v1.md"
+grep -Fq 'fake reviewer failure' "$failure_dir/.logs/v1/glm.stderr"
+grep -Fq 'glm: failed' "$test_root/failure.err"
 
 printf 'review mode tests passed\n'
