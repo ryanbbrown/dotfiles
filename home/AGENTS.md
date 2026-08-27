@@ -32,7 +32,7 @@
 - After absorbing a child's result, archive the safe idle leaf without asking. Retain it when it has live descendants, asynchronous work, a pending decision, likely review or fix follow-up, a running process, or unique or unintegrated commits, artifacts, or workspace state.
 - Before reporting completion, reconcile every child: archive safe completed leaves and report each retained child with the reason.
 - Use `bb thread tell <id> "..." --mode steer` to redirect active work and `bb thread stop <id>` to stop stuck work. Do not poll or wait for child threads.
-- Use `bb terminal create --thread "$BB_THREAD_ID" --title "..." --command "..."` for servers, watchers, and other long-running commands so they remain visible and stoppable in BB.
+- Use `bb terminal create --thread "$BB_THREAD_ID" --title "..." --command "..."` for servers, watchers, and other long-running commands that do not provide their own BB terminal launcher. Invoke a command's durable-terminal wrapper directly.
 
 ## Other
 

@@ -46,11 +46,26 @@ export REVIEW_ARGS_FILE="$test_root/review-args"
 export TERMINAL_COMMAND_FILE="$test_root/terminal-command"
 export THREAD_TELL_FILE="$test_root/thread-tell"
 
+export BB_TERMINAL_SESSION_ID="term_outer"
+set +e
+"$scripts/review-round-bb.sh" --title "review-panel-demo" -- \
+  --feature "demo feature" --mode plan --target-file .plans/demo.md \
+  >"$test_root/nested.out" 2>"$test_root/nested.err"
+status=$?
+set -e
+[ "$status" -eq 1 ] || { echo "nested terminal launch was not rejected" >&2; exit 1; }
+grep -Fxq -- \
+  "error: invoke review-round-bb.sh directly from the owning thread; it creates its own BB terminal" \
+  "$test_root/nested.err"
+[ ! -e "$TERMINAL_COMMAND_FILE" ] || { echo "nested launch created a terminal" >&2; exit 1; }
+unset BB_TERMINAL_SESSION_ID
+
 "$scripts/review-round-bb.sh" --title "review-panel-demo" -- \
   --feature "demo feature" --mode plan --target-file .plans/demo.md >/dev/null
 
 [ -s "$TERMINAL_COMMAND_FILE" ] || { echo "missing terminal command" >&2; exit 1; }
-/bin/bash -lc "$(cat "$TERMINAL_COMMAND_FILE")"
+BB_THREAD_ID="thr_wrong" BB_TERMINAL_SESSION_ID="term_inner" \
+  /bin/bash -lc "$(cat "$TERMINAL_COMMAND_FILE")"
 
 grep -Fxq -- "--feature" "$REVIEW_ARGS_FILE"
 grep -Fxq -- "demo feature" "$REVIEW_ARGS_FILE"
@@ -61,7 +76,8 @@ grep -Fxq -- "queue" "$THREAD_TELL_FILE"
 
 export REVIEW_EXIT=7
 set +e
-/bin/bash -lc "$(cat "$TERMINAL_COMMAND_FILE")"
+BB_THREAD_ID="thr_wrong" BB_TERMINAL_SESSION_ID="term_inner" \
+  /bin/bash -lc "$(cat "$TERMINAL_COMMAND_FILE")"
 status=$?
 set -e
 [ "$status" -eq 7 ] || { echo "review exit status was not preserved" >&2; exit 1; }

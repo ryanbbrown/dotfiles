@@ -20,6 +20,7 @@ run_review() {
   [ "${1:-}" = "--" ] || usage
   shift
 
+  # shellcheck disable=SC2329 # Called by the EXIT trap.
   notify_on_exit() {
     local status=$?
     local outcome="succeeded"
@@ -56,6 +57,11 @@ if [ "${1:-}" = "--run" ]; then
   shift 4
   run_review "$notify_thread" "$bb_cli" "$terminal_title" "$@"
   exit $?
+fi
+
+if [ -n "${BB_TERMINAL_SESSION_ID:-}" ]; then
+  echo "error: invoke review-round-bb.sh directly from the owning thread; it creates its own BB terminal" >&2
+  exit 1
 fi
 
 [ "${1:-}" = "--title" ] || usage

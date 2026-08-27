@@ -313,7 +313,7 @@ Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
-- `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot in a persistent BB terminal.
+- `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot. Its launcher creates and owns the persistent BB terminal.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 
 #### Review and browser QA

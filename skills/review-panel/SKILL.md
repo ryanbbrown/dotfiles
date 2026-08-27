@@ -7,9 +7,11 @@ description: Run independent Codex, Claude Code, and GLM reviews against one fro
 
 This skill only runs the review script. The calling workflow owns interpreting the reports, synthesizing findings, deciding what to change, and coordinating writers.
 
-## Run in a BB terminal
+## Launch rule
 
-Run from the repository being reviewed. Check `bb terminal list --thread "$BB_THREAD_ID"` first so you do not start a duplicate review for the same feature. Launch the panel with the bundled wrapper and return control immediately. The review runs in a persistent BB terminal; when it exits, the wrapper sends this thread a queued completion message through `bb thread tell`. Do not poll, wait, or use shell background syntax such as `&`.
+Invoke `review-round-bb.sh` directly from the owning agent process. The wrapper creates and owns the BB durable terminal. Do not put it inside `bb terminal create`, `nohup`, shell background syntax such as `&`, or `bb terminal wait`. After the wrapper returns the terminal identity, return control to BB.
+
+Run from the repository being reviewed. Check `bb terminal list --thread "$BB_THREAD_ID"` first so you do not start a duplicate review for the same feature. When the terminal exits, the wrapper sends the owning thread a queued completion message through `bb thread tell`.
 
 For an implementation review:
 
