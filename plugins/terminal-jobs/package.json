@@ -1,0 +1,43 @@
+{
+  "name": "bb-plugin-terminal-jobs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "bb": ">=0.39.0",
+    "bbPluginSdk": ">=0.4.18"
+  },
+  "bb": {
+    "name": "Terminal jobs",
+    "description": "Runs durable terminal jobs and sends completion notices.",
+    "branding": {
+      "icon": "Terminal"
+    },
+    "server": "./server.ts",
+    "skills": ["skills"]
+  },
+  "scripts": {
+    "build": "bb plugin build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "server.ts",
+    "src",
+    "dist",
+    "skills",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.4.18",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.30",
+    "better-sqlite3": "^12.2.0",
+    "cron-parser": "^5.10.0",
+    "hono": "^4.13.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
+    "zod": "^4.4.3"
+  }
+}

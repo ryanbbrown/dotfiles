@@ -9,9 +9,7 @@ This skill only runs the review script. The calling workflow owns interpreting t
 
 ## Launch rule
 
-Invoke `review-round-bb.sh` directly from the owning agent process. The wrapper creates and owns the BB durable terminal. Do not put it inside `bb terminal create`, `nohup`, shell background syntax such as `&`, or `bb terminal wait`. After the wrapper returns the terminal identity, return control to BB.
-
-Run from the repository being reviewed. Check `bb terminal list --thread "$BB_THREAD_ID"` first so you do not start a duplicate review for the same feature. When the terminal exits, the wrapper sends the owning thread a queued completion message through `bb thread tell`.
+Run from the repository being reviewed. Check `bb terminal list --thread "$BB_THREAD_ID"` first so you do not start a duplicate review for the same feature. Invoke the bundled wrapper directly from the owning agent process. The wrapper owns its `terminal-job run` call. Do not put it inside `bb terminal create`, another `bb terminal-job run`, `nohup`, shell background syntax such as `&`, or `bb terminal wait`. After the wrapper returns the job and terminal identity, return control to BB. Terminal-jobs sends the one queued stable-marker completion.
 
 For an implementation review:
 

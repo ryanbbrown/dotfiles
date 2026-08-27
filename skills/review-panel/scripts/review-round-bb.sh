@@ -38,17 +38,6 @@ run_review() {
   "$review_script" "$@"
 }
 
-quote_command() {
-  local command=""
-  local argument
-  local quoted
-  for argument in "$@"; do
-    printf -v quoted '%q' "$argument"
-    command+="${command:+ }$quoted"
-  done
-  printf '%s\n' "$command"
-}
-
 if [ "${1:-}" = "--run" ]; then
   [ "$#" -ge 5 ] || usage
   notify_thread="$2"
@@ -73,16 +62,20 @@ shift
 [ "$#" -gt 0 ] || usage
 
 thread_id="${BB_THREAD_ID:-}"
+thread_storage="${BB_THREAD_STORAGE:-}"
 bb_cli="${BB_CLI:-$(command -v bb || true)}"
 [ -n "$thread_id" ] || { echo "error: BB_THREAD_ID is required" >&2; exit 1; }
+[ -n "$thread_storage" ] || { echo "error: BB_THREAD_STORAGE is required" >&2; exit 1; }
 [ -n "$bb_cli" ] || { echo "error: bb CLI is required" >&2; exit 1; }
 [ -x "$review_script" ] || { echo "error: review script is not executable: $review_script" >&2; exit 1; }
 
-terminal_command="$(quote_command \
-  "$script_dir/review-round-bb.sh" \
-  --run "$thread_id" "$bb_cli" "$terminal_title" -- "$@")"
-
-"$bb_cli" terminal create \
-  --thread "$thread_id" \
+"$bb_cli" terminal-job run \
   --title "$terminal_title" \
-  --command "$terminal_command"
+  --thread "$thread_id" \
+  --notify-thread "$thread_id" \
+  --artifact-root "$thread_storage/review-panel-terminal-jobs" \
+  --delivery queue \
+  --json \
+  -- \
+  "$script_dir/review-round-bb.sh" \
+  --run "$thread_id" "$bb_cli" "$terminal_title" -- "$@"

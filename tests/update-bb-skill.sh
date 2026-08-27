@@ -39,9 +39,9 @@ if [ "$1 $2" = "terminal list" ]; then
   exit 0
 fi
 
-if [ "$1 $2" = "terminal create" ]; then
+if [ "$1 $2" = "terminal-job run" ]; then
   printf '%s\n' "$@" > "$UPDATE_BB_TEST_STATE/create-args"
-  printf '%s\n' '{"id":"term_new","title":"update-bb","status":"running"}'
+  printf '%s\n' '{"jobId":"job_new","terminal":{"id":"term_new"}}'
   exit 0
 fi
 
@@ -67,7 +67,8 @@ assert_contains "$skill" "name: update-bb"
 assert_contains "$skill" "disable-model-invocation: true"
 assert_contains "$policy" "allow_implicit_invocation: false"
 assert_contains "$skill" '~/.agents/skills/update-bb/scripts/start-update-bb.sh'
-assert_contains "$skill" 'bb terminal wait <terminal-id> --exit --timeout 7200'
+assert_contains "$skill" 'bb terminal-job show <job-id> --json'
+assert_contains "$skill" 'do not wrap it in another terminal job'
 assert_contains "$skill" 'Do not infer success from an exited terminal alone.'
 if grep -F 'managed `process` tool' "$skill" >/dev/null; then
   fail "skill still launches the sync through pi-processes"
@@ -81,7 +82,10 @@ PATH="$fake_bin:$PATH" \
   "$launcher" > "$test_root/launch-output"
 
 assert_contains "$test_root/launch-output" "state: started"
+assert_contains "$test_root/launch-output" "job_id: job_new"
 assert_contains "$test_root/launch-output" "terminal_id: term_new"
+assert_contains "$state/create-args" "terminal-job"
+assert_contains "$state/create-args" "run"
 assert_contains "$state/create-args" "--thread"
 assert_contains "$state/create-args" "thr_test"
 assert_contains "$state/create-args" "--title"
@@ -89,6 +93,10 @@ assert_contains "$state/create-args" "update-bb"
 assert_contains "$state/create-args" "$runner"
 assert_contains "$state/create-args" "update-bb.log"
 assert_contains "$state/create-args" "outcome.txt"
+assert_contains "$state/create-args" "$test_root/storage/terminal-jobs"
+if grep -Fx 'create' "$state/create-args" >/dev/null; then
+  fail "launcher called raw terminal create"
+fi
 [ -f "$test_root/storage/update-bb/latest.txt" ] || fail "latest run pointer was not written"
 
 success_log="$test_root/runner-success.log"

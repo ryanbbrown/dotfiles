@@ -19,30 +19,31 @@ chmod +x "$scripts/review-round.sh"
 cat > "$test_root/bb" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ "$1 $2" = "terminal create" ]; then
+if [ "$1 $2" = "terminal-job run" ]; then
+  printf '%s\n' "$@" > "$TERMINAL_JOB_ARGS_FILE"
   shift 2
-  while [ "$#" -gt 0 ]; do
-    if [ "$1" = "--command" ]; then
-      printf '%s\n' "$2" > "$TERMINAL_COMMAND_FILE"
-      shift 2
-    else
-      shift
-    fi
-  done
-  printf 'Terminal created\n'
+  while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+  [ "${1:-}" = "--" ] || exit 2
+  shift
+  printf '%q ' "$@" > "$TERMINAL_COMMAND_FILE"
+  printf '\n' >> "$TERMINAL_COMMAND_FILE"
+  printf '%s\n' '{"jobId":"job_review","terminal":{"id":"term_review"}}'
   exit 0
 fi
 if [ "$1 $2" = "thread tell" ]; then
   printf '%s\n' "$@" > "$THREAD_TELL_FILE"
   exit 0
 fi
+echo "unexpected bb command: $*" >&2
 exit 1
 EOF
 chmod +x "$test_root/bb"
 
 export BB_THREAD_ID="thr_test"
+export BB_THREAD_STORAGE="$test_root/thread-storage"
 export BB_CLI="$test_root/bb"
 export REVIEW_ARGS_FILE="$test_root/review-args"
+export TERMINAL_JOB_ARGS_FILE="$test_root/terminal-job-args"
 export TERMINAL_COMMAND_FILE="$test_root/terminal-command"
 export THREAD_TELL_FILE="$test_root/thread-tell"
 
@@ -63,6 +64,15 @@ unset BB_TERMINAL_SESSION_ID
 "$scripts/review-round-bb.sh" --title "review-panel-demo" -- \
   --feature "demo feature" --mode plan --target-file .plans/demo.md >/dev/null
 
+grep -Fxq -- "terminal-job" "$TERMINAL_JOB_ARGS_FILE"
+grep -Fxq -- "run" "$TERMINAL_JOB_ARGS_FILE"
+grep -Fxq -- "--notify-thread" "$TERMINAL_JOB_ARGS_FILE"
+grep -Fxq -- "thr_test" "$TERMINAL_JOB_ARGS_FILE"
+grep -Fxq -- "$BB_THREAD_STORAGE/review-panel-terminal-jobs" "$TERMINAL_JOB_ARGS_FILE"
+if grep -Fqx -- "terminal" "$TERMINAL_JOB_ARGS_FILE"; then
+  echo "raw terminal command escaped the wrapper" >&2
+  exit 1
+fi
 [ -s "$TERMINAL_COMMAND_FILE" ] || { echo "missing terminal command" >&2; exit 1; }
 BB_THREAD_ID="thr_wrong" BB_TERMINAL_SESSION_ID="term_inner" \
   /bin/bash -lc "$(cat "$TERMINAL_COMMAND_FILE")"
@@ -83,4 +93,4 @@ set -e
 [ "$status" -eq 7 ] || { echo "review exit status was not preserved" >&2; exit 1; }
 grep -Fxq -- "BB terminal 'review-panel-demo' failed with exit status 7. Inspect its review files and retained logs." "$THREAD_TELL_FILE"
 
-echo "review-panel BB terminal notification test passed."
+echo "review-panel terminal-job notification test passed."

@@ -14,8 +14,9 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 - `skills/` contains the skills exposed to all three coding agents.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
-- `bin/` contains small shared commands, including `papercut` for recording workflow friction, `doppler-to-env` for creating local dotenv files, and `sync-bb-personal` for updating the bb `personal` branch from upstream.
-- `tests/` contains the checks for the commands in `bin/`.
+- `bin/` contains small shared commands, including the target-host `terminal-job-runner`, `papercut`, `doppler-to-env`, and `sync-bb-personal`.
+- `plugins/` contains opt-in BB plugins. `terminal-jobs` is a standalone backend-only package.
+- `tests/` contains checks for shared commands and installation behavior.
 
 Each entry under `skills/` is one of:
 
@@ -81,6 +82,7 @@ Other
   ~/.local/bin/doppler-to-env
   ~/.local/bin/papercut
   ~/.local/bin/sync-bb-personal
+  ~/.local/bin/terminal-job-runner
 ```
 
 Codex and Pi discover `~/.agents/skills`. Claude Code discovers `~/.claude/skills`. Both locations resolve to the same `skills/` directory.
@@ -88,6 +90,19 @@ Codex and Pi discover `~/.agents/skills`. Claude Code discovers `~/.claude/skill
 The installer preserves an existing file or directory with a `.pre-dotfiles` suffix. It stops rather than overwrite an existing backup.
 
 Pi installs configured package contents under `~/.pi/agent`. Claude Code and Codex also retain their own runtime state outside this repository.
+
+### Activate terminal jobs
+
+`plugins/terminal-jobs` keeps agent-started durable commands, target-host artifacts, terminal outcomes, and completion delivery inspectable across restarts. It is opt-in and stays a standalone npm package.
+
+After changes reach canonical dotfiles, activate it in this order so the command exists before the conditional mandatory agent rule becomes live:
+
+1. Run `npm ci`, `npm test`, `npm run typecheck`, and `npm run build` in `~/.dotfiles/plugins/terminal-jobs`.
+2. Run `~/.dotfiles/scripts/link-home.sh` on each target host.
+3. Run `bb plugin install ~/.dotfiles/plugins/terminal-jobs`.
+4. Verify `bb terminal-job help`, plugin status, and one harmless completion job.
+
+After later plugin source changes, run `bb plugin reload terminal-jobs`. See [`plugins/terminal-jobs/README.md`](plugins/terminal-jobs/README.md) for commands, target-host requirements, status/retry operations, retention, and artifact cleanup.
 
 ### Create local environment files
 

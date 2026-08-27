@@ -40,25 +40,30 @@ launch_path="$run_dir/launch.txt"
 latest_path="$artifact_root/latest.txt"
 mkdir -p "$run_dir"
 
-printf -v terminal_command 'exec %q %q %q' "$runner" "$log_path" "$outcome_path"
-create_json="$("$bb_bin" terminal create \
-  --thread "$BB_THREAD_ID" \
+create_json="$("$bb_bin" terminal-job run \
   --title update-bb \
-  --command "$terminal_command" \
-  --json)"
-terminal_id="$(printf '%s' "$create_json" | node -e '
+  --thread "$BB_THREAD_ID" \
+  --notify-thread "$BB_THREAD_ID" \
+  --artifact-root "$BB_THREAD_STORAGE/terminal-jobs" \
+  --delivery queue \
+  --json \
+  -- \
+  "$runner" "$log_path" "$outcome_path")"
+read -r job_id terminal_id < <(printf '%s' "$create_json" | node -e '
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", chunk => input += chunk);
 process.stdin.on("end", () => {
-  const session = JSON.parse(input);
-  if (typeof session.id !== "string" || session.id.length === 0) process.exit(1);
-  process.stdout.write(session.id);
+  const status = JSON.parse(input);
+  if (typeof status.jobId !== "string" || status.jobId.length === 0) process.exit(1);
+  if (typeof status.terminal?.id !== "string" || status.terminal.id.length === 0) process.exit(1);
+  process.stdout.write(`${status.jobId} ${status.terminal.id}\n`);
 });
-')"
+')
 
 {
   printf 'state: started\n'
+  printf 'job_id: %s\n' "$job_id"
   printf 'terminal_id: %s\n' "$terminal_id"
   printf 'log: %s\n' "$log_path"
   printf 'outcome: %s\n' "$outcome_path"
