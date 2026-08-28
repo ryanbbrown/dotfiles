@@ -28,6 +28,8 @@ assert_contains "$skill" '--artifact-root "$BB_THREAD_STORAGE/terminal-jobs"'
 assert_contains "$skill" '~/.claude/skills/review-panel/scripts/review-round.sh'
 assert_contains "$skill" 'Launch exactly once'
 assert_contains "$skill" 'Direct local use'
+assert_contains "$skill" 'Codex, Claude Code, and Grok 4.5'
+assert_contains "$review_script" 'grok_model="grok-4.5"'
 
 if grep -F 'review-round-bb.sh' "$skill" >/dev/null; then
   fail "skill still names the removed wrapper"

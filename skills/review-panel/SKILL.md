@@ -1,6 +1,6 @@
 ---
 name: review-panel
-description: Run independent Codex, Claude Code, and GLM reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
+description: Run independent Codex, Claude Code, and Grok 4.5 reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
 ---
 
 # Review panel
@@ -48,6 +48,8 @@ Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The cus
 
 Claude reviews use Claude Code OAuth only. The command removes Anthropic API key variables and verifies a first-party OAuth login before preflight. If OAuth is unavailable, stop and ask the user to run `claude auth login`.
 
+Grok reviews always use the script-owned `grok-4.5` model through the official Grok Build CLI and grok.com OAuth from the user's SuperGrok account. Callers cannot override this model. The command removes `XAI_API_KEY` from every Grok process, checks for a cached account login, and verifies model access during preflight. Grok has only built-in read, list, and grep tools; the launcher includes the exact frozen diff as task data in Grok's prompt, so no terminal tool is available. If OAuth is unavailable, stop and ask the user to run `grok login` and complete the browser sign-in.
+
 When the completion message arrives, run `bb terminal-job show <job-id> --json`. On success, inspect the review manifest and reports. On failure, inspect the terminal-job `output.log` and the retained review logs. Report the result, output directory, and review round. This skill does not synthesize or act on findings.
 
 ## Direct local use
@@ -58,7 +60,7 @@ Outside BB, or when durable execution is not needed, run the review command in t
 ~/.claude/skills/review-panel/scripts/review-round.sh <review arguments>
 ```
 
-It writes the same review artifacts and returns a non-zero status when preflight or a reviewer fails. It does not send a BB completion notice.
+It writes the same review artifacts and returns a non-zero status when preflight or a reviewer fails, or when a plan or implementation report lacks a valid verdict and the required headings. It does not send a BB completion notice.
 
 ## Options
 
@@ -71,8 +73,8 @@ It writes the same review artifacts and returns a non-zero status when preflight
 --prompt TEXT|@PATH  Custom objective as inline text or an @-prefixed repository file. Required for custom mode.
 --plan-file PATH     Existing implementation plan, relative to repo or absolute within it. Required for implementation mode.
 --base-ref REF       Git commit recorded before implementation. Required for implementation mode.
---skip LIST          Comma-separated reviewers to skip: codex, claude, glm. Repeatable.
-                     Cannot skip all three. Skipping glm needs no FIREWORKS_API_KEY.
+--skip LIST          Comma-separated reviewers to skip: codex, claude, grok. Repeatable.
+                     Cannot skip all three.
 --preflight-only     Run CLI smoke checks, then exit before starting reviewers.
 ```
 
@@ -81,8 +83,6 @@ It writes the same review artifacts and returns a non-zero status when preflight
 ```text
 MAX_ROUNDS=3                 Hard cap; defaults to 3.
 CODEX_MODEL=gpt-5.6-sol      Default Codex reviewer model.
-GLM_MODEL=accounts/fireworks/models/glm-5p2
-                             Default GLM reviewer model.
 REVIEW_TIMEOUT_SECONDS=900   Per-reviewer timeout.
 SKIP_PREFLIGHT=1             Optional local debugging switch.
 ```
@@ -109,9 +109,10 @@ The review command chooses the next `vN` and writes:
   <feature-slug>-manifest-vN.md
   <feature-slug>-codex-vN.md
   <feature-slug>-claude-vN.md
-  <feature-slug>-glm-5p2-vN.md
+  <feature-slug>-grok-4-5-vN.md
   .logs/vN/*.stdout
-  .logs/vN/*.stderr                    # Retained after a failure, timeout, or missing report.
+  .logs/vN/grok.streaming.jsonl        # Grok tool and message stream.
+  .logs/vN/*.stderr                    # Retained after a failure, timeout, or invalid report.
 ```
 
 The command freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot and review configuration.

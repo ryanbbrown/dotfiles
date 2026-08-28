@@ -120,10 +120,11 @@ doppler-to-env --project api-keys --config dev_personal --list
 
 Use `--output PATH` to select another file. The command writes only the requested keys, replaces the file atomically with `0600` permissions, and refuses to write a tracked or unignored file inside a Git repository. `scripts/link-home.sh` installs the tracked command from `bin/doppler-to-env` at `~/.local/bin/doppler-to-env`.
 
-The review panel reads `FIREWORKS_API_KEY` from `~/.dotfiles/.env`. Create that shared file with:
+The review panel uses the official Grok Build CLI with a SuperGrok account login. Install it and complete browser OAuth before the first review:
 
 ```bash
-doppler-to-env --project api-keys --config dev_personal --output ~/.dotfiles/.env FIREWORKS_API_KEY
+curl -fsSL https://x.ai/cli/install.sh | bash
+grok login
 ```
 
 ### Update bb from Firstmate
@@ -328,7 +329,7 @@ Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
-- `review-panel` runs independent Codex, Claude Code, and GLM reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
+- `review-panel` runs independent Codex, Claude Code, and Grok 4.5 reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 
 #### Review and browser QA
