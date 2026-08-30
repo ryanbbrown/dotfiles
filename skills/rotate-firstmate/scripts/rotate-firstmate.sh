@@ -60,12 +60,10 @@ parent_is() {
 
 collect_children() {
   local parent_id="$1"
-  local active_json
-  local archived_json
+  local children_json
 
-  active_json="$("$bb_bin" thread list --parent-thread "$parent_id" --include-hidden --json)" || return 1
-  archived_json="$("$bb_bin" thread list --parent-thread "$parent_id" --include-hidden --archived --json)" || return 1
-  printf '%s\n%s\n' "$active_json" "$archived_json" | jq -sr '[.[][] | .id] | unique | .[]'
+  children_json="$("$bb_bin" thread list --parent-thread "$parent_id" --include-hidden --json)" || return 1
+  printf '%s\n' "$children_json" | jq -r '.[] | select(.archivedAt == null) | .id'
 }
 
 ensure_pinned() {
@@ -343,4 +341,4 @@ else
   echo "Replacement unpinned thread: $new_id"
   echo "Old unpinned thread: $old_id"
 fi
-echo "Transferred direct children: $moved_count"
+echo "Transferred unarchived direct children: $moved_count"

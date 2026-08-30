@@ -14,4 +14,6 @@ Run the deterministic script from the installed shared skill tree:
 ~/.agents/skills/rotate-firstmate/scripts/rotate-firstmate.sh
 ```
 
+The script transfers only unarchived direct children. It leaves archived children attached to the old thread; reparent one only if it is restored later.
+
 Report its outcome plainly. Preserve every thread ID and recovery instruction from a failure. The script owns the full thread lifecycle, so stop after it fails.

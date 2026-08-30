@@ -10,6 +10,7 @@ old_id=thr_old
 new_id=thr_new
 child_a=thr_childa
 child_b=thr_childb
+child_c=thr_childc
 
 cleanup() {
   rm -rf "$test_root"
@@ -78,6 +79,7 @@ reset_state() {
   printf '%s\n' default > "$state/old_tier"
   printf '%s\n' "$old_id" > "$state/child_a_parent"
   printf '%s\n' "$old_id" > "$state/child_b_parent"
+  printf '%s\n' "$old_id" > "$state/child_c_parent"
   : > "$state/pin_calls"
   : > "$state/unpin_calls"
 }
@@ -131,10 +133,12 @@ reset_state success true null "$local_workspace"
 supply_local_firstmate_rules "$local_workspace"
 run_rotation > "$test_root/pinned-root.out"
 assert_file_contains "$test_root/pinned-root.out" "Firstmate rotation succeeded."
+assert_file_contains "$test_root/pinned-root.out" "Transferred unarchived direct children: 2"
 [ "$(<"$state/old_pinned")" = false ] || fail "old pinned root stayed pinned"
 [ "$(<"$state/new_pinned")" = true ] || fail "replacement of pinned root was not pinned"
-[ "$(<"$state/child_a_parent")" = "$new_id" ] || fail "hidden active child was not moved"
-[ "$(<"$state/child_b_parent")" = "$new_id" ] || fail "archived cross-project child was not moved"
+[ "$(<"$state/child_a_parent")" = "$new_id" ] || fail "hidden unarchived child was not moved"
+[ "$(<"$state/child_b_parent")" = "$old_id" ] || fail "archived cross-project child changed parent"
+[ "$(<"$state/child_c_parent")" = "$new_id" ] || fail "unarchived child was not moved"
 assert_arg_value "$state/spawn_args" --project proj_current
 assert_arg_value "$state/spawn_args" --environment env_current
 assert_arg_value "$state/spawn_args" --provider pi
@@ -180,7 +184,7 @@ assert_arg_value "$state/spawn_args" --parent-thread thr_parent
 assert_arg_value "$state/spawn_args" --title 'Child Firstmate'
 
 rollback_workspace="$test_root/rollback"
-reset_state fail-child-b true null "$rollback_workspace"
+reset_state fail-child-c true null "$rollback_workspace"
 supply_local_firstmate_rules "$rollback_workspace"
 if run_rotation > "$test_root/rollback.out" 2>&1; then
   fail "rotation succeeded after a child move failed"
@@ -189,9 +193,10 @@ assert_file_contains "$test_root/rollback.out" "Rollback complete."
 [ "$(<"$state/old_pinned")" = true ] || fail "rollback did not restore old pin"
 [ "$(<"$state/new_pinned")" = false ] || fail "rollback left replacement pinned"
 [ "$(<"$state/child_a_parent")" = "$old_id" ] || fail "rollback did not return moved child"
-[ "$(<"$state/child_b_parent")" = "$old_id" ] || fail "failed child changed parent"
+[ "$(<"$state/child_b_parent")" = "$old_id" ] || fail "rollback changed archived child"
+[ "$(<"$state/child_c_parent")" = "$old_id" ] || fail "failed child changed parent"
 
-reset_state fail-child-b false null "$rollback_workspace"
+reset_state fail-child-c false null "$rollback_workspace"
 if run_rotation > "$test_root/unpinned-rollback.out" 2>&1; then
   fail "unpinned rotation succeeded after a child move failed"
 fi
@@ -200,7 +205,7 @@ fi
 [ ! -s "$state/pin_calls" ] || fail "unpinned rollback called pin"
 [ ! -s "$state/unpin_calls" ] || fail "unpinned rollback called unpin"
 
-reset_state fail-child-b-rollback-a true null "$rollback_workspace"
+reset_state fail-child-c-rollback-a true null "$rollback_workspace"
 supply_local_firstmate_rules "$rollback_workspace"
 if run_rotation > "$test_root/incomplete.out" 2>&1; then
   fail "rotation succeeded after an incomplete rollback"

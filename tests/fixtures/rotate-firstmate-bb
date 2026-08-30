@@ -7,6 +7,7 @@ old_id=thr_old
 new_id=thr_new
 child_a=thr_childa
 child_b=thr_childb
+child_c=thr_childc
 
 value() {
   sed -n '1p' "$state/$1"
@@ -28,6 +29,7 @@ parent_file() {
   case "$1" in
     "$child_a") printf '%s\n' child_a_parent ;;
     "$child_b") printf '%s\n' child_b_parent ;;
+    "$child_c") printf '%s\n' child_c_parent ;;
     *) return 1 ;;
   esac
 }
@@ -66,7 +68,7 @@ thread_json() {
       visibility="$(value spawn_visibility)"
       pinned="$(value new_pinned)"
       ;;
-    "$child_a"|"$child_b")
+    "$child_a"|"$child_b"|"$child_c")
       parent="$(value "$(parent_file "$id")")"
       [ "$id" = "$child_b" ] && project=proj_other
       ;;
@@ -174,7 +176,7 @@ case "$command_name" in
     ;;
   "thread unpin")
     printf '%s\n' "$3" >> "$state/unpin_calls"
-    if [ "$(value mode)" = fail-child-b-replacement-unpin ] && [ "$3" = "$new_id" ]; then
+    if [ "$(value mode)" = fail-child-c-replacement-unpin ] && [ "$3" = "$new_id" ]; then
       exit 1
     fi
     set_value "$(pin_file "$3")" false
@@ -191,12 +193,12 @@ case "$command_name" in
       fi
       shift
     done
-    if { [ "$(value mode)" = fail-child-b ] || [ "$(value mode)" = fail-child-b-replacement-unpin ]; } &&
-      [ "$child_id" = "$child_b" ] && [ "$target" = "$new_id" ]; then
+    if { [ "$(value mode)" = fail-child-c ] || [ "$(value mode)" = fail-child-c-replacement-unpin ]; } &&
+      [ "$child_id" = "$child_c" ] && [ "$target" = "$new_id" ]; then
       exit 1
     fi
-    if [ "$(value mode)" = fail-child-b-rollback-a ]; then
-      if [ "$child_id" = "$child_b" ] && [ "$target" = "$new_id" ]; then
+    if [ "$(value mode)" = fail-child-c-rollback-a ]; then
+      if [ "$child_id" = "$child_c" ] && [ "$target" = "$new_id" ]; then
         exit 1
       fi
       if [ "$child_id" = "$child_a" ] && [ "$target" = "$old_id" ]; then
@@ -236,12 +238,27 @@ case "$command_name" in
       echo "child discovery must include hidden threads" >&2
       exit 2
     }
-    if [ "$archived" = false ] && [ "$(value child_a_parent)" = "$parent" ]; then
-      printf '[{"id":"%s"}]\n' "$child_a"
-    elif [ "$archived" = true ] && [ "$(value child_b_parent)" = "$parent" ]; then
-      printf '[{"id":"%s"}]\n' "$child_b"
+    if [ "$archived" = true ]; then
+      jq -cn \
+        --arg id "$child_b" \
+        --arg child_parent "$(value child_b_parent)" \
+        --arg parent "$parent" \
+        '[{id: $id, archivedAt: 100, parent: $child_parent}] | map(select(.parent == $parent) | del(.parent))'
     else
-      printf '[]\n'
+      jq -cn \
+        --arg child_a "$child_a" \
+        --arg child_b "$child_b" \
+        --arg child_c "$child_c" \
+        --arg parent_a "$(value child_a_parent)" \
+        --arg parent_b "$(value child_b_parent)" \
+        --arg parent_c "$(value child_c_parent)" \
+        --arg parent "$parent" '
+          [
+            {id: $child_a, archivedAt: null, parent: $parent_a},
+            {id: $child_b, archivedAt: 100, parent: $parent_b},
+            {id: $child_c, archivedAt: null, parent: $parent_c}
+          ] | map(select(.parent == $parent) | del(.parent))
+        '
     fi
     ;;
   *)
