@@ -26,6 +26,7 @@
 ## BB
 
 - You run inside BB. Put user-facing content only in the final assistant response; use intermediate messages only for operational coordination.
+- Treat BB as local-machine-only by default. Evaluate bb connect or remote-client behavior only when the user explicitly says they are using bb connect.
 - Use BB child threads instead of in-process subagents. Spawn them with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model openai-codex/gpt-5.6-sol --reasoning-level high`; use `--new-environment worktree` when a task needs isolated edits.
 - Keep each child brief focused on the objective, relevant constraints, expected result, and validation. Return control after spawning; BB reports child blockers and completion to the parent.
 - Each parent owns cleanup of the immediate BB children it spawns; this applies recursively to children that spawn children.
