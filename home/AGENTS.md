@@ -32,15 +32,8 @@
 - Each parent owns cleanup of the immediate BB children it spawns; this applies recursively to children that spawn children.
 - After absorbing a child's result, archive the safe idle leaf without asking. Retain it when it has live descendants, asynchronous work, a pending decision, likely review or fix follow-up, a running process, or unique or unintegrated commits, artifacts, or workspace state.
 - Before reporting completion, reconcile every child: archive safe completed leaves and report each retained child with the reason.
-- Use `bb thread tell <id> "..." --mode steer` to redirect active work and `bb thread stop <id>` to stop stuck work. Do not poll or wait for child threads.
-- For an errored thread, send corrective text with `--mode queue`.
-- For long or Markdown BB messages, write the text to a file and pass it as one argument: `bb thread tell "$id" -- "$(cat "$file")"`. Do not put generated message text inside shell source.
-- Treat each `bb ... --json` command as its own schema. Inspect the top-level type before writing `jq`; do not infer an envelope from another BB command.
-- Before you set `--permission-mode`, read the target provider's `.capabilities.permissionModes` from `bb provider list --environment "$BB_ENVIRONMENT_ID" --json`.
-- Pi supports only `full`; check capabilities for every other provider.
-- Do not chain `bb docs status` to `bb docs push` with `&&`. Exit 4 means local changes are present; inspect the output, then run push separately.
-- Use `bb thread tell <id> ... --mode queue` for agent-to-agent delivery. Do not use `bb thread queue create` for reports because it creates a user draft without sender attribution.
-- Use `bb terminal-job` only when you are reasonably confident that a command will take more than five minutes. Use the normal Bash tool for ordinary short commands. When a durable job is appropriate, follow a skill's durable launch command if it has one; otherwise, use `bb terminal-job run`. Raw terminal creation is plugin-internal.
+- Let child threads work after spawning. Do not poll or wait for them.
+- Use the terminal-jobs skill only for commands likely to run more than five minutes; use Bash otherwise.
 
 ## Other
 
