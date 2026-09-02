@@ -189,18 +189,32 @@ function QueueRowView({
 }) {
   const busy = mutation !== null;
   return (
-    <li className="rounded-lg border border-border bg-card px-3 py-3">
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+    <li className="rounded-lg border border-border bg-card px-3 py-2.5">
+      <div className="flex min-w-0 flex-wrap items-start gap-2">
         <button
           type="button"
-          className="min-w-0 text-start text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="inline-flex min-h-7 min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-start text-sm font-medium text-foreground hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           onClick={onNavigate}
         >
-          {row.title}
+          <span className="min-w-0 break-words">{row.title}</span>
+          <span aria-hidden="true" className="shrink-0 text-xs">
+            ↗
+          </span>
         </button>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {row.statusLabel}
-        </span>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {row.statusLabel}
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onArchive}
+            className="inline-flex min-h-7 cursor-pointer items-center rounded-md border border-border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={`Archive ${row.title}`}
+          >
+            Archive
+          </button>
+        </div>
       </div>
       {row.state === "error" || row.state === "queued_failed" ? (
         <div className="mt-2 space-y-2">
@@ -232,25 +246,16 @@ function QueueRowView({
           className="mt-2 break-words text-sm text-muted-foreground"
         />
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="mt-2 flex justify-end">
         <button
           type="button"
           role="switch"
           aria-checked={row.userManaged}
           disabled={busy}
           onClick={onToggle}
-          className="min-h-7 rounded-md border border-border px-2 text-xs text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+          className="min-h-7 cursor-pointer rounded-full border border-border/60 px-2 text-[11px] text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           I’m handling this: {row.userManaged ? "On" : "Off"}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onArchive}
-          className="min-h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
-          aria-label={`Archive ${row.title}`}
-        >
-          Archive
         </button>
       </div>
     </li>

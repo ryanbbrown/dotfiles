@@ -242,13 +242,43 @@ describe("queue panel", () => {
     expect(slot.getByText("Earlier successful result")).toBeTruthy();
   });
 
-  it("uses normal toThread navigation with no split action", async () => {
+  it("uses a compact navigation pill with no split action", async () => {
     const slot = renderQueue({ rpc: { queueSnapshot: () => snapshot() } });
-    fireEvent.click(await slot.findByRole("button", { name: "Review child result" }));
+    const title = await slot.findByRole("button", {
+      name: "Review child result",
+    });
+
+    expect(title.className).toContain("rounded-full");
+    expect(title.className).toContain("cursor-pointer");
+    expect(title.textContent).toContain("↗");
+    expect(title.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    fireEvent.click(title);
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "toThread", threadId: "child-1" },
     ]);
     expect(slot.inspection.sidebarActionCalls).toEqual([]);
+  });
+
+  it("keeps status and compact Archive controls in the card header", async () => {
+    const slot = renderQueue({ rpc: { queueSnapshot: () => snapshot() } });
+    const title = await slot.findByRole("button", {
+      name: "Review child result",
+    });
+    const archive = slot.getByRole("button", {
+      name: "Archive Review child result",
+    });
+    const status = slot.getByText("Idle");
+    const toggle = slot.getByRole("switch", {
+      name: "I’m handling this: Off",
+    });
+
+    expect(title.parentElement?.contains(archive)).toBe(true);
+    expect(status.parentElement?.contains(archive)).toBe(true);
+    expect(archive.className).toContain("rounded-md");
+    expect(archive.className).toContain("border-border");
+    expect(toggle.parentElement?.className).toContain("justify-end");
+    expect(toggle.className).toContain("text-[11px]");
+    expect(toggle.className).toContain("text-muted-foreground");
   });
 
   it("refetches after archive failure instead of restoring a stale snapshot", async () => {
