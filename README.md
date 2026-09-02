@@ -82,6 +82,7 @@ Other
   ~/.local/bin/doppler-to-env
   ~/.local/bin/papercut
   ~/.local/bin/sync-bb-personal
+  ~/Desktop/install-bb-personal.command
 ```
 
 Codex and Pi discover `~/.agents/skills`. Claude Code discovers `~/.claude/skills`. Both locations resolve to the same `skills/` directory.

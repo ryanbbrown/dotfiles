@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Link the authored files in this repository into the locations used by local
-# coding agents. Existing regular files are preserved with a .pre-dotfiles
-# suffix before the first link is created.
+# Install authored files from this repository into locations used by local
+# tools. Existing regular files are preserved with a .pre-dotfiles suffix
+# before the first managed link or copy is created.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 home_source="$repo_root/home"
@@ -38,6 +38,26 @@ create_symlink() {
   echo "Linked $target -> $source"
 }
 
+install_executable_copy() {
+  local source="$1"
+  local target="$2"
+  local backup="$target.pre-dotfiles"
+
+  if [ -L "$target" ]; then
+    rm "$target"
+  elif [ -e "$target" ]; then
+    if [ -e "$backup" ] || [ -L "$backup" ]; then
+      rm "$target"
+    else
+      backup_existing "$target"
+    fi
+  fi
+
+  mkdir -p "$(dirname "$target")"
+  install -m 755 "$source" "$target"
+  echo "Installed $target from $source"
+}
+
 clean_legacy_codex_skill_links() {
   local target_dir="$HOME/.codex/skills"
   local target
@@ -56,6 +76,8 @@ clean_legacy_codex_skill_links() {
 [ -f "$home_source/AGENTS.md" ] || die "missing $home_source/AGENTS.md"
 [ -x "$repo_root/bin/papercut" ] || die "missing executable $repo_root/bin/papercut"
 [ -x "$repo_root/bin/sync-bb-personal" ] || die "missing executable $repo_root/bin/sync-bb-personal"
+[ -x "$repo_root/bin/install-bb-personal.command" ] ||
+  die "missing executable $repo_root/bin/install-bb-personal.command"
 [ -x "$repo_root/bin/doppler-to-env" ] || die "missing executable $repo_root/bin/doppler-to-env"
 [ -x "$repo_root/bin/claude" ] || die "missing executable $repo_root/bin/claude"
 [ -x "$repo_root/bin/codex" ] || die "missing executable $repo_root/bin/codex"
@@ -71,6 +93,7 @@ if [ "$repo_root" != "$HOME/.dotfiles" ]; then
 fi
 create_symlink "$repo_root/bin/papercut" "$HOME/.local/bin/papercut"
 create_symlink "$repo_root/bin/sync-bb-personal" "$HOME/.local/bin/sync-bb-personal"
+install_executable_copy "$repo_root/bin/install-bb-personal.command" "$HOME/Desktop/install-bb-personal.command"
 create_symlink "$repo_root/bin/doppler-to-env" "$HOME/.local/bin/doppler-to-env"
 create_symlink "$repo_root/bin/claude" "$HOME/.local/bin/claude"
 create_symlink "$repo_root/bin/codex" "$HOME/.local/bin/codex"
