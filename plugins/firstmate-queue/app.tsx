@@ -193,13 +193,31 @@ function QueueRowView({
       <div className="flex min-w-0 flex-wrap items-start gap-2">
         <button
           type="button"
-          className="inline-flex min-h-7 min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-start text-sm font-medium text-foreground hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="prompt-mention-pill inline-flex min-h-7 min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-full border py-1 pl-1.5 pr-2 text-start text-sm font-normal leading-5 no-underline hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           onClick={onNavigate}
         >
+          <svg
+            aria-hidden="true"
+            className="-ml-px size-4 shrink-0 self-center"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M17 8.5C17 5.73858 14.7614 3.5 12 3.5C9.23858 3.5 7 5.73858 7 8.5C7 11.2614 9.23858 13.5 12 13.5C14.7614 13.5 17 11.2614 17 8.5Z"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M19 20.5C19 16.634 15.866 13.5 12 13.5C8.13401 13.5 5 16.634 5 20.5"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            />
+          </svg>
           <span className="min-w-0 break-words">{row.title}</span>
-          <span aria-hidden="true" className="shrink-0 text-xs">
-            ↗
-          </span>
         </button>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground">
@@ -209,7 +227,7 @@ function QueueRowView({
             type="button"
             disabled={busy}
             onClick={onArchive}
-            className="inline-flex min-h-7 cursor-pointer items-center rounded-md border border-border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-6 cursor-pointer items-center rounded-md border border-border bg-background px-1.5 text-xs font-medium text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label={`Archive ${row.title}`}
           >
             Archive

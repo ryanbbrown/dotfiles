@@ -242,16 +242,20 @@ describe("queue panel", () => {
     expect(slot.getByText("Earlier successful result")).toBeTruthy();
   });
 
-  it("uses a compact navigation pill with no split action", async () => {
+  it("uses BB's thread-mention pill with no split action", async () => {
     const slot = renderQueue({ rpc: { queueSnapshot: () => snapshot() } });
     const title = await slot.findByRole("button", {
       name: "Review child result",
     });
 
+    expect(title.className).toContain("prompt-mention-pill");
     expect(title.className).toContain("rounded-full");
     expect(title.className).toContain("cursor-pointer");
-    expect(title.textContent).toContain("↗");
-    expect(title.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(title.className).toContain("text-sm");
+    expect(title.textContent).not.toContain("↗");
+    const icon = title.querySelector("svg");
+    expect(icon?.getAttribute("aria-hidden")).toBe("true");
+    expect(title.firstElementChild).toBe(icon);
     fireEvent.click(title);
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "toThread", threadId: "child-1" },
@@ -276,6 +280,9 @@ describe("queue panel", () => {
     expect(status.parentElement?.contains(archive)).toBe(true);
     expect(archive.className).toContain("rounded-md");
     expect(archive.className).toContain("border-border");
+    expect(archive.className).toContain("min-h-6");
+    expect(archive.className).toContain("text-xs");
+    expect(status.className).toContain("text-xs");
     expect(toggle.parentElement?.className).toContain("justify-end");
     expect(toggle.className).toContain("text-[11px]");
     expect(toggle.className).toContain("text-muted-foreground");
