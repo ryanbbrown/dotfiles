@@ -1,0 +1,405 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  Markdown,
+  definePluginApp,
+  experimental_useSidebarThreads,
+  useBbNavigate,
+  useRealtime,
+  useRealtimeConnectionState,
+  useRpc,
+  useSettings,
+  type PluginThreadPanelProps,
+} from "@get-bb/plugin-sdk/app";
+import { toast } from "sonner";
+import type { QueueRow, rpcContract } from "./contract.js";
+
+const INVALIDATION_DEBOUNCE_MS = 100;
+const REFRESH_INTERVAL_MS = 15_000;
+const PLUGIN_ID = "firstmate-queue";
+
+interface Snapshot {
+  managerThreadId: string;
+  agentWritesEnabled: boolean;
+  rows: QueueRow[];
+}
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "ready"; snapshot: Snapshot }
+  | { status: "error"; message: string };
+
+function boundedError(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return message.length <= 240 ? message : `${message.slice(0, 239)}…`;
+}
+
+async function actionMayOpen(threadId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/v1/plugins/${PLUGIN_ID}/rpc/canOpen`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ surfaceThreadId: threadId }),
+    });
+    const envelope = (await response.json()) as {
+      ok?: boolean;
+      result?: { canOpen?: boolean };
+      error?: { message?: string };
+    };
+    if (response.ok && envelope.ok === true) {
+      return envelope.result?.canOpen === true;
+    }
+    const reason = boundedError(
+      envelope.error?.message ?? "The authorization request failed.",
+    );
+    toast.error(`Could not open Firstmate queue: ${reason}`);
+  } catch (cause) {
+    toast.error(`Could not open Firstmate queue: ${boundedError(cause)}`);
+  }
+  return false;
+}
+
+function StateBox({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function useQueueSnapshot(threadId: string) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const requestSequence = useRef(0);
+
+  const refresh = useCallback(async () => {
+    const sequence = ++requestSequence.current;
+    try {
+      const snapshot = await rpc.call("queueSnapshot", {
+        surfaceThreadId: threadId,
+      });
+      if (sequence === requestSequence.current) {
+        setState({ status: "ready", snapshot });
+      }
+    } catch (cause) {
+      if (sequence === requestSequence.current) {
+        setState({ status: "error", message: boundedError(cause) });
+      }
+    }
+  }, [rpc, threadId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const invalidationTimeout = useRef<number | undefined>(undefined);
+  const scheduleInvalidationRefresh = useCallback(() => {
+    if (invalidationTimeout.current !== undefined) {
+      window.clearTimeout(invalidationTimeout.current);
+    }
+    invalidationTimeout.current = window.setTimeout(() => {
+      invalidationTimeout.current = undefined;
+      void refresh();
+    }, INVALIDATION_DEBOUNCE_MS);
+  }, [refresh]);
+  useEffect(
+    () => () => {
+      if (invalidationTimeout.current !== undefined) {
+        window.clearTimeout(invalidationTimeout.current);
+      }
+    },
+    [],
+  );
+  useRealtime("queue-invalidated", scheduleInvalidationRefresh);
+
+  const connection = useRealtimeConnectionState();
+  const wasDisconnected = useRef(false);
+  useEffect(() => {
+    if (connection !== "connected") {
+      wasDisconnected.current = true;
+      return;
+    }
+    if (!wasDisconnected.current) return;
+    wasDisconnected.current = false;
+    void refresh();
+  }, [connection, refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeout: number | undefined;
+    const schedule = () => {
+      timeout = window.setTimeout(() => {
+        void refresh().finally(() => {
+          if (!cancelled) schedule();
+        });
+      }, REFRESH_INTERVAL_MS);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [refresh]);
+
+  const sidebar = experimental_useSidebarThreads();
+  const sidebarFingerprint = useMemo(
+    () =>
+      sidebar.threads
+        .filter((thread) => thread.parentThreadId === threadId)
+        .map(
+          (thread) =>
+            `${thread.id}\u0000${thread.title ?? ""}\u0000${thread.titleFallback ?? ""}\u0000${thread.isArchived}`,
+        )
+        .sort()
+        .join("\u0001"),
+    [sidebar.threads, threadId],
+  );
+  const priorFingerprint = useRef(sidebarFingerprint);
+  useEffect(() => {
+    if (priorFingerprint.current === sidebarFingerprint) return;
+    priorFingerprint.current = sidebarFingerprint;
+    scheduleInvalidationRefresh();
+  }, [scheduleInvalidationRefresh, sidebarFingerprint]);
+
+  const supersedeRefresh = useCallback(() => {
+    requestSequence.current += 1;
+  }, []);
+
+  return { rpc, state, setState, refresh, supersedeRefresh };
+}
+
+function QueueRowView({
+  row,
+  mutation,
+  onNavigate,
+  onToggle,
+  onArchive,
+}: {
+  row: QueueRow;
+  mutation: string | null;
+  onNavigate: () => void;
+  onToggle: () => void;
+  onArchive: () => void;
+}) {
+  const busy = mutation !== null;
+  return (
+    <li className="rounded-lg border border-border bg-card px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <button
+          type="button"
+          className="min-w-0 text-start text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={onNavigate}
+        >
+          {row.title}
+        </button>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {row.statusLabel}
+        </span>
+      </div>
+      {row.state === "error" || row.state === "queued_failed" ? (
+        <div className="mt-2 space-y-2">
+          <p className="break-words text-sm text-destructive">{row.detail}</p>
+          {row.summaryMarkdown === null ? null : (
+            <Markdown
+              content={row.summaryMarkdown}
+              className="break-words text-sm text-muted-foreground"
+            />
+          )}
+        </div>
+      ) : row.state === "new_result" ? (
+        <div className="mt-2 space-y-2">
+          <p className="text-sm font-medium text-foreground">New result</p>
+          {row.summaryMarkdown === null ? null : (
+            <Markdown
+              content={row.summaryMarkdown}
+              className="break-words text-sm text-muted-foreground"
+            />
+          )}
+        </div>
+      ) : row.summaryMarkdown === null ? (
+        <p className="mt-2 break-words text-sm text-muted-foreground">
+          {row.detail}
+        </p>
+      ) : (
+        <Markdown
+          content={row.detail}
+          className="mt-2 break-words text-sm text-muted-foreground"
+        />
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={row.userManaged}
+          disabled={busy}
+          onClick={onToggle}
+          className="min-h-7 rounded-md border border-border px-2 text-xs text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+        >
+          I’m handling this: {row.userManaged ? "On" : "Off"}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onArchive}
+          className="min-h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+          aria-label={`Archive ${row.title}`}
+        >
+          Archive
+        </button>
+      </div>
+    </li>
+  );
+}
+
+const SECTIONS = [
+  { id: "needs_response", title: "Needs your response" },
+  { id: "in_progress", title: "In progress" },
+  { id: "done", title: "Done" },
+] as const;
+
+function QueuePanelContent({ threadId }: { threadId: string }) {
+  const navigate = useBbNavigate();
+  const { rpc, state, setState, refresh, supersedeRefresh } =
+    useQueueSnapshot(threadId);
+  const [mutation, setMutation] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
+  if (state.status === "loading") {
+    return (
+      <StateBox>
+        <span role="status" aria-busy="true">
+          Loading Firstmate queue…
+        </span>
+      </StateBox>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <StateBox>
+        <span role="alert">Could not load the queue: {state.message}</span>
+      </StateBox>
+    );
+  }
+
+  const { snapshot } = state;
+  const setUserManaged = async (row: QueueRow) => {
+    if (mutation !== null) return;
+    setMutation(row.id);
+    setMutationError(null);
+    try {
+      await rpc.call("setUserManaged", {
+        surfaceThreadId: threadId,
+        childThreadId: row.id,
+        userManaged: !row.userManaged,
+      });
+      await refresh();
+    } catch (cause) {
+      setMutationError(boundedError(cause));
+    } finally {
+      setMutation(null);
+    }
+  };
+  const archive = async (row: QueueRow) => {
+    if (mutation !== null) return;
+    supersedeRefresh();
+    setMutation(row.id);
+    setMutationError(null);
+    setState({
+      status: "ready",
+      snapshot: {
+        ...snapshot,
+        rows: snapshot.rows.filter((candidate) => candidate.id !== row.id),
+      },
+    });
+    try {
+      await rpc.call("archiveThread", {
+        surfaceThreadId: threadId,
+        childThreadId: row.id,
+      });
+    } catch (cause) {
+      setMutationError(boundedError(cause));
+      await refresh();
+    } finally {
+      setMutation(null);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {!snapshot.agentWritesEnabled ? (
+        <div role="status" className="rounded-lg border border-border px-3 py-2 text-sm">
+          Firstmate annotation writes are disabled. Queue reading and manual controls remain available.
+        </div>
+      ) : null}
+      {mutationError === null ? null : (
+        <p role="alert" className="break-words text-sm text-destructive">
+          {mutationError}
+        </p>
+      )}
+      {snapshot.rows.length === 0 ? (
+        <StateBox>
+          <span role="status">
+            The queue is empty. Direct child threads appear here when Firstmate creates them.
+          </span>
+        </StateBox>
+      ) : SECTIONS.map((section) => {
+        const rows = snapshot.rows.filter((row) => row.section === section.id);
+        const headingId = `firstmate-queue-${section.id}`;
+        return (
+          <section key={section.id} aria-labelledby={headingId}>
+            <h2 id={headingId} className="text-sm font-semibold text-foreground">
+              {section.title}
+            </h2>
+            {rows.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">No threads.</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {rows.map((row) => (
+                  <QueueRowView
+                    key={row.id}
+                    row={row}
+                    mutation={mutation}
+                    onNavigate={() => navigate.toThread(row.id)}
+                    onToggle={() => void setUserManaged(row)}
+                    onArchive={() => void archive(row)}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function QueuePanel({ threadId }: PluginThreadPanelProps) {
+  const { values, isLoading } = useSettings();
+  const managerThreadId =
+    typeof values?.managerThreadId === "string"
+      ? values.managerThreadId.trim()
+      : "";
+  if (isLoading || managerThreadId !== threadId) return null;
+  return <QueuePanelContent threadId={threadId} />;
+}
+
+export default definePluginApp((app) => {
+  app.slots.threadPanelAction({
+    id: "firstmate-queue",
+    title: "Firstmate queue",
+    icon: "ListTodo",
+    layout: "padded",
+    component: QueuePanel,
+    run: async ({ threadId, openPanel }) => {
+      if (await actionMayOpen(threadId)) {
+        openPanel({ title: "Firstmate queue" });
+      }
+    },
+  });
+});

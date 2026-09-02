@@ -12,6 +12,7 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 
 - `home/` contains global instructions and durable settings for Claude Code, Codex, and Pi.
 - `skills/` contains the skills exposed to all three coding agents.
+- `plugins/` contains personal BB plugins that belong with this configuration.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
 - `bin/` contains small shared commands, including `papercut`, `doppler-to-env`, and `sync-bb-personal`.
@@ -89,9 +90,19 @@ The installer preserves an existing file or directory with a `.pre-dotfiles` suf
 
 Pi installs configured package contents under `~/.pi/agent`. Claude Code and Codex also retain their own runtime state outside this repository.
 
+### Personal BB plugins
+
+Personal plugins can live under `plugins/` when they are part of this configuration and do not need an independent release lifecycle. Each plugin is a standalone package with its own dependencies, lockfile, tests, and build output.
+
+The Firstmate Queue plugin is under `plugins/firstmate-queue`. Keep its agent writes disabled until the documented queue cutover is complete. After installing its package dependencies as documented in the plugin README, run its top-level check with:
+
+```bash
+tests/firstmate-queue-plugin.sh
+```
+
 ### Terminal jobs
 
-The [Terminal Jobs plugin](https://github.com/ryanbbrown/bb-plugin-terminal-jobs) owns its source, runner, setup, tests, and releases. This repository keeps only shared agent policy and integrations that use an installed `bb terminal-job` command.
+The [Terminal Jobs plugin](https://github.com/ryanbbrown/bb-plugin-terminal-jobs) owns its source, runner, setup, tests, and releases. This package remains an exception to the personal plugin policy above. This repository keeps only shared agent policy and integrations that use an installed `bb terminal-job` command.
 
 ### Create local environment files
 

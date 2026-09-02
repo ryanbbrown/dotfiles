@@ -1,0 +1,447 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  loadPluginApp,
+  renderSlot,
+  type PluginRpcTestHandlers,
+  type RenderSlotOptions,
+} from "@get-bb/plugin-sdk/testing/app";
+import type { PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
+import type { QueueRow, rpcContract } from "./contract.js";
+
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
+
+const app = await loadPluginApp(() => import("./app.js"));
+const action = app.threadPanelActions[0]!;
+
+function row(overrides: Partial<QueueRow> = {}): QueueRow {
+  return {
+    id: "child-1",
+    title: "Review child result",
+    section: "needs_response",
+    state: "new_result",
+    statusLabel: "Idle",
+    detail: "New result",
+    summaryMarkdown: null,
+    userManaged: false,
+    latestCompletionSeq: 7,
+    reviewedThroughSeq: 6,
+    ...overrides,
+  };
+}
+
+function snapshot(rows: QueueRow[] = [row()]) {
+  return {
+    managerThreadId: "manager-1",
+    agentWritesEnabled: false,
+    rows,
+  };
+}
+
+type QueueRenderOptions = Omit<
+  RenderSlotOptions<typeof rpcContract>,
+  "rpc"
+> & {
+  rpc?: Partial<PluginRpcTestHandlers<typeof rpcContract>>;
+};
+
+function renderQueue(options: QueueRenderOptions = {}) {
+  const { rpc, ...rest } = options;
+  const handlers: PluginRpcTestHandlers<typeof rpcContract> = {
+    canOpen: () => ({ canOpen: true }),
+    queueSnapshot: () => snapshot(),
+    setUserManaged: ({ childThreadId, userManaged }) => ({
+      childThreadId,
+      userManaged,
+    }),
+    archiveThread: () => ({ archived: true }),
+    ...rpc,
+  };
+  return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
+    action,
+    { threadId: "manager-1", params: null },
+    {
+      settings: { managerThreadId: "manager-1", agentWritesEnabled: false },
+      ...rest,
+      rpc: handlers,
+    },
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  toastError.mockReset();
+});
+
+describe("registration guards", () => {
+  it("registers one padded Firstmate queue thread action", () => {
+    expect(app.threadPanelActions).toHaveLength(1);
+    expect(action).toMatchObject({
+      id: "firstmate-queue",
+      title: "Firstmate queue",
+      layout: "padded",
+    });
+  });
+
+  it("opens only after the cheap backend guard authorizes the manager", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, result: { canOpen: true } }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const openPanel = vi.fn(() => true);
+    await action.run!({ threadId: "manager-1", openPanel });
+    expect(openPanel).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/plugins/firstmate-queue/rpc/canOpen",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ surfaceThreadId: "manager-1" }),
+      }),
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, result: { canOpen: false } }),
+      })),
+    );
+    await action.run!({ threadId: "other-thread", openPanel });
+    expect(openPanel).toHaveBeenCalledOnce();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("silently declines an unconfigured action", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, result: { canOpen: false } }),
+      })),
+    );
+    const openPanel = vi.fn(() => true);
+
+    await action.run!({ threadId: "any-thread", openPanel });
+
+    expect(openPanel).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a bounded authorization failure without opening", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        json: async () => ({
+          ok: false,
+          error: { message: "x".repeat(300) },
+        }),
+      })),
+    );
+    const openPanel = vi.fn(() => true);
+    await action.run!({ threadId: "manager-1", openPanel });
+
+    expect(openPanel).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledOnce();
+    expect(String(toastError.mock.calls[0]![0]).endsWith("…")).toBe(true);
+    expect(String(toastError.mock.calls[0]![0]).length).toBeLessThan(280);
+  });
+
+  it("renders no queue content when panel props do not match live settings", () => {
+    const slot = renderSlot(
+      action,
+      { threadId: "other-thread", params: null },
+      {
+        settings: { managerThreadId: "manager-1" },
+        rpc: { queueSnapshot: () => snapshot() },
+      },
+    );
+    expect(slot.container.childElementCount).toBe(0);
+    expect(slot.inspection.rpcCalls).toEqual([]);
+  });
+
+  it("uses the trimmed manager setting for the panel guard", async () => {
+    const slot = renderSlot(
+      action,
+      { threadId: "manager-1", params: null },
+      {
+        settings: { managerThreadId: "  manager-1  " },
+        rpc: { queueSnapshot: () => snapshot() },
+      },
+    );
+    expect(await slot.findByText("Review child result")).toBeTruthy();
+  });
+});
+
+describe("queue panel", () => {
+  it("renders all sections, deterministic states, and Markdown summaries", async () => {
+    const rows = [
+      row(),
+      row({
+        id: "child-2",
+        title: "Building plugin",
+        section: "in_progress",
+        state: "running",
+        statusLabel: "Active",
+        detail: "Implements **backend**",
+        summaryMarkdown: "Implements **backend**",
+      }),
+      row({
+        id: "child-3",
+        title: "Finished review",
+        section: "done",
+        state: "done",
+        detail: "All checks pass",
+        summaryMarkdown: "All checks pass",
+      }),
+    ];
+    const slot = renderQueue({ rpc: { queueSnapshot: () => snapshot(rows) } });
+
+    await slot.findByRole("heading", { name: "Needs your response" });
+    expect(slot.getByRole("heading", { name: "In progress" })).toBeTruthy();
+    expect(slot.getByRole("heading", { name: "Done" })).toBeTruthy();
+    expect(slot.getByText("New result")).toBeTruthy();
+    expect(slot.getByText("Implements **backend**")).toBeTruthy();
+    expect(slot.getByText("Active")).toBeTruthy();
+  });
+
+  it("shows New result with the prior summary as context", async () => {
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () =>
+          snapshot([
+            row({
+              detail: "New result",
+              summaryMarkdown: "Earlier reviewed result",
+            }),
+          ]),
+      },
+    });
+
+    expect(await slot.findByText("New result")).toBeTruthy();
+    expect(slot.getByText("Earlier reviewed result")).toBeTruthy();
+  });
+
+  it("keeps failure text visible with the earlier summary as context", async () => {
+    const failed = row({
+      state: "queued_failed",
+      statusLabel: "Idle",
+      detail: "Queued work failed",
+      summaryMarkdown: "Earlier successful result",
+    });
+    const slot = renderQueue({
+      rpc: { queueSnapshot: () => snapshot([failed]) },
+    });
+
+    expect(await slot.findByText("Queued work failed")).toBeTruthy();
+    expect(slot.getByText("Earlier successful result")).toBeTruthy();
+  });
+
+  it("uses normal toThread navigation with no split action", async () => {
+    const slot = renderQueue({ rpc: { queueSnapshot: () => snapshot() } });
+    fireEvent.click(await slot.findByRole("button", { name: "Review child result" }));
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "child-1" },
+    ]);
+    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+  });
+
+  it("refetches after archive failure instead of restoring a stale snapshot", async () => {
+    let rejectArchive!: (error: Error) => void;
+    const archive = new Promise<never>((_resolve, reject) => {
+      rejectArchive = reject;
+    });
+    let snapshotCalls = 0;
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () => {
+          snapshotCalls += 1;
+          if (snapshotCalls === 1) return snapshot();
+          if (snapshotCalls === 2) {
+            return snapshot([row({ title: "Newer authoritative title" })]);
+          }
+          return snapshot([row({ title: "Final authoritative title" })]);
+        },
+        archiveThread: () => archive,
+      },
+    });
+    const archiveButton = await slot.findByRole("button", {
+      name: "Archive Review child result",
+    });
+    fireEvent.click(archiveButton);
+    expect(slot.queryByText("Review child result")).toBeNull();
+    expect(slot.inspection.rpcCalls.at(-1)).toEqual({
+      method: "archiveThread",
+      input: {
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+      },
+    });
+
+    await slot.behavior.emitRealtime("queue-invalidated", {
+      threadId: "child-1",
+      reason: "thread.idle",
+    });
+    await slot.findByText("Newer authoritative title");
+    rejectArchive(new Error("x".repeat(300)));
+
+    await slot.findByText("Final authoritative title");
+    expect(slot.queryByText("Review child result")).toBeNull();
+    expect(snapshotCalls).toBe(3);
+    const alert = slot.getByRole("alert");
+    expect(alert.textContent?.endsWith("…")).toBe(true);
+    expect(alert.textContent!.length).toBeLessThan(250);
+  });
+
+  it("toggles manual ownership and refreshes the projected row", async () => {
+    let managed = false;
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () =>
+          snapshot([row({ userManaged: managed, state: managed ? "user_managed" : "new_result" })]),
+        setUserManaged: ({ userManaged }) => {
+          managed = userManaged;
+          return { childThreadId: "child-1", userManaged };
+        },
+      },
+    });
+    const toggle = await slot.findByRole("switch", {
+      name: "I’m handling this: Off",
+    });
+    fireEvent.click(toggle);
+    await slot.findByRole("switch", { name: "I’m handling this: On" });
+    expect(
+      slot.inspection.rpcCalls.some((call) => call.method === "setUserManaged"),
+    ).toBe(true);
+  });
+
+  it("disables every mutation control but keeps title navigation available", async () => {
+    let finishToggle!: (value: {
+      childThreadId: string;
+      userManaged: boolean;
+    }) => void;
+    const pendingToggle = new Promise<{
+      childThreadId: string;
+      userManaged: boolean;
+    }>((resolve) => {
+      finishToggle = resolve;
+    });
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () =>
+          snapshot([
+            row(),
+            row({ id: "child-2", title: "Other child" }),
+          ]),
+        setUserManaged: () => pendingToggle,
+      },
+    });
+    await slot.findByText("Other child");
+    const toggles = slot.getAllByRole("switch");
+    const activeToggle = toggles[0]!;
+
+    fireEvent.click(activeToggle);
+    await waitFor(() =>
+      expect((activeToggle as HTMLButtonElement).disabled).toBe(true),
+    );
+    expect((toggles[1] as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      slot.getAllByRole("button", { name: /^Archive / }).every(
+        (button) => (button as HTMLButtonElement).disabled,
+      ),
+    ).toBe(true);
+    const otherTitle = slot.getByRole("button", { name: "Other child" });
+    expect((otherTitle as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(otherTitle);
+    expect(slot.inspection.navigateCalls.at(-1)).toEqual({
+      method: "toThread",
+      threadId: "child-2",
+    });
+    fireEvent.click(toggles[1]!);
+    expect(
+      slot.inspection.rpcCalls.filter(
+        (call) => call.method === "setUserManaged",
+      ),
+    ).toHaveLength(1);
+
+    finishToggle({ childThreadId: "child-1", userManaged: true });
+    await act(async () => pendingToggle);
+  });
+
+  it("shows accessible loading, empty, activation-disabled, and error states", async () => {
+    const loading = renderQueue({
+      rpc: { queueSnapshot: () => new Promise<never>(() => undefined) },
+    });
+    expect(loading.getByRole("status").getAttribute("aria-busy")).toBe("true");
+    loading.lifecycle.unmount();
+
+    const empty = renderQueue({ rpc: { queueSnapshot: () => snapshot([]) } });
+    await empty.findByText(/queue is empty/i);
+    expect(empty.getByText(/annotation writes are disabled/i)).toBeTruthy();
+    expect(empty.queryByRole("heading")).toBeNull();
+    empty.lifecycle.unmount();
+
+    const failed = renderQueue({
+      rpc: { queueSnapshot: () => Promise.reject(new Error("Server unavailable")) },
+    });
+    expect((await failed.findByRole("alert")).textContent).toContain(
+      "Server unavailable",
+    );
+  });
+
+  it("keeps hidden or cross-project snapshot rows and refreshes a rename every 15 seconds", async () => {
+    vi.useFakeTimers();
+    let title = "Hidden cross-project child";
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () => snapshot([row({ title })]),
+      },
+      sidebarThreads: { threads: [] },
+    });
+    await act(async () => Promise.resolve());
+    expect(slot.getByText("Hidden cross-project child")).toBeTruthy();
+
+    title = "Renamed hidden child";
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(slot.getByText("Renamed hidden child")).toBeTruthy();
+    expect(slot.inspection.rpcCalls).toHaveLength(2);
+  });
+
+  it("coalesces a burst of invalidations into one trailing refresh", async () => {
+    vi.useFakeTimers();
+    const slot = renderQueue({
+      rpc: { queueSnapshot: () => snapshot() },
+    });
+    await act(async () => Promise.resolve());
+    expect(slot.inspection.rpcCalls).toHaveLength(1);
+
+    await slot.behavior.emitRealtime("queue-invalidated", { reason: "one" });
+    await slot.behavior.emitRealtime("queue-invalidated", { reason: "two" });
+    await slot.behavior.emitRealtime("queue-invalidated", { reason: "three" });
+    expect(slot.inspection.rpcCalls).toHaveLength(1);
+
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(slot.inspection.rpcCalls).toHaveLength(2);
+  });
+
+  it("refetches after realtime invalidation and reconnect", async () => {
+    const slot = renderQueue({
+      rpc: { queueSnapshot: () => snapshot() },
+      realtimeConnectionState: "connected",
+    });
+    await slot.findByText("Review child result");
+    await slot.behavior.emitRealtime("queue-invalidated", {
+      threadId: "child-1",
+      reason: "thread.idle",
+    });
+    await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(2));
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(3));
+  });
+});

@@ -1,0 +1,1026 @@
+import { describe, expect, it } from "vitest";
+import type {
+  BbPluginApi,
+  PluginAgentConfigurationContext,
+} from "@get-bb/plugin-sdk";
+import {
+  createFakePluginHost,
+  makeQueueEntry,
+  makeThreadResponse,
+  makeTurnFailedEvent,
+} from "@get-bb/plugin-sdk/testing";
+import plugin from "./server.js";
+
+type ThreadListEntry = Awaited<
+  ReturnType<BbPluginApi["sdk"]["threads"]["list"]>
+>[number];
+type ThreadEventRow = Awaited<
+  ReturnType<BbPluginApi["sdk"]["threads"]["events"]["list"]>
+>[number];
+
+function listEntry(
+  id: string,
+  overrides: Partial<ThreadListEntry> = {},
+): ThreadListEntry {
+  const response = makeThreadResponse({
+    id,
+    title: `Title ${id}`,
+    parentThreadId: "manager-1",
+  });
+  const {
+    activeBackgroundAgentCount: _activeBackgroundAgentCount,
+    canSpawnChild: _canSpawnChild,
+    queuedMessageCount: _queuedMessageCount,
+    ...thread
+  } = response;
+  return {
+    ...thread,
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
+    queuedWork: "none",
+    pinSortKey: null,
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "other",
+    ...overrides,
+  };
+}
+
+function completion(threadId: string, seq: number): ThreadEventRow {
+  return {
+    id: `event-${seq}`,
+    scope: { kind: "turn", turnId: `turn-${seq}` },
+    threadId,
+    seq,
+    type: "turn/completed",
+    data: {
+      providerThreadId: "provider-thread",
+      status: "completed",
+    },
+    createdAt: seq,
+  };
+}
+
+function toolResult(output: unknown): Record<string, unknown> {
+  return JSON.parse(String(output)) as Record<string, unknown>;
+}
+
+function agentContext(threadId: string): PluginAgentConfigurationContext {
+  return {
+    thread: {
+      id: threadId,
+      title: "Manager",
+      parentThreadId: null,
+      sourceThreadId: null,
+    },
+    project: {
+      id: "project-1",
+      kind: "standard",
+      name: "Project",
+      gitRemoteUrl: null,
+    },
+    environment: {
+      id: "environment-1",
+      name: "Environment",
+      path: "/work",
+      workspaceProvisionType: "unmanaged",
+      branchName: "main",
+    },
+    host: { id: "host-1", name: "Host" },
+    provider: {
+      id: "pi",
+      model: "test-model",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
+    origin: { kind: null, pluginId: null },
+  };
+}
+
+async function configuredHost(options: {
+  writes?: boolean;
+  managerThreadId?: string;
+  get?: BbPluginApi["sdk"]["threads"]["get"];
+  list?: (args: Parameters<BbPluginApi["sdk"]["threads"]["list"]>[0]) => Promise<ThreadListEntry[]>;
+  events?: (args: Parameters<BbPluginApi["sdk"]["threads"]["events"]["list"]>[0]) => Promise<ThreadEventRow[]>;
+  archive?: BbPluginApi["sdk"]["threads"]["archive"];
+} = {}) {
+  const host = createFakePluginHost({
+    pluginId: "firstmate-queue",
+    settings: {
+      managerThreadId: options.managerThreadId ?? "manager-1",
+      agentWritesEnabled: options.writes ?? false,
+    },
+    sdk: {
+      threads: {
+        get:
+          options.get ??
+          (async ({ threadId }) =>
+            makeThreadResponse({
+              id: threadId,
+              title: threadId === "manager-1" ? "Manager" : `Title ${threadId}`,
+              parentThreadId: threadId === "manager-1" ? null : "manager-1",
+            })),
+        list:
+          options.list ??
+          (async () => [listEntry("child-1")]),
+        events: {
+          list: options.events ?? (async () => []),
+        },
+        archive:
+          options.archive ??
+          (async ({ threadId }) => ({ archivedThreadIds: [threadId], ok: true })),
+      },
+    },
+  });
+  await plugin(host.bb);
+  return host;
+}
+
+describe("queue discovery and snapshots", () => {
+  it("pages hidden cross-project direct children without a project filter and excludes grandchildren", async () => {
+    const direct = Array.from({ length: 101 }, (_, index) =>
+      listEntry(`child-${index}`, {
+        projectId: index % 2 === 0 ? "project-a" : "project-b",
+        visibility: index === 3 ? "hidden" : "visible",
+      }),
+    );
+    const grandchild = listEntry("grandchild", {
+      parentThreadId: "child-1",
+    });
+    const host = await configuredHost({
+      list: async (args) => {
+        const { offset = 0, limit = 100, parentThreadId } = args ?? {};
+        return [...direct, grandchild]
+          .filter((thread) => thread.parentThreadId === parentThreadId)
+          .slice(offset, offset + limit);
+      },
+    });
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<{ id: string }> };
+
+    expect(snapshot.rows).toHaveLength(101);
+    expect(snapshot.rows.some((row) => row.id === "child-3")).toBe(true);
+    expect(snapshot.rows.some((row) => row.id === "grandchild")).toBe(false);
+    expect(host.harness.inspection.sdk.callsTo("threads.list")).toEqual([
+      [
+        {
+          parentThreadId: "manager-1",
+          archived: false,
+          includeHidden: true,
+          limit: 100,
+          offset: 0,
+        },
+      ],
+      [
+        {
+          parentThreadId: "manager-1",
+          archived: false,
+          includeHidden: true,
+          limit: 100,
+          offset: 100,
+        },
+      ],
+    ]);
+  });
+
+  it("deduplicates changing pages and keeps the latest row for each thread ID", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      listEntry(`child-${index}`, {
+        title: index === 0 ? "Old title" : `Title child-${index}`,
+      }),
+    );
+    const host = await configuredHost({
+      list: async (args) =>
+        (args?.offset ?? 0) === 0
+          ? firstPage
+          : [listEntry("child-0", { title: "Latest title" })],
+    });
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<{ id: string; title: string }> };
+
+    expect(snapshot.rows).toHaveLength(100);
+    expect(snapshot.rows.filter((row) => row.id === "child-0")).toEqual([
+      expect.objectContaining({ title: "Latest title" }),
+    ]);
+  });
+
+  it("bounds completion-history lookups while preserving row order", async () => {
+    const children = Array.from({ length: 20 }, (_, index) =>
+      listEntry(`child-${index}`),
+    );
+    let active = 0;
+    let maximumActive = 0;
+    let started = 0;
+    let release!: () => void;
+    let workersStarted!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstWave = new Promise<void>((resolve) => {
+      workersStarted = resolve;
+    });
+    const host = await configuredHost({
+      list: async () => children,
+      events: async ({ threadId }) => {
+        active += 1;
+        started += 1;
+        maximumActive = Math.max(maximumActive, active);
+        if (started === 8) workersStarted();
+        await gate;
+        active -= 1;
+        return [completion(threadId, Number(threadId.split("-")[1]) + 1)];
+      },
+    });
+
+    const loading = host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    });
+    await firstWave;
+    const firstWaveSize = started;
+    release();
+    const snapshot = (await loading) as {
+      rows: Array<{ id: string; latestCompletionSeq: number }>;
+    };
+
+    expect(firstWaveSize).toBe(8);
+    expect(maximumActive).toBeLessThanOrEqual(8);
+    expect(snapshot.rows.map((row) => row.id)).toEqual(
+      children.map((child) => child.id),
+    );
+    expect(snapshot.rows.map((row) => row.latestCompletionSeq)).toEqual(
+      children.map((_child, index) => index + 1),
+    );
+  });
+
+  it("uses the cheap trimmed-manager guard without loading the queue", async () => {
+    const host = await configuredHost({ managerThreadId: "  manager-1  " });
+    const initialGetCalls = host.harness.inspection.sdk.callsTo("threads.get").length;
+
+    await expect(
+      host.harness.behavior.callRpc("canOpen", {
+        surfaceThreadId: "other-thread",
+      }),
+    ).resolves.toEqual({ canOpen: false });
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(
+      initialGetCalls,
+    );
+
+    await expect(
+      host.harness.behavior.callRpc("canOpen", {
+        surfaceThreadId: "manager-1",
+      }),
+    ).resolves.toEqual({ canOpen: true });
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(
+      initialGetCalls + 1,
+    );
+    expect(host.harness.inspection.sdk.callsTo("threads.list")).toEqual([]);
+    expect(host.harness.inspection.sdk.callsTo("threads.events.list")).toEqual(
+      [],
+    );
+  });
+
+  it("silently rejects the action guard when no manager is configured", async () => {
+    const host = createFakePluginHost({ pluginId: "firstmate-queue" });
+    await plugin(host.bb);
+
+    await expect(
+      host.harness.behavior.callRpc("canOpen", {
+        surfaceThreadId: "any-thread",
+      }),
+    ).resolves.toEqual({ canOpen: false });
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toEqual([]);
+  });
+
+  it("rejects another surface and fails explicitly on an unknown BB tuple", async () => {
+    const host = await configuredHost({
+      list: async () => [listEntry("child-1", { status: "paused" as never })],
+    });
+    await expect(
+      host.harness.behavior.callRpc("queueSnapshot", {
+        surfaceThreadId: "other-thread",
+      }),
+    ).rejects.toThrow(/configured manager thread/i);
+    await expect(
+      host.harness.behavior.callRpc("queueSnapshot", {
+        surfaceThreadId: "manager-1",
+      }),
+    ).rejects.toThrow("Unsupported BB thread status: paused");
+  });
+});
+
+describe("annotation writes", () => {
+  it("captures the durable completion cursor and persists exact annotation fields", async () => {
+    const summary = "🚀".repeat(4_000);
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 17)],
+    });
+
+    const output = await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: summary,
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+
+    expect(toolResult(output)).toEqual({
+      outcome: "updated",
+      childThreadId: "child-1",
+      reviewedThroughSeq: 17,
+      disposition: "done",
+    });
+    const stored = host.bb.storage
+      .database()
+      .prepare(
+        `SELECT summary_markdown, idle_disposition, reviewed_through_seq,
+          user_managed, summary_updated_at, disposition_updated_at
+         FROM queue_annotations WHERE thread_id = ?`,
+      )
+      .get("child-1");
+    expect(stored).toMatchObject({
+      summary_markdown: summary,
+      idle_disposition: "done",
+      reviewed_through_seq: 17,
+      user_managed: 0,
+    });
+    expect(typeof (stored as { summary_updated_at: unknown }).summary_updated_at).toBe(
+      "number",
+    );
+  });
+
+  it("returns one exact JSON result shape for expected tool outcomes", async () => {
+    const unconfigured = createFakePluginHost({
+      pluginId: "firstmate-queue",
+      settings: { agentWritesEnabled: true },
+    });
+    await plugin(unconfigured.bb);
+    await expect(
+      unconfigured.harness.behavior.callAgentTool(
+        "firstmate_queue_update",
+        {
+          childThreadId: "child-1",
+          summaryMarkdown: "Summary",
+          disposition: "done",
+        },
+        { threadId: "manager-1" },
+      ),
+    ).resolves.toBe(JSON.stringify({ outcome: "not_configured" }));
+
+    const disabled = await configuredHost();
+    await expect(
+      disabled.harness.behavior.callAgentTool(
+        "firstmate_queue_update",
+        {
+          childThreadId: "child-1",
+          summaryMarkdown: "Summary",
+          disposition: "done",
+        },
+        { threadId: "manager-1" },
+      ),
+    ).resolves.toBe(JSON.stringify({ outcome: "writes_disabled" }));
+
+    const active = await configuredHost({ writes: true });
+    const input = {
+      childThreadId: "child-1",
+      summaryMarkdown: "Summary",
+      disposition: "done",
+    };
+    await expect(
+      active.harness.behavior.callAgentTool("firstmate_queue_update", input, {
+        threadId: "other-thread",
+      }),
+    ).resolves.toBe(JSON.stringify({ outcome: "wrong_caller" }));
+    await active.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: true,
+    });
+    await expect(
+      active.harness.behavior.callAgentTool("firstmate_queue_update", input, {
+        threadId: "manager-1",
+      }),
+    ).resolves.toBe(JSON.stringify({ outcome: "user_managed" }));
+    await expect(
+      active.harness.behavior.callAgentTool(
+        "firstmate_queue_update",
+        { ...input, summaryMarkdown: "x".repeat(4_001) },
+        { threadId: "manager-1" },
+      ),
+    ).rejects.toThrow(/4,000 Unicode characters/);
+
+    const absent = await configuredHost({
+      writes: true,
+      get: async ({ threadId }) =>
+        makeThreadResponse({
+          id: threadId,
+          parentThreadId: threadId === "manager-1" ? null : "other-manager",
+        }),
+    });
+    await expect(
+      absent.harness.behavior.callAgentTool("firstmate_queue_update", input, {
+        threadId: "manager-1",
+      }),
+    ).resolves.toBe(JSON.stringify({ outcome: "not_current_child" }));
+  });
+
+  it("serializes a concurrent toggle before an agent update", async () => {
+    let releaseCompletion!: () => void;
+    let completionReadStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      completionReadStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseCompletion = resolve;
+    });
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => {
+        completionReadStarted();
+        await gate;
+        return [completion(threadId, 4)];
+      },
+    });
+    const write = host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Must not land",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+    await started;
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: true,
+    });
+    releaseCompletion();
+
+    await expect(write).resolves.toBe(
+      JSON.stringify({ outcome: "user_managed" }),
+    );
+    const stored = host.bb.storage
+      .database()
+      .prepare(
+        "SELECT summary_markdown, user_managed FROM queue_annotations WHERE thread_id = ?",
+      )
+      .get("child-1");
+    expect(stored).toEqual({ summary_markdown: null, user_managed: 1 });
+  });
+
+  it("keeps a completion racing an update visible as New result", async () => {
+    let completionSeq = 10;
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, completionSeq)],
+    });
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Reviewed ten",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+    completionSeq = 11;
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      state: "new_result",
+      detail: "New result",
+      reviewedThroughSeq: 10,
+      latestCompletionSeq: 11,
+    });
+  });
+
+  it("retains annotations across reparent-away, reparent-back, and plugin restart", async () => {
+    let isCurrentChild = true;
+    const host = await configuredHost({
+      writes: true,
+      list: async () => (isCurrentChild ? [listEntry("child-1")] : []),
+      events: async ({ threadId }) => [completion(threadId, 8)],
+    });
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Retained review",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+
+    isCurrentChild = false;
+    let view = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(view.rows).toEqual([]);
+
+    isCurrentChild = true;
+    view = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(view.rows[0]).toMatchObject({
+      state: "done",
+      detail: "Retained review",
+      reviewedThroughSeq: 8,
+    });
+
+    const reloaded = await host.harness.lifecycle.reload(plugin);
+    view = (await reloaded.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(view.rows[0]).toMatchObject({
+      state: "done",
+      detail: "Retained review",
+      reviewedThroughSeq: 8,
+    });
+  });
+
+  it("removes raced review fields without overwriting a winning user-managed toggle", async () => {
+    let childLookups = 0;
+    let releaseFinalCheck!: () => void;
+    let finalCheckStarted!: () => void;
+    const finalCheck = new Promise<void>((resolve) => {
+      finalCheckStarted = resolve;
+    });
+    const finalCheckGate = new Promise<void>((resolve) => {
+      releaseFinalCheck = resolve;
+    });
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 5)],
+      get: async ({ threadId }) => {
+        if (threadId === "manager-1") {
+          return makeThreadResponse({ id: threadId, parentThreadId: null });
+        }
+        childLookups += 1;
+        if (childLookups === 2) {
+          finalCheckStarted();
+          await finalCheckGate;
+          return makeThreadResponse({
+            id: threadId,
+            parentThreadId: "other-manager",
+          });
+        }
+        return makeThreadResponse({
+          id: threadId,
+          parentThreadId: "manager-1",
+        });
+      },
+    });
+    const write = host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Raced review",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+    await finalCheck;
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: true,
+    });
+    releaseFinalCheck();
+
+    await expect(write).resolves.toBe(
+      JSON.stringify({ outcome: "not_current_child" }),
+    );
+    expect(
+      host.bb.storage
+        .database()
+        .prepare(
+          `SELECT summary_markdown, idle_disposition, reviewed_through_seq,
+             user_managed, mode_updated_at
+           FROM queue_annotations WHERE thread_id = ?`,
+        )
+        .get("child-1"),
+    ).toEqual({
+      summary_markdown: null,
+      idle_disposition: "needs_response",
+      reviewed_through_seq: 0,
+      user_managed: 1,
+      mode_updated_at: expect.any(Number),
+    });
+  });
+
+  it("removes a new review when archive or reparent wins the write race", async () => {
+    let childLookups = 0;
+    const host = await configuredHost({
+      writes: true,
+      get: async ({ threadId }) => {
+        if (threadId === "manager-1") {
+          return makeThreadResponse({ id: threadId, parentThreadId: null });
+        }
+        childLookups += 1;
+        return makeThreadResponse({
+          id: threadId,
+          parentThreadId:
+            childLookups === 1 ? "manager-1" : "other-manager",
+        });
+      },
+    });
+    const output = await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Raced write",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+    expect(toolResult(output)).toEqual({ outcome: "not_current_child" });
+    expect(
+      host.bb.storage
+        .database()
+        .prepare("SELECT * FROM queue_annotations WHERE thread_id = ?")
+        .get("child-1"),
+    ).toBeUndefined();
+  });
+});
+
+describe("manual mode, archive, configuration, and invalidation", () => {
+  it.each([
+    ["non-child", { parentThreadId: "other-manager" }],
+    ["archived child", { archivedAt: 100 }],
+    ["deleted child", { deletedAt: 100 }],
+  ] as const)(
+    "rejects toggle, archive, and tool writes for a %s",
+    async (_name, override) => {
+      const host = await configuredHost({
+        writes: true,
+        get: async ({ threadId }) =>
+          makeThreadResponse({
+            id: threadId,
+            parentThreadId:
+              threadId === "manager-1" ? null : "manager-1",
+            ...(threadId === "manager-1" ? {} : override),
+          }),
+      });
+      const target = {
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+      };
+
+      await expect(
+        host.harness.behavior.callRpc("setUserManaged", {
+          ...target,
+          userManaged: true,
+        }),
+      ).rejects.toThrow(/not a current direct child/i);
+      await expect(
+        host.harness.behavior.callRpc("archiveThread", target),
+      ).rejects.toThrow(/not a current direct child/i);
+      const output = await host.harness.behavior.callAgentTool(
+        "firstmate_queue_update",
+        {
+          childThreadId: "child-1",
+          summaryMarkdown: "Must not land",
+          disposition: "done",
+        },
+        { threadId: "manager-1" },
+      );
+      expect(toolResult(output)).toEqual({ outcome: "not_current_child" });
+      expect(host.harness.inspection.sdk.callsTo("threads.archive")).toEqual([]);
+      expect(host.harness.inspection.sdk.callsTo("threads.list")).toEqual([]);
+    },
+  );
+
+  it("toggle-off preserves the review cursor while requiring a fresh review", async () => {
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 12)],
+    });
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Reviewed result",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: true,
+    });
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: false,
+    });
+
+    expect(
+      host.bb.storage
+        .database()
+        .prepare(
+          `SELECT idle_disposition, reviewed_through_seq, user_managed
+           FROM queue_annotations WHERE thread_id = ?`,
+        )
+        .get("child-1"),
+    ).toEqual({
+      idle_disposition: "needs_response",
+      reviewed_through_seq: 12,
+      user_managed: 0,
+    });
+  });
+
+  it("toggle-on makes idle Needs, toggle-off requires fresh review, and archive uses one validated RPC", async () => {
+    const archived: string[] = [];
+    const host = await configuredHost({
+      archive: async ({ threadId }) => {
+        archived.push(threadId);
+        return { archivedThreadIds: [threadId], ok: true };
+      },
+    });
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: true,
+    });
+    let snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      userManaged: true,
+      section: "needs_response",
+    });
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: false,
+    });
+    snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      userManaged: false,
+      state: "needs_response",
+    });
+    await host.harness.behavior.callRpc("archiveThread", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+    });
+    expect(archived).toEqual(["child-1"]);
+  });
+
+  it("exposes no tool or instructions until activation and only configures the current manager", async () => {
+    const host = await configuredHost();
+    let config = await host.harness.behavior.resolveAgentConfiguration(
+      agentContext("manager-1"),
+    );
+    expect(config).toMatchObject({ tools: [], skills: [], instructions: null });
+
+    await host.harness.behavior.callRpc("setUserManaged", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      userManaged: true,
+    });
+    await host.harness.behavior.setSettings({ agentWritesEnabled: true });
+    config = await host.harness.behavior.resolveAgentConfiguration(
+      agentContext("manager-1"),
+    );
+    expect(config.tools.map((tool) => tool.name)).toEqual([
+      "firstmate_queue_update",
+    ]);
+    expect(config.instructions).toContain("annotation writes are active");
+    expect(config.instructions).toContain("return user_managed");
+    expect(config.tools[0]?.instructions).toContain(
+      "Calls accepted by the parameter schema return a JSON object",
+    );
+    expect(config.tools[0]?.instructions).toContain("outcome updated");
+    expect(config.tools[0]?.instructions).toContain("runtime_error");
+    expect(config.tools[0]?.instructions).toContain(
+      "Malformed parameters fail tool validation before execution",
+    );
+    expect(config.instructions).not.toContain("child-1");
+    const other = await host.harness.behavior.resolveAgentConfiguration(
+      agentContext("other-thread"),
+    );
+    expect(other).toMatchObject({ tools: [], skills: [], instructions: null });
+  });
+
+  it("reports an archived configured manager as stale until reload", async () => {
+    const host = createFakePluginHost({
+      pluginId: "firstmate-queue",
+      settings: {
+        managerThreadId: "manager-1",
+        agentWritesEnabled: false,
+      },
+      sdk: {
+        threads: {
+          get: async () =>
+            makeThreadResponse({ id: "manager-1", archivedAt: 100 }),
+        },
+      },
+    });
+    await plugin(host.bb);
+    expect(host.harness.inspection.needsConfigurationMessages.at(-1)).toMatch(
+      /archived, deleted, or missing/,
+    );
+    expect(host.harness.inspection.logEntries.at(-1)?.message).toContain(
+      "manager-1",
+    );
+  });
+
+  it("reports a configured missing manager as needing configuration", async () => {
+    const missing = Object.assign(new Error("not found"), { status: 404 });
+    const host = createFakePluginHost({
+      pluginId: "firstmate-queue",
+      settings: {
+        managerThreadId: "manager-1",
+        agentWritesEnabled: false,
+      },
+      sdk: {
+        threads: {
+          get: async () => {
+            throw missing;
+          },
+        },
+      },
+    });
+    await plugin(host.bb);
+
+    expect(host.harness.inspection.needsConfigurationMessages.at(-1)).toMatch(
+      /archived, deleted, or missing/,
+    );
+  });
+
+  it("keeps needs-configuration set after a missing manager is corrected", async () => {
+    const host = createFakePluginHost({
+      pluginId: "firstmate-queue",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) => makeThreadResponse({ id: threadId }),
+        },
+      },
+    });
+    await plugin(host.bb);
+    expect(host.harness.inspection.needsConfigurationMessages).toEqual([
+      "Set managerThreadId in the Firstmate Queue plugin settings.",
+    ]);
+
+    await host.harness.behavior.setSettings({ managerThreadId: "manager-1" });
+    await expect(
+      host.harness.behavior.callRpc("canOpen", {
+        surfaceThreadId: "manager-1",
+      }),
+    ).resolves.toEqual({ canOpen: true });
+    expect(host.harness.inspection.needsConfigurationMessages).toEqual([
+      "Set managerThreadId in the Firstmate Queue plugin settings.",
+    ]);
+  });
+
+  it("marks configuration as needed when the manager setting is cleared", async () => {
+    const host = await configuredHost();
+    const before = host.harness.inspection.needsConfigurationMessages.length;
+
+    await host.harness.behavior.setSettings({ managerThreadId: null });
+
+    expect(host.harness.inspection.needsConfigurationMessages.slice(before)).toEqual([
+      "Set managerThreadId in the Firstmate Queue plugin settings.",
+    ]);
+    await expect(
+      host.harness.behavior.callRpc("canOpen", {
+        surfaceThreadId: "manager-1",
+      }),
+    ).resolves.toEqual({ canOpen: false });
+  });
+
+  it("does not mark a transient manager lookup failure as configuration", async () => {
+    const host = createFakePluginHost({
+      pluginId: "firstmate-queue",
+      settings: {
+        managerThreadId: "manager-1",
+        agentWritesEnabled: false,
+      },
+      sdk: {
+        threads: {
+          get: async () => {
+            throw new Error("temporary transport failure");
+          },
+        },
+      },
+    });
+    await plugin(host.bb);
+
+    expect(host.harness.inspection.needsConfigurationMessages).toEqual([]);
+    await expect(
+      host.harness.behavior.callRpc("canOpen", {
+        surfaceThreadId: "manager-1",
+      }),
+    ).rejects.toThrow(/could not verify/i);
+    expect(host.harness.inspection.needsConfigurationMessages).toEqual([]);
+  });
+
+  it("applies manager setting changes without reload", async () => {
+    const host = await configuredHost({ writes: true });
+    await host.harness.behavior.setSettings({ managerThreadId: "manager-2" });
+
+    const oldManager = await host.harness.behavior.resolveAgentConfiguration(
+      agentContext("manager-1"),
+    );
+    const newManager = await host.harness.behavior.resolveAgentConfiguration(
+      agentContext("manager-2"),
+    );
+    expect(oldManager.tools).toEqual([]);
+    expect(newManager.tools.map((tool) => tool.name)).toEqual([
+      "firstmate_queue_update",
+    ]);
+    await expect(
+      host.harness.behavior.callRpc("queueSnapshot", {
+        surfaceThreadId: "manager-1",
+      }),
+    ).rejects.toThrow(/configured manager thread/i);
+  });
+
+  it("publishes invalidation for every relevant event and ignores unrelated threads", async () => {
+    const host = await configuredHost();
+    const direct = makeThreadResponse({
+      id: "child-1",
+      parentThreadId: "manager-1",
+    });
+    await host.harness.behavior.emitThreadEvent("thread.created", {
+      thread: direct,
+    });
+    await host.harness.behavior.emitThreadEvent("thread.active", {
+      thread: { ...direct, status: "active" },
+    });
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: direct,
+      lastAssistantText: "Done",
+    });
+    await host.harness.behavior.emitThreadEvent("thread.failed", {
+      thread: { ...direct, status: "error" },
+      error: "Failed",
+    });
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: { ...direct, archivedAt: 1 },
+    });
+    await host.harness.behavior.emitThreadEvent("thread.deleted", {
+      thread: { ...direct, deletedAt: 1 },
+    });
+    await host.harness.behavior.emitThreadEvent("message.queued", {
+      entry: makeQueueEntry({ threadId: "child-1" }),
+    });
+    await host.harness.behavior.emitThreadEvent("message.dispatched", {
+      entry: makeQueueEntry({ threadId: "child-1" }),
+    });
+    await host.harness.behavior.emitThreadEvent(
+      "turn.failed",
+      makeTurnFailedEvent({ threadId: "child-1" }),
+    );
+    await host.harness.behavior.emitThreadEvent("thread.active", {
+      thread: makeThreadResponse({
+        id: "unrelated",
+        parentThreadId: "other-manager",
+        status: "active",
+      }),
+    });
+
+    expect(host.harness.inspection.sdk.callsTo("threads.list")).toEqual([]);
+    expect(
+      host.harness.inspection.sdk
+        .callsTo("threads.get")
+        .filter(
+          ([input]) =>
+            (input as { threadId?: string }).threadId === "child-1",
+        ),
+    ).toHaveLength(3);
+    expect(
+      host.harness.inspection.realtimeSignals.map((signal) => signal.payload),
+    ).toEqual([
+      { threadId: "child-1", reason: "thread.created" },
+      { threadId: "child-1", reason: "thread.active" },
+      { threadId: "child-1", reason: "thread.idle" },
+      { threadId: "child-1", reason: "thread.failed" },
+      { threadId: "child-1", reason: "thread.archived" },
+      { threadId: "child-1", reason: "thread.deleted" },
+      { threadId: "child-1", reason: "message.queued" },
+      { threadId: "child-1", reason: "message.dispatched" },
+      { threadId: "child-1", reason: "turn.failed" },
+    ]);
+  });
+});
