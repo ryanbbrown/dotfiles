@@ -329,6 +329,7 @@ Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `implement` runs the main implementation and review workflow described below.
+- `write-plan` writes a minimal implementation plan file with decisions, changes per unit, acceptance checks, and validation, and keeps defensive mechanisms out until a failure is observed.
 - `review-panel` runs independent Codex, Claude Code, and Grok 4.5 reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 
@@ -357,12 +358,12 @@ Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
 
 ## Main implementation flow
 
-Invoke the `implement` skill with a planning mode and explicit review counts:
+Invoke the `implement` skill with optional words and explicit review counts:
 
 ```text
-/implement <interview|direct> p<N> i<N> — <task or approved plan>
+/implement [interview] [brief] p<N> i<N> — <task or approved plan>
 ```
 
-`interview` raises the few important design decisions and waits for the user. `direct` creates a plan when needed and proceeds when the task is clear. An existing approved plan is used without recreation.
+The agent decides by default and asks only for a fork that changes product behavior or for a fact the task and code cannot supply. `interview` forces the design questions first. `brief` writes a decision brief to `.reviews/briefs/<slug>.md` for the user to approve before any panel or implementation. Every run posts a result-shape summary after the plan is written. An existing approved plan is used without recreation.
 
 `pN` and `iN` are the required numbers of successful plan-review and implementation-review cycles. Zero means no panel for that phase. The parent agent owns planning, review synthesis, and final validation. One BB child thread in the current environment remains the only implementation writer and receives the verified synthesis after each implementation review.

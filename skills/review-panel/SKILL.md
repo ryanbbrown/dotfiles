@@ -48,7 +48,7 @@ Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The cus
 
 Claude reviews use Claude Code OAuth only. The command removes Anthropic API key variables and verifies a first-party OAuth login before preflight. If OAuth is unavailable, stop and ask the user to run `claude auth login`.
 
-Grok reviews always use the script-owned `grok-4.5` model through the official Grok Build CLI and grok.com OAuth from the user's SuperGrok account. Callers cannot override this model. The command removes `XAI_API_KEY` from every Grok process, checks for a cached account login, and verifies model access during preflight. Grok receives built-in read, list, grep, and terminal tools under `dontAsk` and a read-only sandbox. It inspects the exact base-to-snapshot changes with supported read-only commands such as `git diff`; edit, write, web, subagent, and MCP access remain unavailable. If OAuth is unavailable, stop and ask the user to run `grok login` and complete the browser sign-in.
+Grok reviews always use the script-owned `grok-4.5` model through the official Grok Build CLI and grok.com OAuth from the user's SuperGrok account. Callers cannot override this model. The command removes `XAI_API_KEY` from every Grok process, checks for a cached account login, and verifies model access during preflight. Grok receives built-in read, list, grep, and terminal tools under `bypassPermissions` and a read-only sandbox, so a denied call returns to the model instead of ending its turn. It inspects the exact base-to-snapshot changes with supported read-only commands such as `git diff`; edit, write, web, subagent, and MCP access remain unavailable. If OAuth is unavailable, stop and ask the user to run `grok login` and complete the browser sign-in.
 
 When the completion message arrives, run `bb terminal-job show <job-id> --json`. On success, inspect the review manifest and reports. On failure, inspect the terminal-job `output.log` and the retained review logs. Report the result, output directory, and review round. This skill does not synthesize or act on findings.
 
@@ -60,7 +60,7 @@ Outside BB, or when durable execution is not needed, run the review command in t
 ~/.claude/skills/review-panel/scripts/review-round.sh <review arguments>
 ```
 
-It writes the same review artifacts and returns a non-zero status when preflight or a reviewer fails, or when a plan or implementation report lacks a valid verdict and the required headings. It does not send a BB completion notice.
+It writes the same review artifacts. A round succeeds when at least two reviewers produce valid reports, or when the only reviewer that runs does. The manifest Outcome section names each reviewer that failed or produced an invalid report, and its logs stay under `.logs/vN/`. The command returns a non-zero status when preflight fails or fewer reviewers succeed than the round needs. It does not send a BB completion notice.
 
 ## Options
 
@@ -115,4 +115,4 @@ The review command chooses the next `vN` and writes:
   .logs/vN/*.stderr                    # Retained after a failure, timeout, or invalid report.
 ```
 
-The command freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot and review configuration.
+The command freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot, the review configuration, and a Timing section with wall seconds per reviewer and the Grok-reported duration and cost.

@@ -846,7 +846,7 @@ run_grok() {
     --cwd "$snapshot_repo" \
     --model "$grok_model" \
     --effort high \
-    --permission-mode dontAsk \
+    --permission-mode bypassPermissions \
     --sandbox read-only \
     --no-plan \
     --no-subagents \
@@ -894,25 +894,29 @@ codex_watchdog_pid=""
 claude_watchdog_pid=""
 grok_watchdog_pid=""
 if ! is_skipped codex; then
+  codex_started_at=$(date +%s)
   run_codex &
   codex_pid=$!
   start_timeout_watchdog "$codex_pid" codex "$logs_dir/codex.stderr"
   codex_watchdog_pid="$timeout_watchdog_pid"
 fi
 if ! is_skipped claude; then
+  claude_started_at=$(date +%s)
   run_claude &
   claude_pid=$!
   start_timeout_watchdog "$claude_pid" claude "$logs_dir/claude.stderr"
   claude_watchdog_pid="$timeout_watchdog_pid"
 fi
 if ! is_skipped grok; then
+  grok_started_at=$(date +%s)
   run_grok &
   grok_pid=$!
   start_timeout_watchdog "$grok_pid" grok "$logs_dir/grok.stderr"
   grok_watchdog_pid="$timeout_watchdog_pid"
 fi
 
-failed=0
+completed=0
+failed_reviewers=""
 
 report_has_required_structure() {
   local report_file="$1"
@@ -954,46 +958,101 @@ finish_reviewer() {
 }
 
 if [ -n "$codex_pid" ]; then
-  if wait_with_timeout "$codex_pid" codex "$codex_watchdog_pid"; then
-    finish_reviewer codex "$codex_out" || failed=1
+  codex_wait_status=0
+  wait_with_timeout "$codex_pid" codex "$codex_watchdog_pid" || codex_wait_status=$?
+  codex_seconds=$(( $(date +%s) - codex_started_at ))
+  if [ "$codex_wait_status" -eq 0 ] && finish_reviewer codex "$codex_out"; then
+    completed=$((completed + 1))
   else
-    echo "codex: failed; see $logs_dir/codex.stderr" >&2
-    failed=1
+    [ "$codex_wait_status" -eq 0 ] || echo "codex: failed; see $logs_dir/codex.stderr" >&2
+    failed_reviewers="$failed_reviewers codex"
   fi
 fi
 
 if [ -n "$claude_pid" ]; then
-  if wait_with_timeout "$claude_pid" claude "$claude_watchdog_pid"; then
-    finish_reviewer claude "$claude_out" || failed=1
+  claude_wait_status=0
+  wait_with_timeout "$claude_pid" claude "$claude_watchdog_pid" || claude_wait_status=$?
+  claude_seconds=$(( $(date +%s) - claude_started_at ))
+  if [ "$claude_wait_status" -eq 0 ] && finish_reviewer claude "$claude_out"; then
+    completed=$((completed + 1))
   else
-    if [ -s "$logs_dir/claude.stderr" ]; then
-      echo "claude: failed; see $logs_dir/claude.stderr" >&2
-    elif [ -s "$logs_dir/claude.stdout" ]; then
-      echo "claude: failed; see $logs_dir/claude.stdout" >&2
-    else
-      echo "claude: failed; no output captured; see $logs_dir/claude.stderr" >&2
+    if [ "$claude_wait_status" -ne 0 ]; then
+      if [ -s "$logs_dir/claude.stderr" ]; then
+        echo "claude: failed; see $logs_dir/claude.stderr" >&2
+      elif [ -s "$logs_dir/claude.stdout" ]; then
+        echo "claude: failed; see $logs_dir/claude.stdout" >&2
+      else
+        echo "claude: failed; no output captured; see $logs_dir/claude.stderr" >&2
+      fi
     fi
-    failed=1
+    failed_reviewers="$failed_reviewers claude"
   fi
 fi
 
 if [ -n "$grok_pid" ]; then
-  if wait_with_timeout "$grok_pid" grok "$grok_watchdog_pid"; then
-    finish_reviewer grok "$grok_out" || failed=1
+  grok_wait_status=0
+  wait_with_timeout "$grok_pid" grok "$grok_watchdog_pid" || grok_wait_status=$?
+  grok_seconds=$(( $(date +%s) - grok_started_at ))
+  if [ "$grok_wait_status" -eq 0 ] && finish_reviewer grok "$grok_out"; then
+    completed=$((completed + 1))
   else
-    if [ -s "$logs_dir/grok.stderr" ]; then
-      echo "grok: failed; see $logs_dir/grok.stderr" >&2
-    elif [ -s "$logs_dir/grok.stdout" ]; then
-      echo "grok: failed; see $logs_dir/grok.stdout" >&2
-    else
-      echo "grok: failed; no output captured; see $logs_dir/grok.stderr" >&2
+    if [ "$grok_wait_status" -ne 0 ]; then
+      if [ -s "$logs_dir/grok.stderr" ]; then
+        echo "grok: failed; see $logs_dir/grok.stderr" >&2
+      elif [ -s "$logs_dir/grok.stdout" ]; then
+        echo "grok: failed; see $logs_dir/grok.stdout" >&2
+      else
+        echo "grok: failed; no output captured; see $logs_dir/grok.stderr" >&2
+      fi
     fi
-    failed=1
+    failed_reviewers="$failed_reviewers grok"
   fi
 fi
 
-if [ "$failed" -ne 0 ]; then
-  exit "$failed"
-fi
+append_timing_to_manifest() {
+  local grok_reported=""
+  printf '\n## Timing\n\n' >> "$manifest_file"
+  if is_skipped codex; then
+    printf '%s\n' '- Codex: skipped' >> "$manifest_file"
+  else
+    printf '%s\n' "- Codex: ${codex_seconds} s wall; cost not reported" >> "$manifest_file"
+  fi
+  if is_skipped claude; then
+    printf '%s\n' '- Claude: skipped' >> "$manifest_file"
+  else
+    printf '%s\n' "- Claude: ${claude_seconds} s wall; cost not reported" >> "$manifest_file"
+  fi
+  if is_skipped grok; then
+    printf '%s\n' '- Grok: skipped' >> "$manifest_file"
+  else
+    grok_reported="$(jq -r 'select(.type == "result") | select(.duration_ms != null and .total_cost_usd != null) | "reported \(.duration_ms / 1000 * 10 | round / 10) s; cost $\(.total_cost_usd)"' "$logs_dir/grok.streaming.jsonl" 2>/dev/null | tail -n 1)"
+    [ -n "$grok_reported" ] || grok_reported="cost not reported"
+    printf '%s\n' "- Grok: ${grok_seconds} s wall; $grok_reported" >> "$manifest_file"
+  fi
+}
 
-echo "review-panel: complete"
+append_timing_to_manifest
+
+active=0
+for name in codex claude grok; do
+  is_skipped "$name" || active=$((active + 1))
+done
+required=2
+[ "$active" -lt "$required" ] && required="$active"
+{
+  printf '\n## Outcome\n\n'
+  printf '%s\n' "- Completed: $completed of $active reviewers; required: $required"
+  if [ -n "$failed_reviewers" ]; then
+    printf '%s\n' "- Failed:$failed_reviewers (logs under .logs/v$round/)"
+  fi
+} >> "$manifest_file"
+
+if [ "$completed" -lt "$required" ]; then
+  echo "review-panel: failed; $completed of $active reviewers completed, $required required" >&2
+  exit 1
+fi
+if [ -n "$failed_reviewers" ]; then
+  echo "review-panel: complete with failed reviewers:$failed_reviewers ($completed of $active)"
+else
+  echo "review-panel: complete"
+fi
