@@ -22,6 +22,7 @@ export interface ThreadFacts {
   deletedAt: number | null;
   latestCompletionSeq: number;
   hasActiveNativeTerminal: boolean;
+  hasActiveDescendant: boolean;
   updatedAt: number;
 }
 
@@ -118,6 +119,14 @@ export function projectThread(
       state: "running",
       statusLabel: "Active",
       detail: annotation?.summaryMarkdown ?? "Native terminal is active",
+    });
+  }
+  if (facts.hasActiveDescendant) {
+    return row(facts, annotation, {
+      section: "in_progress",
+      state: "running",
+      statusLabel: "Active",
+      detail: annotation?.summaryMarkdown ?? "A descendant thread is active",
     });
   }
   if (annotation?.userManaged === true) {

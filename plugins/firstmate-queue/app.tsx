@@ -37,7 +37,10 @@ type LoadState =
   | { status: "error"; message: string };
 
 function formatUpdatedAt(timestamp: number): string {
-  return new Date(timestamp).toLocaleString();
+  return new Date(timestamp).toLocaleString(undefined, {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 function boundedError(cause: unknown): string {

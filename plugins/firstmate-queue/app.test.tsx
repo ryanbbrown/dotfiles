@@ -213,10 +213,10 @@ describe("queue panel", () => {
     expect(slot.getByText("Active")).toBeTruthy();
   });
 
-  it("shows the local update time only for Needs your response rows", async () => {
-    vi.spyOn(Date.prototype, "toLocaleString").mockReturnValue(
-      "1/2/2026, 3:04:05 PM",
-    );
+  it("shows the local update time to the minute only for Needs rows", async () => {
+    const formatLocalTime = vi
+      .spyOn(Date.prototype, "toLocaleString")
+      .mockReturnValue("1/2/26, 3:04 PM");
     const slot = renderQueue({
       rpc: {
         queueSnapshot: () =>
@@ -238,8 +238,12 @@ describe("queue panel", () => {
       "li",
     )!;
     const progressRow = slot.getByText("Native terminal work").closest("li")!;
+    expect(formatLocalTime).toHaveBeenCalledWith(undefined, {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
     expect(needsRow.querySelector("time")?.textContent).toBe(
-      "Updated 1/2/2026, 3:04:05 PM",
+      "Updated 1/2/26, 3:04 PM",
     );
     expect(needsRow.querySelector("time")?.className).toContain(
       "text-muted-foreground",

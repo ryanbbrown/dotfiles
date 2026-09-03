@@ -20,6 +20,9 @@ type ThreadEventRow = Awaited<
 type TerminalSession = Awaited<
   ReturnType<BbPluginApi["sdk"]["terminals"]["list"]>
 >["sessions"][number];
+type RunningThread = Awaited<
+  ReturnType<BbPluginApi["sdk"]["threads"]["listRunning"]>
+>[number];
 type SdkSubscription = Parameters<BbPluginApi["sdk"]["subscribe"]>[0];
 type ThreadChangedSubscription = Extract<
   SdkSubscription,
@@ -80,6 +83,10 @@ function completion(threadId: string, seq: number): ThreadEventRow {
     },
     createdAt: seq,
   };
+}
+
+function runningThread(id: string): RunningThread {
+  return { id, hostId: "host-1" };
 }
 
 function terminalSession(
@@ -170,6 +177,7 @@ async function configuredHost(options: {
   managerThreadId?: string;
   get?: BbPluginApi["sdk"]["threads"]["get"];
   list?: (args: Parameters<BbPluginApi["sdk"]["threads"]["list"]>[0]) => Promise<ThreadListEntry[]>;
+  running?: BbPluginApi["sdk"]["threads"]["listRunning"];
   events?: (args: Parameters<BbPluginApi["sdk"]["threads"]["events"]["list"]>[0]) => Promise<ThreadEventRow[]>;
   terminals?: BbPluginApi["sdk"]["terminals"]["list"];
   subscribe?: BbPluginApi["sdk"]["subscribe"];
@@ -195,6 +203,7 @@ async function configuredHost(options: {
         list:
           options.list ??
           (async () => [listEntry("child-1")]),
+        listRunning: options.running ?? (async () => []),
         events: {
           list: options.events ?? (async () => []),
         },
@@ -358,6 +367,144 @@ describe("queue discovery and snapshots", () => {
     ).toEqual([
       ["disconnected-child", "needs_response", "Idle"],
       ["exited-child", "needs_response", "Idle"],
+    ]);
+  });
+
+  it("projects idle owners as active for shallow and deep descendants", async () => {
+    const parents = new Map([
+      ["active-child", "owner-shallow"],
+      ["depth-3", "depth-2"],
+      ["depth-2", "depth-1"],
+      ["depth-1", "owner-deep"],
+    ]);
+    const host = await configuredHost({
+      list: async () => [listEntry("owner-shallow"), listEntry("owner-deep")],
+      running: async () => [
+        runningThread("active-child"),
+        runningThread("depth-3"),
+      ],
+      get: async ({ threadId }) =>
+        makeThreadResponse({
+          id: threadId,
+          parentThreadId:
+            threadId === "manager-1" ? null : (parents.get(threadId) ?? null),
+        }),
+    });
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as {
+      rows: Array<{
+        id: string;
+        section: string;
+        state: string;
+        statusLabel: string;
+        detail: string;
+      }>;
+    };
+
+    expect(
+      snapshot.rows.map((row) => [
+        row.id,
+        row.section,
+        row.state,
+        row.statusLabel,
+        row.detail,
+      ]),
+    ).toEqual([
+      [
+        "owner-deep",
+        "in_progress",
+        "running",
+        "Active",
+        "A descendant thread is active",
+      ],
+      [
+        "owner-shallow",
+        "in_progress",
+        "running",
+        "Active",
+        "A descendant thread is active",
+      ],
+    ]);
+    expect(host.harness.inspection.sdk.callsTo("threads.listRunning")).toEqual([
+      [],
+    ]);
+  });
+
+  it("bounds and caches ancestry lookups and stops on cycles", async () => {
+    const runningLeaves = Array.from({ length: 20 }, (_, index) =>
+      runningThread(`leaf-${index}`),
+    );
+    let activeLeafLookups = 0;
+    let maximumActiveLeafLookups = 0;
+    let startedLeafLookups = 0;
+    let sharedParentLookups = 0;
+    let release!: () => void;
+    let workersStarted!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstWave = new Promise<void>((resolve) => {
+      workersStarted = resolve;
+    });
+    const host = await configuredHost({
+      list: async () => [listEntry("owner")],
+      running: async () => [...runningLeaves, runningThread("cycle-a")],
+      get: async ({ threadId }) => {
+        if (threadId === "manager-1") {
+          return makeThreadResponse({ id: threadId, parentThreadId: null });
+        }
+        if (threadId.startsWith("leaf-")) {
+          activeLeafLookups += 1;
+          startedLeafLookups += 1;
+          maximumActiveLeafLookups = Math.max(
+            maximumActiveLeafLookups,
+            activeLeafLookups,
+          );
+          if (startedLeafLookups === 8) workersStarted();
+          await gate;
+          activeLeafLookups -= 1;
+          return makeThreadResponse({
+            id: threadId,
+            parentThreadId: "shared-parent",
+          });
+        }
+        if (threadId === "shared-parent") {
+          sharedParentLookups += 1;
+          return makeThreadResponse({ id: threadId, parentThreadId: "owner" });
+        }
+        return makeThreadResponse({
+          id: threadId,
+          parentThreadId: threadId === "cycle-a" ? "cycle-b" : "cycle-a",
+        });
+      },
+    });
+
+    const loading = host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    });
+    await firstWave;
+    const firstWaveSize = startedLeafLookups;
+    release();
+    const snapshot = (await loading) as {
+      rows: Array<{ id: string; section: string }>;
+    };
+
+    expect(firstWaveSize).toBe(8);
+    expect(maximumActiveLeafLookups).toBeLessThanOrEqual(8);
+    expect(sharedParentLookups).toBe(1);
+    expect(
+      host.harness.inspection.sdk
+        .callsTo("threads.get")
+        .filter(([input]) =>
+          ["cycle-a", "cycle-b"].includes(
+            (input as { threadId: string }).threadId,
+          ),
+        ),
+    ).toHaveLength(2);
+    expect(snapshot.rows).toEqual([
+      expect.objectContaining({ id: "owner", section: "in_progress" }),
     ]);
   });
 
@@ -1169,7 +1316,16 @@ describe("manual mode, archive, configuration, and invalidation", () => {
   });
 
   it("publishes invalidation for every relevant event and ignores unrelated threads", async () => {
-    const host = await configuredHost();
+    const host = await configuredHost({
+      get: async ({ threadId }) =>
+        makeThreadResponse({
+          id: threadId,
+          parentThreadId:
+            threadId === "manager-1" || threadId === "other-manager"
+              ? null
+              : "manager-1",
+        }),
+    });
     const direct = makeThreadResponse({
       id: "child-1",
       parentThreadId: "manager-1",
@@ -1233,6 +1389,53 @@ describe("manual mode, archive, configuration, and invalidation", () => {
       { threadId: "child-1", reason: "message.queued" },
       { threadId: "child-1", reason: "message.dispatched" },
       { threadId: "child-1", reason: "turn.failed" },
+    ]);
+  });
+
+  it("invalidates the owning row for descendant lifecycle changes", async () => {
+    const host = await configuredHost({
+      get: async ({ threadId }) =>
+        makeThreadResponse({
+          id: threadId,
+          parentThreadId:
+            threadId === "manager-1"
+              ? null
+              : threadId === "middle"
+                ? "child-1"
+                : "manager-1",
+        }),
+    });
+    const descendant = makeThreadResponse({
+      id: "deep-descendant",
+      parentThreadId: "middle",
+    });
+
+    await host.harness.behavior.emitThreadEvent("thread.active", {
+      thread: { ...descendant, status: "active" },
+    });
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: descendant,
+      lastAssistantText: "Done",
+    });
+    await host.harness.behavior.emitThreadEvent("thread.failed", {
+      thread: { ...descendant, status: "error" },
+      error: "Failed",
+    });
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: { ...descendant, archivedAt: 1 },
+    });
+    await host.harness.behavior.emitThreadEvent("thread.deleted", {
+      thread: { ...descendant, deletedAt: 1 },
+    });
+
+    expect(
+      host.harness.inspection.realtimeSignals.map((signal) => signal.payload),
+    ).toEqual([
+      { threadId: "child-1", reason: "thread.active" },
+      { threadId: "child-1", reason: "thread.idle" },
+      { threadId: "child-1", reason: "thread.failed" },
+      { threadId: "child-1", reason: "thread.archived" },
+      { threadId: "child-1", reason: "thread.deleted" },
     ]);
   });
 });

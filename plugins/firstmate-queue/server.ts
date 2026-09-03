@@ -156,6 +156,22 @@ export default async function plugin(bb: BbPluginApi) {
     }
   }
 
+  async function publishOwningRow(
+    threadId: string,
+    parentThreadId: string | null,
+    reason: string,
+  ) {
+    try {
+      const owner = await service.findOwningRowForLifecycle(
+        threadId,
+        parentThreadId,
+      );
+      if (owner !== null) service.publish(owner, reason);
+    } catch {
+      // Missing or stale configuration has no authorized queue to invalidate.
+    }
+  }
+
   function configuredManagerId(): string | undefined {
     return currentSettings.managerThreadId?.trim() || undefined;
   }
@@ -198,7 +214,7 @@ export default async function plugin(bb: BbPluginApi) {
       | "thread.deleted"
     >,
   ): void {
-    bb.events.on(event, ({ thread }) => {
+    bb.events.on(event, async ({ thread }) => {
       const managerThreadId = configuredManagerId();
       if (
         thread.id === managerThreadId &&
@@ -208,9 +224,7 @@ export default async function plugin(bb: BbPluginApi) {
         bb.log.warn(message);
         bb.status.needsConfiguration(message);
       }
-      if (thread.parentThreadId === managerThreadId) {
-        service.publish(thread.id, event);
-      }
+      await publishOwningRow(thread.id, thread.parentThreadId, event);
     });
   }
 

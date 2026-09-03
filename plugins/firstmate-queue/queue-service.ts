@@ -13,7 +13,7 @@ type ThreadListEntry = Awaited<
 >[number];
 type ThreadResponse = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
 
-const CHILD_LOOKUP_CONCURRENCY = 8;
+const LOOKUP_CONCURRENCY = 8;
 const PAGE_SIZE = 100;
 
 type ReviewOutcome =
@@ -110,6 +110,10 @@ export class QueueService {
     await this.requireLiveManager(managerThreadId);
     const children = await this.listCurrentChildren(managerThreadId);
     const runtimeFacts = await this.childRuntimeFacts(children);
+    const activeDescendantChildIds = await this.activeDescendantChildren(
+      managerThreadId,
+      children,
+    );
     const facts: ThreadFacts[] = children.map((thread, index) => ({
       id: thread.id,
       title: thread.title ?? thread.titleFallback ?? "Untitled thread",
@@ -120,6 +124,7 @@ export class QueueService {
       latestCompletionSeq: runtimeFacts[index]?.latestCompletionSeq ?? 0,
       hasActiveNativeTerminal:
         runtimeFacts[index]?.hasActiveNativeTerminal ?? false,
+      hasActiveDescendant: activeDescendantChildIds.has(thread.id),
       updatedAt: thread.updatedAt,
     }));
     return {
@@ -241,6 +246,21 @@ export class QueueService {
     }
   }
 
+  async findOwningRowForLifecycle(
+    threadId: string,
+    parentThreadId: string | null,
+  ): Promise<string | null> {
+    const managerThreadId = requiredManager(await this.readSettings());
+    if (parentThreadId === managerThreadId) return threadId;
+    if (parentThreadId === null) return null;
+    return this.walkToCurrentChild(
+      parentThreadId,
+      managerThreadId,
+      null,
+      (ancestorId) => this.getThreadIfPresent(ancestorId),
+    );
+  }
+
   publish(threadId: string, reason: string): void {
     this.bb.realtime.publish("queue-invalidated", { threadId, reason });
   }
@@ -302,9 +322,85 @@ export class QueueService {
         };
       }
     };
-    const workerCount = Math.min(CHILD_LOOKUP_CONCURRENCY, children.length);
+    const workerCount = Math.min(LOOKUP_CONCURRENCY, children.length);
     await Promise.all(Array.from({ length: workerCount }, worker));
     return results;
+  }
+
+  private async activeDescendantChildren(
+    managerThreadId: string,
+    children: readonly ThreadListEntry[],
+  ): Promise<Set<string>> {
+    if (children.length === 0) return new Set();
+    const directChildIds = new Set(children.map((child) => child.id));
+    const runningThreadIds = [
+      ...new Set(
+        (await this.bb.sdk.threads.listRunning()).map((thread) => thread.id),
+      ),
+    ].filter((threadId) => !directChildIds.has(threadId));
+    const ancestry = new Map<string, Promise<ThreadResponse | null>>();
+    const lookup = (threadId: string): Promise<ThreadResponse | null> => {
+      const cached = ancestry.get(threadId);
+      if (cached !== undefined) return cached;
+      const pending = this.getThreadIfPresent(threadId);
+      ancestry.set(threadId, pending);
+      return pending;
+    };
+    const owners = new Set<string>();
+    let nextIndex = 0;
+    const worker = async () => {
+      for (;;) {
+        const threadId = runningThreadIds[nextIndex];
+        nextIndex += 1;
+        if (threadId === undefined) return;
+        const owner = await this.walkToCurrentChild(
+          threadId,
+          managerThreadId,
+          directChildIds,
+          lookup,
+        );
+        if (owner !== null) owners.add(owner);
+      }
+    };
+    const workerCount = Math.min(LOOKUP_CONCURRENCY, runningThreadIds.length);
+    await Promise.all(Array.from({ length: workerCount }, worker));
+    return owners;
+  }
+
+  private async walkToCurrentChild(
+    startThreadId: string,
+    managerThreadId: string,
+    directChildIds: ReadonlySet<string> | null,
+    lookup: (threadId: string) => Promise<ThreadResponse | null>,
+  ): Promise<string | null> {
+    const visited = new Set<string>();
+    let threadId = startThreadId;
+    for (;;) {
+      if (threadId === managerThreadId) return null;
+      if (directChildIds?.has(threadId)) return threadId;
+      if (visited.has(threadId)) return null;
+      visited.add(threadId);
+      const thread = await lookup(threadId);
+      if (thread === null) return null;
+      if (thread.parentThreadId === managerThreadId) {
+        return thread.archivedAt === null && thread.deletedAt === null
+          ? thread.id
+          : null;
+      }
+      if (thread.parentThreadId === null) return null;
+      threadId = thread.parentThreadId;
+    }
+  }
+
+  private async getThreadIfPresent(
+    threadId: string,
+  ): Promise<ThreadResponse | null> {
+    try {
+      return await this.bb.sdk.threads.get({ threadId });
+    } catch (error) {
+      if (isMissingThreadError(error)) return null;
+      throw error;
+    }
   }
 
   private assertSurface(surfaceThreadId: string, managerThreadId: string): void {

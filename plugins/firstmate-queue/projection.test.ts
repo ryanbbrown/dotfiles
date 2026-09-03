@@ -17,6 +17,7 @@ function facts(overrides: Partial<ThreadFacts> = {}): ThreadFacts {
     deletedAt: null,
     latestCompletionSeq: 0,
     hasActiveNativeTerminal: false,
+    hasActiveDescendant: false,
     updatedAt: 1_000,
     ...overrides,
   };
@@ -74,6 +75,23 @@ describe("projectThread", () => {
     });
   });
 
+  it("projects an idle thread with an active descendant as in progress", () => {
+    expect(
+      projectThread(facts({ hasActiveDescendant: true }), null),
+    ).toMatchObject({
+      section: "in_progress",
+      state: "running",
+      statusLabel: "Active",
+      detail: "A descendant thread is active",
+    });
+    expect(
+      projectThread(
+        facts({ hasActiveDescendant: true }),
+        annotation({ userManaged: true }),
+      ),
+    ).toMatchObject({ section: "in_progress", statusLabel: "Active" });
+  });
+
   it("projects an idle thread with an active native terminal as in progress", () => {
     expect(
       projectThread(facts({ hasActiveNativeTerminal: true }), null),
@@ -93,25 +111,41 @@ describe("projectThread", () => {
 
   it.each([
     [
-      { status: "error", hasActiveNativeTerminal: true },
+      {
+        status: "error",
+        hasActiveNativeTerminal: true,
+        hasActiveDescendant: true,
+      },
       "needs_response",
       "error",
       "Error",
     ],
     [
-      { queuedWork: "failed", hasActiveNativeTerminal: true },
+      {
+        queuedWork: "failed",
+        hasActiveNativeTerminal: true,
+        hasActiveDescendant: true,
+      },
       "needs_response",
       "queued_failed",
       "Idle",
     ],
     [
-      { queuedWork: "waiting", hasActiveNativeTerminal: true },
+      {
+        queuedWork: "waiting",
+        hasActiveNativeTerminal: true,
+        hasActiveDescendant: true,
+      },
       "in_progress",
       "waiting",
       "Idle",
     ],
     [
-      { status: "active", hasActiveNativeTerminal: true },
+      {
+        status: "active",
+        hasActiveNativeTerminal: true,
+        hasActiveDescendant: true,
+      },
       "in_progress",
       "running",
       "Active",
