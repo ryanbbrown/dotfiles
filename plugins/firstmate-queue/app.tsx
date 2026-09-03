@@ -36,6 +36,10 @@ type LoadState =
   | { status: "ready"; snapshot: Snapshot }
   | { status: "error"; message: string };
 
+function formatUpdatedAt(timestamp: number): string {
+  return new Date(timestamp).toLocaleString();
+}
+
 function boundedError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : String(cause);
   return message.length <= 240 ? message : `${message.slice(0, 239)}…`;
@@ -283,6 +287,14 @@ function QueueRowView({
           </svg>
           <span className="min-w-0 break-words">{row.title}</span>
         </button>
+        {row.section === "needs_response" ? (
+          <time
+            className="self-center text-[11px] text-muted-foreground"
+            dateTime={new Date(row.updatedAt).toISOString()}
+          >
+            Updated {formatUpdatedAt(row.updatedAt)}
+          </time>
+        ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"

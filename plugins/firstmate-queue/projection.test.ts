@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { projectQueue, projectThread, type Annotation, type ThreadFacts } from "./projection.js";
+import type { QueueRow } from "./contract.js";
+import {
+  projectQueue,
+  projectThread,
+  type Annotation,
+  type ThreadFacts,
+} from "./projection.js";
 
 function facts(overrides: Partial<ThreadFacts> = {}): ThreadFacts {
   return {
@@ -10,6 +16,7 @@ function facts(overrides: Partial<ThreadFacts> = {}): ThreadFacts {
     archivedAt: null,
     deletedAt: null,
     latestCompletionSeq: 0,
+    updatedAt: 1_000,
     ...overrides,
   };
 }
@@ -127,6 +134,39 @@ describe("projectThread", () => {
   it("omits archived and deleted rows", () => {
     expect(projectThread(facts({ archivedAt: 1 }), annotation())).toBeNull();
     expect(projectThread(facts({ deletedAt: 1 }), annotation())).toBeNull();
+  });
+
+  it("sorts newest first inside every section with thread-ID ties", () => {
+    const threads = [
+      facts({ id: "needs-old", latestCompletionSeq: 1, updatedAt: 100 }),
+      facts({ id: "progress-old", status: "active", updatedAt: 200 }),
+      facts({ id: "done-old", updatedAt: 300 }),
+      facts({ id: "needs-z", latestCompletionSeq: 1, updatedAt: 500 }),
+      facts({ id: "progress-new", status: "active", updatedAt: 600 }),
+      facts({ id: "done-new", updatedAt: 700 }),
+      facts({ id: "needs-a", latestCompletionSeq: 1, updatedAt: 500 }),
+    ];
+    const annotations = new Map([
+      [
+        "done-old",
+        annotation({ threadId: "done-old", idleDisposition: "done" }),
+      ],
+      [
+        "done-new",
+        annotation({ threadId: "done-new", idleDisposition: "done" }),
+      ],
+    ]);
+    const rows = projectQueue(threads, annotations);
+    const idsIn = (section: QueueRow["section"]) =>
+      rows.filter((row) => row.section === section).map((row) => row.id);
+
+    expect(idsIn("needs_response")).toEqual([
+      "needs-a",
+      "needs-z",
+      "needs-old",
+    ]);
+    expect(idsIn("in_progress")).toEqual(["progress-new", "progress-old"]);
+    expect(idsIn("done")).toEqual(["done-new", "done-old"]);
   });
 
   it.each([

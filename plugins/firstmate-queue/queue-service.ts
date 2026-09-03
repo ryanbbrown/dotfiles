@@ -118,6 +118,7 @@ export class QueueService {
       archivedAt: thread.archivedAt,
       deletedAt: thread.deletedAt,
       latestCompletionSeq: completionSeqs[index] ?? 0,
+      updatedAt: thread.updatedAt,
     }));
     return {
       managerThreadId,

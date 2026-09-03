@@ -28,6 +28,7 @@ function row(overrides: Partial<QueueRow> = {}): QueueRow {
     userManaged: false,
     latestCompletionSeq: 7,
     reviewedThroughSeq: 6,
+    updatedAt: 1_767_355_445_000,
     ...overrides,
   };
 }
@@ -74,6 +75,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   toastError.mockReset();
   window.localStorage.clear();
 });
@@ -209,6 +211,40 @@ describe("queue panel", () => {
     expect(slot.getByText("New result")).toBeTruthy();
     expect(slot.getByText("Implements **backend**")).toBeTruthy();
     expect(slot.getByText("Active")).toBeTruthy();
+  });
+
+  it("shows the local update time only for Needs your response rows", async () => {
+    vi.spyOn(Date.prototype, "toLocaleString").mockReturnValue(
+      "1/2/2026, 3:04:05 PM",
+    );
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () =>
+          snapshot([
+            row({ title: "Terminal Plugin Launch" }),
+            row({
+              id: "child-2",
+              title: "Active implementation",
+              section: "in_progress",
+              state: "running",
+              statusLabel: "Active",
+              detail: "Work is in progress",
+            }),
+          ]),
+      },
+    });
+
+    const needsRow = (await slot.findByText("Terminal Plugin Launch")).closest(
+      "li",
+    )!;
+    const progressRow = slot.getByText("Active implementation").closest("li")!;
+    expect(needsRow.querySelector("time")?.textContent).toBe(
+      "Updated 1/2/2026, 3:04:05 PM",
+    );
+    expect(needsRow.querySelector("time")?.className).toContain(
+      "text-muted-foreground",
+    );
+    expect(progressRow.querySelector("time")).toBeNull();
   });
 
   it("shows New result with the prior summary as context", async () => {

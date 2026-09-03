@@ -31,6 +31,7 @@ export const queueRowSchema = z
     userManaged: z.boolean(),
     latestCompletionSeq: z.number().int().nonnegative(),
     reviewedThroughSeq: z.number().int().nonnegative(),
+    updatedAt: z.number().int().nonnegative(),
   })
   .strict();
 

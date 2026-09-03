@@ -192,6 +192,36 @@ describe("queue discovery and snapshots", () => {
     ]);
   });
 
+  it("places a newer Terminal Plugin Launch above older Needs rows", async () => {
+    const host = await configuredHost({
+      list: async () => [
+        listEntry("older-child", {
+          title: "Older queue review",
+          updatedAt: 1_700_000_000_000,
+        }),
+        listEntry("terminal-plugin-launch", {
+          title: "Terminal Plugin Launch",
+          updatedAt: 1_800_000_000_000,
+        }),
+      ],
+    });
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as {
+      rows: Array<{ section: string; title: string; updatedAt: number }>;
+    };
+
+    expect(
+      snapshot.rows
+        .filter((row) => row.section === "needs_response")
+        .map((row) => [row.title, row.updatedAt]),
+    ).toEqual([
+      ["Terminal Plugin Launch", 1_800_000_000_000],
+      ["Older queue review", 1_700_000_000_000],
+    ]);
+  });
+
   it("deduplicates changing pages and keeps the latest row for each thread ID", async () => {
     const firstPage = Array.from({ length: 100 }, (_, index) =>
       listEntry(`child-${index}`, {
@@ -215,7 +245,7 @@ describe("queue discovery and snapshots", () => {
     ]);
   });
 
-  it("bounds completion-history lookups while preserving row order", async () => {
+  it("bounds completion-history lookups while preserving each row's result", async () => {
     const children = Array.from({ length: 20 }, (_, index) =>
       listEntry(`child-${index}`),
     );
@@ -255,12 +285,13 @@ describe("queue discovery and snapshots", () => {
 
     expect(firstWaveSize).toBe(8);
     expect(maximumActive).toBeLessThanOrEqual(8);
-    expect(snapshot.rows.map((row) => row.id)).toEqual(
-      children.map((child) => child.id),
-    );
-    expect(snapshot.rows.map((row) => row.latestCompletionSeq)).toEqual(
-      children.map((_child, index) => index + 1),
-    );
+    expect(snapshot.rows).toHaveLength(20);
+    expect(snapshot.rows.find((row) => row.id === "child-0")).toMatchObject({
+      latestCompletionSeq: 1,
+    });
+    expect(snapshot.rows.find((row) => row.id === "child-19")).toMatchObject({
+      latestCompletionSeq: 20,
+    });
   });
 
   it("uses the cheap trimmed-manager guard without loading the queue", async () => {

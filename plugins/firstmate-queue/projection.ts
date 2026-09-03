@@ -21,6 +21,7 @@ export interface ThreadFacts {
   archivedAt: number | null;
   deletedAt: number | null;
   latestCompletionSeq: number;
+  updatedAt: number;
 }
 
 export interface Annotation {
@@ -75,6 +76,7 @@ function row(
     userManaged: annotation?.userManaged ?? false,
     latestCompletionSeq: facts.latestCompletionSeq,
     reviewedThroughSeq: annotation?.reviewedThroughSeq ?? 0,
+    updatedAt: facts.updatedAt,
   };
 }
 
@@ -154,5 +156,10 @@ export function projectQueue(
     const projected = projectThread(thread, annotations.get(thread.id) ?? null);
     if (projected !== null) rows.push(projected);
   }
-  return rows;
+  return rows.sort((left, right) => {
+    if (left.updatedAt !== right.updatedAt) {
+      return right.updatedAt - left.updatedAt;
+    }
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
 }
