@@ -12,7 +12,6 @@ export const rowStateSchema = z.enum([
   "waiting",
   "running",
   "user_managed",
-  "new_result",
   "awaiting_review",
   "needs_response",
   "done",

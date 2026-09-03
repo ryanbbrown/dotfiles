@@ -369,8 +369,8 @@ describe("queue discovery and snapshots", () => {
     expect(
       snapshot.rows.map((row) => [row.id, row.section, row.statusLabel]),
     ).toEqual([
-      ["disconnected-child", "needs_response", "Idle"],
-      ["exited-child", "needs_response", "Idle"],
+      ["disconnected-child", "in_progress", "Idle"],
+      ["exited-child", "in_progress", "Idle"],
     ]);
   });
 
@@ -514,6 +514,7 @@ describe("queue discovery and snapshots", () => {
 
   it("places a newer Terminal Plugin Launch above older Needs rows", async () => {
     const host = await configuredHost({
+      writes: true,
       list: async () => [
         listEntry("older-child", {
           title: "Older queue review",
@@ -525,6 +526,17 @@ describe("queue discovery and snapshots", () => {
         }),
       ],
     });
+    for (const childThreadId of ["older-child", "terminal-plugin-launch"]) {
+      await host.harness.behavior.callAgentTool(
+        "firstmate_queue_update",
+        {
+          childThreadId,
+          summaryMarkdown: `Review ${childThreadId}`,
+          disposition: "needs_response",
+        },
+        { threadId: "manager-1" },
+      );
+    }
 
     const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
       surfaceThreadId: "manager-1",
@@ -748,12 +760,68 @@ describe("inline replies", () => {
     expect(host.harness.inspection.sdk.callsTo("threads.send")).toEqual([]);
   });
 
-  it("does not publish acceptance when BB rejects the send", async () => {
+  it("starts a new unreviewed cycle after BB accepts the reply", async () => {
     const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 9)],
+    });
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Earlier completed cycle",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+
+    await host.harness.behavior.callRpc("sendReply", {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+      text: "Please continue",
+    });
+
+    expect(
+      host.bb.storage
+        .database()
+        .prepare(
+          `SELECT summary_markdown, idle_disposition, reviewed_through_seq
+           FROM queue_annotations WHERE thread_id = ?`,
+        )
+        .get("child-1"),
+    ).toEqual({
+      summary_markdown: null,
+      idle_disposition: null,
+      reviewed_through_seq: 9,
+    });
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      section: "in_progress",
+      state: "awaiting_review",
+      detail: "Awaiting Firstmate review",
+      summaryMarkdown: null,
+    });
+  });
+
+  it("does not start a new cycle when BB rejects the send", async () => {
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 6)],
       send: async () => {
         throw new Error("Provider unavailable");
       },
     });
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Keep this accepted review",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
 
     await expect(
       host.harness.behavior.callRpc("sendReply", {
@@ -768,6 +836,19 @@ describe("inline replies", () => {
           (signal.payload as { reason?: string }).reason === "reply-sent",
       ),
     ).toEqual([]);
+    expect(
+      host.bb.storage
+        .database()
+        .prepare(
+          `SELECT summary_markdown, idle_disposition, reviewed_through_seq
+           FROM queue_annotations WHERE thread_id = ?`,
+        )
+        .get("child-1"),
+    ).toEqual({
+      summary_markdown: "Keep this accepted review",
+      idle_disposition: "done",
+      reviewed_through_seq: 6,
+    });
   });
 });
 
@@ -812,6 +893,44 @@ describe("annotation writes", () => {
     expect(typeof (stored as { summary_updated_at: unknown }).summary_updated_at).toBe(
       "number",
     );
+  });
+
+  it("moves an idle completion to Needs only after Firstmate reviews it", async () => {
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 21)],
+    });
+
+    let snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      section: "in_progress",
+      state: "awaiting_review",
+      detail: "Awaiting Firstmate review",
+      summaryMarkdown: null,
+    });
+
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Firstmate says the user must decide",
+        disposition: "needs_response",
+      },
+      { threadId: "manager-1" },
+    );
+    snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      section: "needs_response",
+      state: "needs_response",
+      detail: "Firstmate says the user must decide",
+      summaryMarkdown: "Firstmate says the user must decide",
+      reviewedThroughSeq: 21,
+      latestCompletionSeq: 21,
+    });
   });
 
   it("returns one exact JSON result shape for expected tool outcomes", async () => {
@@ -935,7 +1054,7 @@ describe("annotation writes", () => {
     expect(stored).toEqual({ summary_markdown: null, user_managed: 1 });
   });
 
-  it("keeps a completion racing an update visible as New result", async () => {
+  it("keeps a completion racing an update in neutral review state", async () => {
     let completionSeq = 10;
     const host = await configuredHost({
       writes: true,
@@ -956,8 +1075,10 @@ describe("annotation writes", () => {
       surfaceThreadId: "manager-1",
     })) as { rows: Array<Record<string, unknown>> };
     expect(snapshot.rows[0]).toMatchObject({
-      state: "new_result",
-      detail: "New result",
+      section: "in_progress",
+      state: "awaiting_review",
+      detail: "Awaiting Firstmate review",
+      summaryMarkdown: null,
       reviewedThroughSeq: 10,
       latestCompletionSeq: 11,
     });
@@ -1070,7 +1191,7 @@ describe("annotation writes", () => {
         .get("child-1"),
     ).toEqual({
       summary_markdown: null,
-      idle_disposition: "needs_response",
+      idle_disposition: null,
       reviewed_through_seq: 0,
       user_managed: 1,
       mode_updated_at: expect.any(Number),
@@ -1159,7 +1280,7 @@ describe("manual mode, archive, configuration, and invalidation", () => {
     },
   );
 
-  it("toggle-off preserves the review cursor while requiring a fresh review", async () => {
+  it("ownership toggles preserve an explicit Firstmate review", async () => {
     const host = await configuredHost({
       writes: true,
       events: async ({ threadId }) => [completion(threadId, 12)],
@@ -1193,13 +1314,13 @@ describe("manual mode, archive, configuration, and invalidation", () => {
         )
         .get("child-1"),
     ).toEqual({
-      idle_disposition: "needs_response",
+      idle_disposition: "done",
       reviewed_through_seq: 12,
       user_managed: 0,
     });
   });
 
-  it("toggle-on makes idle Needs, toggle-off requires fresh review, and archive uses one validated RPC", async () => {
+  it("ownership toggles do not synthesize Needs, and archive uses one validated RPC", async () => {
     const archived: string[] = [];
     const host = await configuredHost({
       archive: async ({ threadId }) => {
@@ -1217,7 +1338,8 @@ describe("manual mode, archive, configuration, and invalidation", () => {
     })) as { rows: Array<Record<string, unknown>> };
     expect(snapshot.rows[0]).toMatchObject({
       userManaged: true,
-      section: "needs_response",
+      section: "in_progress",
+      state: "user_managed",
     });
     await host.harness.behavior.callRpc("setUserManaged", {
       surfaceThreadId: "manager-1",
@@ -1229,7 +1351,9 @@ describe("manual mode, archive, configuration, and invalidation", () => {
     })) as { rows: Array<Record<string, unknown>> };
     expect(snapshot.rows[0]).toMatchObject({
       userManaged: false,
-      state: "needs_response",
+      section: "in_progress",
+      state: "awaiting_review",
+      detail: "Awaiting Firstmate review",
     });
     await host.harness.behavior.callRpc("archiveThread", {
       surfaceThreadId: "manager-1",

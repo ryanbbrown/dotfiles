@@ -66,6 +66,7 @@ function row(
   annotation: Annotation | null,
   values: Pick<QueueRow, "section" | "state" | "detail"> & {
     statusLabel?: string;
+    summaryMarkdown?: string | null;
   },
 ): QueueRow {
   const status = parseStatus(facts.status);
@@ -76,12 +77,38 @@ function row(
     state: values.state,
     statusLabel: values.statusLabel ?? statusLabel(status),
     detail: values.detail,
-    summaryMarkdown: annotation?.summaryMarkdown ?? null,
+    summaryMarkdown: values.summaryMarkdown ?? null,
     userManaged: annotation?.userManaged ?? false,
     latestCompletionSeq: facts.latestCompletionSeq,
     reviewedThroughSeq: annotation?.reviewedThroughSeq ?? 0,
     updatedAt: facts.updatedAt,
   };
+}
+
+function currentReview(
+  facts: ThreadFacts,
+  annotation: Annotation | null,
+): Annotation | null {
+  if (
+    annotation === null ||
+    annotation.idleDisposition === null ||
+    annotation.summaryUpdatedAt === null ||
+    annotation.dispositionUpdatedAt === null ||
+    facts.latestCompletionSeq > annotation.reviewedThroughSeq
+  ) {
+    return null;
+  }
+  return annotation;
+}
+
+function reviewedSection(
+  annotation: Annotation | null,
+): QueueRow["section"] {
+  if (annotation?.idleDisposition === "needs_response") {
+    return "needs_response";
+  }
+  if (annotation?.idleDisposition === "done") return "done";
+  return "in_progress";
 }
 
 export function projectThread(
@@ -91,26 +118,31 @@ export function projectThread(
   if (facts.archivedAt !== null || facts.deletedAt !== null) return null;
   const status = parseStatus(facts.status);
   const queuedWork = parseQueuedWork(facts.queuedWork);
+  const review = currentReview(facts, annotation);
+  const summaryMarkdown = review?.summaryMarkdown ?? null;
 
   if (status === "error" || queuedWork === "failed") {
     return row(facts, annotation, {
-      section: "needs_response",
+      section: reviewedSection(review),
       state: status === "error" ? "error" : "queued_failed",
       detail: status === "error" ? "Thread failed" : "Queued work failed",
+      summaryMarkdown,
     });
   }
   if (queuedWork === "waiting") {
     return row(facts, annotation, {
       section: "in_progress",
       state: "waiting",
-      detail: annotation?.summaryMarkdown ?? "Work is waiting to start",
+      detail: summaryMarkdown ?? "Work is waiting to start",
+      summaryMarkdown,
     });
   }
   if (["pending", "starting", "active", "stopping"].includes(status)) {
     return row(facts, annotation, {
       section: "in_progress",
       state: "running",
-      detail: annotation?.summaryMarkdown ?? "Work is in progress",
+      detail: summaryMarkdown ?? "Work is in progress",
+      summaryMarkdown,
     });
   }
   if (facts.hasActiveNativeTerminal) {
@@ -118,7 +150,8 @@ export function projectThread(
       section: "in_progress",
       state: "running",
       statusLabel: "Active",
-      detail: annotation?.summaryMarkdown ?? "Native terminal is active",
+      detail: summaryMarkdown ?? "Native terminal is active",
+      summaryMarkdown,
     });
   }
   if (facts.hasActiveDescendant) {
@@ -126,44 +159,38 @@ export function projectThread(
       section: "in_progress",
       state: "running",
       statusLabel: "Active",
-      detail: annotation?.summaryMarkdown ?? "A descendant thread is active",
+      detail: summaryMarkdown ?? "A descendant thread is active",
+      summaryMarkdown,
     });
   }
   if (annotation?.userManaged === true) {
     return row(facts, annotation, {
-      section: "needs_response",
+      section: reviewedSection(review),
       state: "user_managed",
-      detail: annotation.summaryMarkdown ?? "You are handling this",
+      detail: summaryMarkdown ?? "You are handling this",
+      summaryMarkdown,
     });
   }
-
-  const reviewedThroughSeq = annotation?.reviewedThroughSeq ?? 0;
-  if (annotation === null) {
-    const hasCompletion = facts.latestCompletionSeq > 0;
-    return row(facts, null, {
-      section: "needs_response",
-      state: hasCompletion ? "new_result" : "awaiting_review",
-      detail: hasCompletion ? "New result" : "Awaiting Firstmate review",
-    });
-  }
-  if (facts.latestCompletionSeq > reviewedThroughSeq) {
-    return row(facts, annotation, {
-      section: "needs_response",
-      state: "new_result",
-      detail: "New result",
-    });
-  }
-  if (annotation.idleDisposition === "done") {
+  if (review?.idleDisposition === "done") {
     return row(facts, annotation, {
       section: "done",
       state: "done",
-      detail: annotation.summaryMarkdown ?? "Reviewed",
+      detail: summaryMarkdown ?? "Reviewed",
+      summaryMarkdown,
+    });
+  }
+  if (review?.idleDisposition === "needs_response") {
+    return row(facts, annotation, {
+      section: "needs_response",
+      state: "needs_response",
+      detail: summaryMarkdown ?? "Needs your response",
+      summaryMarkdown,
     });
   }
   return row(facts, annotation, {
-    section: "needs_response",
-    state: "needs_response",
-    detail: annotation.summaryMarkdown ?? "Needs your response",
+    section: "in_progress",
+    state: "awaiting_review",
+    detail: "Awaiting Firstmate review",
   });
 }
 

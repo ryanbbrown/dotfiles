@@ -70,18 +70,30 @@ export class AnnotationStore {
       this.db
         .prepare(
           `INSERT INTO queue_annotations (
-            thread_id, idle_disposition, reviewed_through_seq, user_managed,
-            disposition_updated_at, mode_updated_at
-          ) VALUES (?, 'needs_response', 0, ?, ?, ?)
+            thread_id, reviewed_through_seq, user_managed, mode_updated_at
+          ) VALUES (?, 0, ?, ?)
           ON CONFLICT(thread_id) DO UPDATE SET
-            idle_disposition = 'needs_response',
             user_managed = excluded.user_managed,
-            disposition_updated_at = excluded.disposition_updated_at,
             mode_updated_at = excluded.mode_updated_at`,
         )
-        .run(threadId, userManaged ? 1 : 0, now, now);
+        .run(threadId, userManaged ? 1 : 0, now);
     });
     return this.get(threadId)!;
+  }
+
+  startReplyCycle(threadId: string): void {
+    this.immediate(() => {
+      this.db
+        .prepare(
+          `UPDATE queue_annotations SET
+             summary_markdown = NULL,
+             idle_disposition = NULL,
+             summary_updated_at = NULL,
+             disposition_updated_at = NULL
+           WHERE thread_id = ?`,
+        )
+        .run(threadId);
+    });
   }
 
   writeReview(
@@ -168,8 +180,7 @@ export class AnnotationStore {
              disposition_updated_at = ?
            WHERE thread_id = ?
              AND idle_disposition IS ?
-             AND disposition_updated_at IS ?
-             AND mode_updated_at IS ?`,
+             AND disposition_updated_at IS ?`,
         )
         .run(
           prior.idleDisposition,
@@ -177,7 +188,6 @@ export class AnnotationStore {
           threadId,
           written.idleDisposition,
           written.dispositionUpdatedAt,
-          written.modeUpdatedAt,
         );
       this.db
         .prepare(

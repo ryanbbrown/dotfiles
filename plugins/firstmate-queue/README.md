@@ -15,7 +15,9 @@ Set values through BB plugin settings. Do not track a manager thread ID in this 
 
 The panel shows three sections: Needs your response, In progress, and Done. It includes visible and hidden direct children across projects. It excludes grandchildren, archived threads, deleted threads, and threads moved to another parent.
 
-Use I’m handling this to make a child user-managed. User-managed idle children always need your response. Archive validates that the target is still a current direct child, then archives it through BB.
+Only an explicit `firstmate_queue_update` with the `needs_response` disposition places an idle row in Needs your response. New or unreviewed idle results stay In progress with an Awaiting Firstmate review detail. A reply starts a new review cycle and clears the prior review summary and disposition.
+
+Use User managed to stop Firstmate from writing annotations or sending unsolicited follow-ups for a child. Archive validates that the target is still a current direct child, then archives it through BB.
 
 `firstmate_queue_update` is the only agent annotation writer. When enabled, only the configured manager receives it. The tool records a Markdown summary, an idle disposition, and the latest durable `turn/completed` sequence.
 

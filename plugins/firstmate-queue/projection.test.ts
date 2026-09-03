@@ -39,39 +39,66 @@ function annotation(overrides: Partial<Annotation> = {}): Annotation {
 
 describe("projectThread", () => {
   it.each([
-    ["pending", "none", "in_progress", "running"],
-    ["starting", "none", "in_progress", "running"],
-    ["active", "none", "in_progress", "running"],
-    ["stopping", "none", "in_progress", "running"],
-    ["idle", "waiting", "in_progress", "waiting"],
-    ["active", "waiting", "in_progress", "waiting"],
-    ["error", "none", "needs_response", "error"],
-    ["idle", "failed", "needs_response", "queued_failed"],
-    ["active", "failed", "needs_response", "queued_failed"],
+    ["pending", "none", "running"],
+    ["starting", "none", "running"],
+    ["active", "none", "running"],
+    ["stopping", "none", "running"],
+    ["idle", "waiting", "waiting"],
+    ["active", "waiting", "waiting"],
+    ["error", "none", "error"],
+    ["idle", "failed", "queued_failed"],
+    ["active", "failed", "queued_failed"],
   ] as const)(
-    "projects %s with queued work %s into %s",
-    (status, queuedWork, section, state) => {
+    "keeps %s with queued work %s outside Needs without a review",
+    (status, queuedWork, state) => {
       expect(projectThread(facts({ status, queuedWork }), null)).toMatchObject({
-        section,
+        section: "in_progress",
         state,
       });
     },
   );
 
-  it("keeps explicit durable failure text above an old annotated summary", () => {
-    const done = annotation({
+  it("keeps useful failure detail but hides a stale reviewed summary", () => {
+    const prior = annotation({
       idleDisposition: "done",
       summaryMarkdown: "Earlier successful result",
+      reviewedThroughSeq: 10,
     });
-    expect(projectThread(facts({ status: "error" }), done)).toMatchObject({
-      section: "needs_response",
+    expect(
+      projectThread(facts({ status: "error", latestCompletionSeq: 11 }), prior),
+    ).toMatchObject({
+      section: "in_progress",
+      state: "error",
       detail: "Thread failed",
-      summaryMarkdown: "Earlier successful result",
+      summaryMarkdown: null,
     });
-    expect(projectThread(facts({ queuedWork: "failed" }), done)).toMatchObject({
-      section: "needs_response",
+    expect(
+      projectThread(facts({ queuedWork: "failed", latestCompletionSeq: 11 }), prior),
+    ).toMatchObject({
+      section: "in_progress",
+      state: "queued_failed",
       detail: "Queued work failed",
-      summaryMarkdown: "Earlier successful result",
+      summaryMarkdown: null,
+    });
+  });
+
+  it("moves failures into Needs only after an explicit needs-response review", () => {
+    const needsResponse = annotation({
+      idleDisposition: "needs_response",
+      summaryMarkdown: "Firstmate reviewed this failure",
+    });
+    expect(projectThread(facts({ status: "error" }), needsResponse)).toMatchObject({
+      section: "needs_response",
+      state: "error",
+      detail: "Thread failed",
+      summaryMarkdown: "Firstmate reviewed this failure",
+    });
+    expect(
+      projectThread(facts({ queuedWork: "failed" }), needsResponse),
+    ).toMatchObject({
+      section: "needs_response",
+      state: "queued_failed",
+      detail: "Queued work failed",
     });
   });
 
@@ -116,7 +143,6 @@ describe("projectThread", () => {
         hasActiveNativeTerminal: true,
         hasActiveDescendant: true,
       },
-      "needs_response",
       "error",
       "Error",
     ],
@@ -126,7 +152,6 @@ describe("projectThread", () => {
         hasActiveNativeTerminal: true,
         hasActiveDescendant: true,
       },
-      "needs_response",
       "queued_failed",
       "Idle",
     ],
@@ -136,7 +161,6 @@ describe("projectThread", () => {
         hasActiveNativeTerminal: true,
         hasActiveDescendant: true,
       },
-      "in_progress",
       "waiting",
       "Idle",
     ],
@@ -146,59 +170,103 @@ describe("projectThread", () => {
         hasActiveNativeTerminal: true,
         hasActiveDescendant: true,
       },
-      "in_progress",
       "running",
       "Active",
     ],
   ] as const)(
     "keeps existing failure, queued-work, and provider priority for %o",
-    (overrides, section, state, expectedStatusLabel) => {
+    (overrides, state, expectedStatusLabel) => {
       expect(projectThread(facts(overrides), null)).toMatchObject({
-        section,
+        section: "in_progress",
         state,
         statusLabel: expectedStatusLabel,
       });
     },
   );
 
-  it("keeps every otherwise-idle user-managed thread in Needs your response", () => {
+  it("keeps user-managed ownership without synthesizing a Needs row", () => {
     expect(
       projectThread(
-        facts({ latestCompletionSeq: 30 }),
-        annotation({ userManaged: true, idleDisposition: "done" }),
-      ),
-    ).toMatchObject({ section: "needs_response", state: "user_managed" });
-  });
-
-  it("marks an unannotated completion as New result and a new idle child as awaiting review", () => {
-    expect(
-      projectThread(facts({ latestCompletionSeq: 4 }), null),
-    ).toMatchObject({ detail: "New result", state: "new_result" });
-    expect(projectThread(facts(), null)).toMatchObject({
-      detail: "Awaiting Firstmate review",
-      state: "awaiting_review",
-    });
-  });
-
-  it("keeps the prior summary as context for a New result", () => {
-    expect(
-      projectThread(
-        facts({ latestCompletionSeq: 11 }),
+        facts(),
         annotation({
-          reviewedThroughSeq: 10,
-          idleDisposition: "done",
-          summaryMarkdown: "Earlier reviewed result",
+          idleDisposition: null,
+          summaryMarkdown: null,
+          summaryUpdatedAt: null,
+          dispositionUpdatedAt: null,
+          userManaged: true,
         }),
       ),
     ).toMatchObject({
-      section: "needs_response",
-      state: "new_result",
-      detail: "New result",
-      summaryMarkdown: "Earlier reviewed result",
+      section: "in_progress",
+      state: "user_managed",
+      detail: "You are handling this",
+      userManaged: true,
     });
   });
 
-  it("uses the review cursor boundary and stored idle disposition", () => {
+  it("projects unannotated idle children the same with or without a completion", () => {
+    for (const latestCompletionSeq of [0, 4]) {
+      expect(
+        projectThread(facts({ latestCompletionSeq }), null),
+      ).toMatchObject({
+        section: "in_progress",
+        state: "awaiting_review",
+        detail: "Awaiting Firstmate review",
+        summaryMarkdown: null,
+      });
+    }
+  });
+
+  it.each(["needs_response", "done"] as const)(
+    "returns a newer completion after %s to neutral review state",
+    (idleDisposition) => {
+      expect(
+        projectThread(
+          facts({ latestCompletionSeq: 11 }),
+          annotation({
+            reviewedThroughSeq: 10,
+            idleDisposition,
+            summaryMarkdown: "Earlier reviewed result",
+          }),
+        ),
+      ).toMatchObject({
+        section: "in_progress",
+        state: "awaiting_review",
+        detail: "Awaiting Firstmate review",
+        summaryMarkdown: null,
+      });
+    },
+  );
+
+  it.each([
+    { status: "active" },
+    { hasActiveNativeTerminal: true },
+    { hasActiveDescendant: true },
+  ] as const)(
+    "keeps review/delegation active, then neutralizes its completed result for %o",
+    (activeOverride) => {
+      const review = annotation({
+        reviewedThroughSeq: 10,
+        idleDisposition: "needs_response",
+        summaryMarkdown: "Review and delegation in progress",
+      });
+      expect(projectThread(facts(activeOverride), review)).toMatchObject({
+        section: "in_progress",
+        state: "running",
+        detail: "Review and delegation in progress",
+      });
+      expect(
+        projectThread(facts({ latestCompletionSeq: 11 }), review),
+      ).toMatchObject({
+        section: "in_progress",
+        state: "awaiting_review",
+        detail: "Awaiting Firstmate review",
+        summaryMarkdown: null,
+      });
+    },
+  );
+
+  it("uses only a current explicit disposition for Needs and Done", () => {
     expect(
       projectThread(
         facts({ latestCompletionSeq: 10 }),
@@ -207,16 +275,23 @@ describe("projectThread", () => {
     ).toMatchObject({ section: "done", state: "done" });
     expect(
       projectThread(
-        facts({ latestCompletionSeq: 11 }),
-        annotation({ reviewedThroughSeq: 10, idleDisposition: "done" }),
-      ),
-    ).toMatchObject({ section: "needs_response", state: "new_result" });
-    expect(
-      projectThread(
         facts({ latestCompletionSeq: 10 }),
-        annotation({ reviewedThroughSeq: 10, idleDisposition: "needs_response" }),
+        annotation({
+          reviewedThroughSeq: 10,
+          idleDisposition: "needs_response",
+        }),
       ),
     ).toMatchObject({ section: "needs_response", state: "needs_response" });
+    expect(
+      projectThread(
+        facts(),
+        annotation({
+          summaryMarkdown: null,
+          idleDisposition: "needs_response",
+          summaryUpdatedAt: null,
+        }),
+      ),
+    ).toMatchObject({ section: "in_progress", state: "awaiting_review" });
   });
 
   it("omits archived and deleted rows", () => {
@@ -226,15 +301,27 @@ describe("projectThread", () => {
 
   it("sorts newest first inside every section with thread-ID ties", () => {
     const threads = [
-      facts({ id: "needs-old", latestCompletionSeq: 1, updatedAt: 100 }),
+      facts({ id: "needs-old", updatedAt: 100 }),
       facts({ id: "progress-old", status: "active", updatedAt: 200 }),
       facts({ id: "done-old", updatedAt: 300 }),
-      facts({ id: "needs-z", latestCompletionSeq: 1, updatedAt: 500 }),
+      facts({ id: "needs-z", updatedAt: 500 }),
       facts({ id: "progress-new", status: "active", updatedAt: 600 }),
       facts({ id: "done-new", updatedAt: 700 }),
-      facts({ id: "needs-a", latestCompletionSeq: 1, updatedAt: 500 }),
+      facts({ id: "needs-a", updatedAt: 500 }),
     ];
     const annotations = new Map([
+      [
+        "needs-old",
+        annotation({ threadId: "needs-old", idleDisposition: "needs_response" }),
+      ],
+      [
+        "needs-z",
+        annotation({ threadId: "needs-z", idleDisposition: "needs_response" }),
+      ],
+      [
+        "needs-a",
+        annotation({ threadId: "needs-a", idleDisposition: "needs_response" }),
+      ],
       [
         "done-old",
         annotation({ threadId: "done-old", idleDisposition: "done" }),
@@ -246,7 +333,7 @@ describe("projectThread", () => {
     ]);
     const rows = projectQueue(threads, annotations);
     const idsIn = (section: QueueRow["section"]) =>
-      rows.filter((row) => row.section === section).map((row) => row.id);
+      rows.filter((projected) => projected.section === section).map((projected) => projected.id);
 
     expect(idsIn("needs_response")).toEqual([
       "needs-a",

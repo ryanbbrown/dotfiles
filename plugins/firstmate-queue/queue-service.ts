@@ -177,6 +177,7 @@ export class QueueService {
       mode: "auto",
       input: [{ type: "text", text: input.text, mentions: [] }],
     });
+    this.store.startReplyCycle(input.childThreadId);
     this.publish(input.childThreadId, "reply-sent");
     return { accepted: true };
   }

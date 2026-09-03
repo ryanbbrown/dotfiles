@@ -420,16 +420,6 @@ function QueueRowView({
               />
             )}
           </div>
-        ) : row.state === "new_result" ? (
-          <div className="mt-2 space-y-2">
-            <p className="text-sm font-medium text-foreground">New result</p>
-            {row.summaryMarkdown === null ? null : (
-              <Markdown
-                content={row.summaryMarkdown}
-                className="break-words text-sm text-muted-foreground"
-              />
-            )}
-          </div>
         ) : row.summaryMarkdown === null ? (
           <p className="mt-2 break-words text-sm text-muted-foreground">
             {row.detail}

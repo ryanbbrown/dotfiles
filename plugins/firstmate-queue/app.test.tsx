@@ -21,13 +21,13 @@ function row(overrides: Partial<QueueRow> = {}): QueueRow {
     id: "child-1",
     title: "Review child result",
     section: "needs_response",
-    state: "new_result",
+    state: "needs_response",
     statusLabel: "Idle",
-    detail: "New result",
+    detail: "Needs your response",
     summaryMarkdown: null,
     userManaged: false,
     latestCompletionSeq: 7,
-    reviewedThroughSeq: 6,
+    reviewedThroughSeq: 7,
     updatedAt: 1_767_355_445_000,
     ...overrides,
   };
@@ -209,7 +209,7 @@ describe("queue panel", () => {
     await slot.findByRole("heading", { name: "Needs your response" });
     expect(slot.getByRole("heading", { name: "In progress" })).toBeTruthy();
     expect(slot.getByRole("heading", { name: "Done" })).toBeTruthy();
-    expect(slot.getByText("New result")).toBeTruthy();
+    expect(slot.getByText("Needs your response", { selector: "p" })).toBeTruthy();
     expect(slot.getByText("Implements **backend**")).toBeTruthy();
     expect(slot.getByText("Active")).toBeTruthy();
   });
@@ -355,21 +355,24 @@ describe("queue panel", () => {
     expect(replyButton.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("shows New result with the prior summary as context", async () => {
+  it("shows neutral review state without New result or a stale summary", async () => {
     const slot = renderQueue({
       rpc: {
         queueSnapshot: () =>
           snapshot([
             row({
-              detail: "New result",
-              summaryMarkdown: "Earlier reviewed result",
+              section: "in_progress",
+              state: "awaiting_review",
+              detail: "Awaiting Firstmate review",
+              summaryMarkdown: null,
             }),
           ]),
       },
     });
 
-    expect(await slot.findByText("New result")).toBeTruthy();
-    expect(slot.getByText("Earlier reviewed result")).toBeTruthy();
+    expect(await slot.findByText("Awaiting Firstmate review")).toBeTruthy();
+    expect(slot.queryByText("New result")).toBeNull();
+    expect(slot.queryByText("Earlier reviewed result")).toBeNull();
   });
 
   it("keeps failure text visible with the earlier summary as context", async () => {
@@ -544,7 +547,7 @@ describe("queue panel", () => {
               summaryMarkdown: null,
             })
           : row({
-              detail: "New result",
+              detail: changed ? "Updated summary" : "Earlier summary",
               summaryMarkdown: changed
                 ? "Updated summary"
                 : "Earlier summary",
@@ -645,7 +648,16 @@ describe("queue panel", () => {
     const slot = renderQueue({
       rpc: {
         queueSnapshot: () =>
-          snapshot([row({ userManaged: managed, state: managed ? "user_managed" : "new_result" })]),
+          snapshot([
+            row({
+              section: "in_progress",
+              state: managed ? "user_managed" : "awaiting_review",
+              detail: managed
+                ? "You are handling this"
+                : "Awaiting Firstmate review",
+              userManaged: managed,
+            }),
+          ]),
         setUserManaged: ({ userManaged }) => {
           managed = userManaged;
           return { childThreadId: "child-1", userManaged };
