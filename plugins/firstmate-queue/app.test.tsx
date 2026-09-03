@@ -273,7 +273,7 @@ describe("queue panel", () => {
     });
     const status = slot.getByText("Idle");
     const toggle = slot.getByRole("switch", {
-      name: "I’m handling this: Off",
+      name: "User managed: Off",
     });
 
     expect(title.parentElement?.contains(archive)).toBe(true);
@@ -348,10 +348,10 @@ describe("queue panel", () => {
       },
     });
     const toggle = await slot.findByRole("switch", {
-      name: "I’m handling this: Off",
+      name: "User managed: Off",
     });
     fireEvent.click(toggle);
-    await slot.findByRole("switch", { name: "I’m handling this: On" });
+    await slot.findByRole("switch", { name: "User managed: On" });
     expect(
       slot.inspection.rpcCalls.some((call) => call.method === "setUserManaged"),
     ).toBe(true);

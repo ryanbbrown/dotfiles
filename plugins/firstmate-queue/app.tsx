@@ -273,7 +273,7 @@ function QueueRowView({
           onClick={onToggle}
           className="min-h-7 cursor-pointer rounded-full border border-border/60 px-2 text-[11px] text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          I’m handling this: {row.userManaged ? "On" : "Off"}
+          User managed: {row.userManaged ? "On" : "Off"}
         </button>
       </div>
     </li>
