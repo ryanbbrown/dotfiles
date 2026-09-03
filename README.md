@@ -105,21 +105,47 @@ tests/firstmate-queue-plugin.sh
 
 The [Terminal Jobs plugin](https://github.com/ryanbbrown/bb-plugin-terminal-jobs) owns its source, runner, setup, tests, and releases. This package remains an exception to the personal plugin policy above. This repository keeps only shared agent policy and integrations that use an installed `bb terminal-job` command.
 
-### Create local environment files
+### Manage API keys with Doppler
 
-This requires an installed and authenticated Doppler CLI. Create or replace `.env` in the current directory from a Doppler project and config:
-
-```bash
-doppler-to-env --project api-keys --config dev_personal OPENAI_API_KEY
-```
-
-Add more key names to write multiple entries. List the available names without exposing their values:
+Use the `api-keys` project and `dev_personal` config for personal API keys. List key names without exposing their values:
 
 ```bash
 doppler-to-env --project api-keys --config dev_personal --list
 ```
 
-Use `--output PATH` to select another file. The command writes only the requested keys, replaces the file atomically with `0600` permissions, and refuses to write a tracked or unignored file inside a Git repository. `scripts/link-home.sh` installs the tracked command from `bin/doppler-to-env` at `~/.local/bin/doppler-to-env`.
+If a required key is absent, collect and upload it without putting its value in chat, shell history, command arguments, logs, or Git. Replace the example key name and descriptions as needed:
+
+```bash
+key=RUNTA_TOKEN
+umask 077
+stage="$(mktemp -d "${TMPDIR:-/tmp}/doppler-upload.XXXXXX")"
+cleanup() { rm -f -- "$stage/secret.env"; rmdir "$stage" 2>/dev/null || true; }
+trap cleanup EXIT
+
+bb secret request "$key" \
+  --purpose "Store an API credential in Doppler api-keys/dev_personal" \
+  --describe "$key" "API credential supplied by the user" \
+  --write-env "$stage/secret.env"
+
+doppler secrets upload \
+  --project api-keys \
+  --config dev_personal \
+  --silent \
+  "$stage/secret.env"
+
+doppler-to-env --project api-keys --config dev_personal --list |
+  grep -Fxq "$key"
+```
+
+The exit trap removes the temporary dotenv file. Do not inspect that file or use `doppler secrets set KEY=VALUE`, which puts the value in command arguments.
+
+To create or replace a local `.env` from Doppler:
+
+```bash
+doppler-to-env --project api-keys --config dev_personal OPENAI_API_KEY
+```
+
+Add more key names to write multiple entries. Use `--output PATH` to select another file. The command writes only the requested keys, replaces the file atomically with `0600` permissions, and refuses to write a tracked or unignored file inside a Git repository. `scripts/link-home.sh` installs the tracked command from `bin/doppler-to-env` at `~/.local/bin/doppler-to-env`.
 
 The review panel uses the official Grok Build CLI with a SuperGrok account login. Install it and complete browser OAuth before the first review:
 

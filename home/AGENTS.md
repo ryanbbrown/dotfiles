@@ -42,4 +42,5 @@
 - Store global coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
 - Store project-specific agent configuration, including MCP servers, in the project that uses it.
 - Never use the `secrets` skill before checking the project `.env` and Doppler with `doppler-to-env`. Use secure entry only when the required key is confirmed absent.
+- Follow the Doppler credential workflow in `~/code/dotfiles/README.md` when storing a user-supplied secret in Doppler or creating a local dotenv file from Doppler.
 - Log friction with `papercut "what you were doing; what got in the way"` only when it comes from the shared development workflow: BB and its CLI or plugins, dotfiles skills and commands, hooks, sandboxes, or provider tooling. Test: would this happen in any repository? Never log a problem that belongs to one project or its code; project instructions are updated later from thread analysis.
