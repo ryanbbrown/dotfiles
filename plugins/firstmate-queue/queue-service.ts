@@ -165,6 +165,22 @@ export class QueueService {
     return { archived: true };
   }
 
+  async sendReply(input: {
+    surfaceThreadId: string;
+    childThreadId: string;
+    text: string;
+  }): Promise<{ accepted: true }> {
+    const managerThreadId = await this.authorizedManager(input.surfaceThreadId);
+    await this.requireCurrentChild(managerThreadId, input.childThreadId);
+    await this.bb.sdk.threads.send({
+      threadId: input.childThreadId,
+      mode: "auto",
+      input: [{ type: "text", text: input.text, mentions: [] }],
+    });
+    this.publish(input.childThreadId, "reply-sent");
+    return { accepted: true };
+  }
+
   async writeReview(input: {
     callerThreadId: string;
     childThreadId: string;

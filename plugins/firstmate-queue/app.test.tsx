@@ -58,6 +58,7 @@ function renderQueue(options: QueueRenderOptions = {}) {
       userManaged,
     }),
     archiveThread: () => ({ archived: true }),
+    sendReply: () => ({ accepted: true }),
     ...rpc,
   };
   return renderSlot<PluginThreadPanelProps, typeof rpcContract>(
@@ -250,6 +251,108 @@ describe("queue panel", () => {
     );
     expect(progressRow.textContent).toContain("Active");
     expect(progressRow.querySelector("time")).toBeNull();
+  });
+
+  it("opens, validates, and sends an exact multiline reply by keyboard", async () => {
+    const sendReply = vi.fn(async () => ({ accepted: true as const }));
+    const queueSnapshot = vi.fn(() => snapshot());
+    const slot = renderQueue({ rpc: { queueSnapshot, sendReply } });
+    const replyButton = await slot.findByRole("button", {
+      name: "Reply to Review child result",
+    });
+    expect(replyButton.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(replyButton);
+
+    const input = await slot.findByRole("textbox", {
+      name: "Reply to Review child result",
+    });
+    expect(replyButton.getAttribute("aria-expanded")).toBe("true");
+    expect(replyButton.getAttribute("aria-controls")).toBe(
+      input.closest("form")?.id,
+    );
+    expect(document.activeElement).toBe(input);
+    expect(slot.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    fireEvent.change(input, { target: { value: " \n\t " } });
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+    expect(sendReply).not.toHaveBeenCalled();
+    expect(await slot.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Enter a reply.",
+    );
+
+    const text = "  First line\nSecond line  \n";
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(sendReply).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    await waitFor(() => {
+      expect(sendReply).toHaveBeenCalledWith({
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+        text,
+      });
+    });
+    await waitFor(() => {
+      expect(
+        slot.queryByRole("textbox", { name: "Reply to Review child result" }),
+      ).toBeNull();
+    });
+    expect(replyButton.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(replyButton);
+    expect(queueSnapshot).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(replyButton);
+    expect(
+      (
+        (await slot.findByRole("textbox", {
+          name: "Reply to Review child result",
+        })) as HTMLTextAreaElement
+      ).value,
+    ).toBe("");
+  });
+
+  it("keeps a failed reply draft and prevents duplicate submits", async () => {
+    let rejectSend!: (cause: Error) => void;
+    const pending = new Promise<{ accepted: true }>((_resolve, reject) => {
+      rejectSend = reject;
+    });
+    const sendReply = vi.fn(() => pending);
+    const slot = renderQueue({ rpc: { sendReply } });
+    const replyButton = await slot.findByRole("button", {
+      name: "Reply to Review child result",
+    });
+    fireEvent.click(replyButton);
+    const input = (await slot.findByRole("textbox", {
+      name: "Reply to Review child result",
+    })) as HTMLTextAreaElement;
+    const exactDraft = "  Retry this\nwithout trimming  ";
+    fireEvent.change(input, { target: { value: exactDraft } });
+    const form = input.closest("form")!;
+
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    expect(sendReply).toHaveBeenCalledOnce();
+    expect(form.getAttribute("aria-busy")).toBe("true");
+    expect(input.disabled).toBe(true);
+    expect(slot.getByRole("button", { name: "Sending…" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    await act(async () => {
+      rejectSend(new Error("x".repeat(300)));
+      await pending.catch(() => undefined);
+    });
+
+    const error = await slot.findByRole("alert");
+    expect(error.textContent?.endsWith("…")).toBe(true);
+    expect(error.textContent?.length).toBe(240);
+    expect(input.value).toBe(exactDraft);
+    expect(input.disabled).toBe(false);
+    expect(replyButton.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("shows New result with the prior summary as context", async () => {

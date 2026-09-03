@@ -1,9 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import {
@@ -235,14 +238,84 @@ function QueueRowView({
   onNavigate,
   onToggle,
   onArchive,
+  onReply,
 }: {
   row: QueueRow;
   mutation: string | null;
   onNavigate: () => void;
   onToggle: () => void;
   onArchive: () => void;
+  onReply: (text: string) => Promise<void>;
 }) {
-  const busy = mutation !== null;
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [replySending, setReplySending] = useState(false);
+  const replySendingRef = useRef(false);
+  const restoreReplyFocus = useRef(false);
+  const replyButtonRef = useRef<HTMLButtonElement>(null);
+  const replyInputRef = useRef<HTMLTextAreaElement>(null);
+  const replyId = useId();
+  const replyFormId = `${replyId}-form`;
+  const replyInputId = `${replyId}-input`;
+  const replyHintId = `${replyId}-hint`;
+  const replyErrorId = `${replyId}-error`;
+  const busy = mutation !== null || replySending;
+  useEffect(() => {
+    if (replyOpen) replyInputRef.current?.focus();
+  }, [replyOpen]);
+  useEffect(() => {
+    if (!replyOpen && !replySending && restoreReplyFocus.current) {
+      restoreReplyFocus.current = false;
+      replyButtonRef.current?.focus();
+    }
+  }, [replyOpen, replySending]);
+  const openReply = () => {
+    setReplyError(null);
+    setReplyOpen(true);
+    if (replyOpen) replyInputRef.current?.focus();
+  };
+  const cancelReply = () => {
+    setReplyError(null);
+    setReplyOpen(false);
+    replyButtonRef.current?.focus();
+  };
+  const submitReply = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (replySendingRef.current) return;
+    if (replyDraft.trim().length === 0) {
+      setReplyError("Enter a reply.");
+      replyInputRef.current?.focus();
+      return;
+    }
+    const text = replyDraft;
+    replySendingRef.current = true;
+    setReplySending(true);
+    setReplyError(null);
+    try {
+      await onReply(text);
+      restoreReplyFocus.current = true;
+      setReplyDraft("");
+      setReplyOpen(false);
+    } catch (cause) {
+      setReplyError(boundedError(cause));
+    } finally {
+      replySendingRef.current = false;
+      setReplySending(false);
+    }
+  };
+  const handleReplyKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      event.key === "Enter" &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  };
   const fingerprint = rowContentFingerprint(row);
   const [disclosure, setDisclosure] = useState<RowDisclosureState>(() =>
     readRowDisclosure(row.id, fingerprint),
@@ -368,7 +441,19 @@ function QueueRowView({
           />
         )}
       </div>
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex justify-end gap-2">
+        <button
+          ref={replyButtonRef}
+          type="button"
+          aria-controls={replyFormId}
+          aria-expanded={replyOpen}
+          aria-label={`Reply to ${row.title}`}
+          disabled={busy}
+          onClick={openReply}
+          className="min-h-7 cursor-pointer rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Reply
+        </button>
         <button
           type="button"
           role="switch"
@@ -380,6 +465,73 @@ function QueueRowView({
           User managed: {row.userManaged ? "On" : "Off"}
         </button>
       </div>
+      {replyOpen ? (
+        <form
+          id={replyFormId}
+          aria-busy={replySending}
+          className="mt-2 space-y-2 rounded-md border border-border bg-background p-2.5"
+          onSubmit={(event) => void submitReply(event)}
+        >
+          <label
+            htmlFor={replyInputId}
+            className="block text-xs font-medium text-foreground"
+          >
+            Reply to {row.title}
+          </label>
+          <textarea
+            ref={replyInputRef}
+            id={replyInputId}
+            name="reply"
+            rows={3}
+            autoComplete="off"
+            aria-invalid={replyError !== null}
+            aria-describedby={
+              replyError === null
+                ? replyHintId
+                : `${replyHintId} ${replyErrorId}`
+            }
+            aria-keyshortcuts="Meta+Enter Control+Enter"
+            disabled={replySending}
+            value={replyDraft}
+            onChange={(event) => {
+              setReplyDraft(event.target.value);
+              setReplyError(null);
+            }}
+            onKeyDown={handleReplyKeyDown}
+            className="min-h-16 w-full resize-y rounded-md border border-input bg-background px-2.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            placeholder="Write a reply"
+          />
+          <p id={replyHintId} className="text-[11px] text-muted-foreground">
+            Press ⌘ or Ctrl+Enter to send. Enter adds a new line.
+          </p>
+          {replyError === null ? null : (
+            <p
+              id={replyErrorId}
+              role="alert"
+              className="break-words text-xs text-destructive"
+            >
+              {replyError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={replySending}
+              onClick={cancelReply}
+              className="min-h-7 cursor-pointer rounded-md px-2 text-xs text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={replySending}
+              className="min-h-7 cursor-pointer rounded-md border border-border bg-foreground px-2.5 text-xs font-medium text-background hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {replySending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </form>
+      ) : null}
     </li>
   );
 }
@@ -431,6 +583,14 @@ function QueuePanelContent({ threadId }: { threadId: string }) {
     } finally {
       setMutation(null);
     }
+  };
+  const sendReply = async (row: QueueRow, text: string) => {
+    await rpc.call("sendReply", {
+      surfaceThreadId: threadId,
+      childThreadId: row.id,
+      text,
+    });
+    await refresh();
   };
   const archive = async (row: QueueRow) => {
     if (mutation !== null) return;
@@ -495,6 +655,7 @@ function QueuePanelContent({ threadId }: { threadId: string }) {
                     onNavigate={() => navigate.toThread(row.id)}
                     onToggle={() => void setUserManaged(row)}
                     onArchive={() => void archive(row)}
+                    onReply={(text) => sendReply(row, text)}
                   />
                 ))}
               </ul>

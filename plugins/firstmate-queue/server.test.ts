@@ -178,6 +178,7 @@ async function configuredHost(options: {
   get?: BbPluginApi["sdk"]["threads"]["get"];
   list?: (args: Parameters<BbPluginApi["sdk"]["threads"]["list"]>[0]) => Promise<ThreadListEntry[]>;
   running?: BbPluginApi["sdk"]["threads"]["listRunning"];
+  send?: BbPluginApi["sdk"]["threads"]["send"];
   events?: (args: Parameters<BbPluginApi["sdk"]["threads"]["events"]["list"]>[0]) => Promise<ThreadEventRow[]>;
   terminals?: BbPluginApi["sdk"]["terminals"]["list"];
   subscribe?: BbPluginApi["sdk"]["subscribe"];
@@ -204,6 +205,9 @@ async function configuredHost(options: {
           options.list ??
           (async () => [listEntry("child-1")]),
         listRunning: options.running ?? (async () => []),
+        send:
+          options.send ??
+          (async () => ({ ok: true, delivery: "sent" })),
         events: {
           list: options.events ?? (async () => []),
         },
@@ -675,6 +679,95 @@ describe("queue discovery and snapshots", () => {
         surfaceThreadId: "manager-1",
       }),
     ).rejects.toThrow("Unsupported BB thread status: paused");
+  });
+});
+
+describe("inline replies", () => {
+  it("routes exact untrimmed plain text to the authorized direct child", async () => {
+    const host = await configuredHost();
+    const text = "  Keep leading space\nAnd trailing space  \n";
+
+    await expect(
+      host.harness.behavior.callRpc("sendReply", {
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+        text,
+      }),
+    ).resolves.toEqual({ accepted: true });
+
+    expect(host.harness.inspection.sdk.callsTo("threads.send")).toEqual([
+      [
+        {
+          threadId: "child-1",
+          mode: "auto",
+          input: [{ type: "text", text, mentions: [] }],
+        },
+      ],
+    ]);
+    expect(host.harness.inspection.realtimeSignals.at(-1)).toEqual({
+      channel: "queue-invalidated",
+      payload: { threadId: "child-1", reason: "reply-sent" },
+    });
+  });
+
+  it("rejects unauthorized, non-child, and whitespace-only replies", async () => {
+    const host = await configuredHost({
+      get: async ({ threadId }) =>
+        makeThreadResponse({
+          id: threadId,
+          parentThreadId:
+            threadId === "manager-1"
+              ? null
+              : threadId === "other-child"
+                ? "other-manager"
+                : "manager-1",
+        }),
+    });
+
+    await expect(
+      host.harness.behavior.callRpc("sendReply", {
+        surfaceThreadId: "other-manager",
+        childThreadId: "child-1",
+        text: "Hello",
+      }),
+    ).rejects.toThrow(/configured manager thread/i);
+    await expect(
+      host.harness.behavior.callRpc("sendReply", {
+        surfaceThreadId: "manager-1",
+        childThreadId: "other-child",
+        text: "Hello",
+      }),
+    ).rejects.toThrow(/current direct child/i);
+    await expect(
+      host.harness.behavior.callRpc("sendReply", {
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+        text: " \n\t ",
+      }),
+    ).rejects.toThrow(/rpc input validation failed/i);
+    expect(host.harness.inspection.sdk.callsTo("threads.send")).toEqual([]);
+  });
+
+  it("does not publish acceptance when BB rejects the send", async () => {
+    const host = await configuredHost({
+      send: async () => {
+        throw new Error("Provider unavailable");
+      },
+    });
+
+    await expect(
+      host.harness.behavior.callRpc("sendReply", {
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+        text: "Please continue",
+      }),
+    ).rejects.toThrow("Provider unavailable");
+    expect(
+      host.harness.inspection.realtimeSignals.filter(
+        (signal) =>
+          (signal.payload as { reason?: string }).reason === "reply-sent",
+      ),
+    ).toEqual([]);
   });
 });
 

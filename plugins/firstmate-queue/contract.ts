@@ -40,6 +40,9 @@ export type QueueSection = z.infer<typeof queueSectionSchema>;
 export type IdleDisposition = z.infer<typeof dispositionSchema>;
 
 const threadIdSchema = z.string().min(1).max(200);
+const replyTextSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, "Reply text is required");
 
 const surfaceInput = z
   .object({
@@ -81,5 +84,14 @@ export const rpcContract = defineRpcContract({
       .extend({ childThreadId: threadIdSchema })
       .strict(),
     output: z.object({ archived: z.literal(true) }).strict(),
+  },
+  sendReply: {
+    input: surfaceInput
+      .extend({
+        childThreadId: threadIdSchema,
+        text: replyTextSchema,
+      })
+      .strict(),
+    output: z.object({ accepted: z.literal(true) }).strict(),
   },
 });

@@ -100,6 +100,7 @@ export default async function plugin(bb: BbPluginApi) {
     queueSnapshot: ({ surfaceThreadId }) => service.snapshot(surfaceThreadId),
     setUserManaged: (input) => service.setUserManaged(input),
     archiveThread: (input) => service.archiveThread(input),
+    sendReply: (input) => service.sendReply(input),
   });
 
   bb.agents.registerTool({
