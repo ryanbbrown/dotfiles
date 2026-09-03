@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import type { QueueRow, rpcContract } from "./contract.js";
 
+const DISCLOSURE_STORAGE_PREFIX = "firstmate-queue.row-disclosure.";
 const INVALIDATION_DEBOUNCE_MS = 100;
 const REFRESH_INTERVAL_MS = 15_000;
 const PLUGIN_ID = "firstmate-queue";
@@ -174,6 +175,53 @@ function useQueueSnapshot(threadId: string) {
   return { rpc, state, setState, refresh, supersedeRefresh };
 }
 
+interface RowDisclosureState {
+  collapsed: boolean;
+  fingerprint: string;
+}
+
+function rowContentFingerprint(row: QueueRow): string {
+  return JSON.stringify([row.detail, row.summaryMarkdown]);
+}
+
+function disclosureStorageKey(threadId: string): string {
+  return `${DISCLOSURE_STORAGE_PREFIX}${threadId}`;
+}
+
+function readRowDisclosure(
+  threadId: string,
+  fingerprint: string,
+): RowDisclosureState {
+  try {
+    const stored = JSON.parse(
+      window.localStorage.getItem(disclosureStorageKey(threadId)) ?? "null",
+    ) as Partial<RowDisclosureState> | null;
+    if (
+      stored?.fingerprint === fingerprint &&
+      typeof stored.collapsed === "boolean"
+    ) {
+      return { collapsed: stored.collapsed, fingerprint };
+    }
+  } catch {
+    // Local state remains available when browser storage is unavailable.
+  }
+  return { collapsed: false, fingerprint };
+}
+
+function writeRowDisclosure(
+  threadId: string,
+  disclosure: RowDisclosureState,
+): void {
+  try {
+    window.localStorage.setItem(
+      disclosureStorageKey(threadId),
+      JSON.stringify(disclosure),
+    );
+  } catch {
+    // Local state remains available when browser storage is unavailable.
+  }
+}
+
 function QueueRowView({
   row,
   mutation,
@@ -188,6 +236,22 @@ function QueueRowView({
   onArchive: () => void;
 }) {
   const busy = mutation !== null;
+  const fingerprint = rowContentFingerprint(row);
+  const [disclosure, setDisclosure] = useState<RowDisclosureState>(() =>
+    readRowDisclosure(row.id, fingerprint),
+  );
+  const collapsed =
+    disclosure.fingerprint === fingerprint && disclosure.collapsed;
+  useEffect(() => {
+    writeRowDisclosure(row.id, { collapsed, fingerprint });
+  }, [collapsed, fingerprint, row.id]);
+  const toggleDisclosure = () => {
+    const next = { collapsed: !collapsed, fingerprint };
+    setDisclosure(next);
+    writeRowDisclosure(row.id, next);
+  };
+  const contentId = `firstmate-queue-row-content-${row.id}`;
+
   return (
     <li className="rounded-lg border border-border bg-card px-3 py-2.5">
       <div className="flex min-w-0 flex-wrap items-start gap-2">
@@ -220,6 +284,29 @@ function QueueRowView({
           <span className="min-w-0 break-words">{row.title}</span>
         </button>
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            aria-controls={contentId}
+            aria-expanded={!collapsed}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} details for ${row.title}`}
+            className="inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            onClick={toggleDisclosure}
+          >
+            <svg
+              aria-hidden="true"
+              className="size-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d={collapsed ? "M9 6L15 12L9 18" : "M6 9L12 15L18 9"}
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.75"
+              />
+            </svg>
+          </button>
           <span className="text-xs text-muted-foreground">
             {row.statusLabel}
           </span>
@@ -234,36 +321,38 @@ function QueueRowView({
           </button>
         </div>
       </div>
-      {row.state === "error" || row.state === "queued_failed" ? (
-        <div className="mt-2 space-y-2">
-          <p className="break-words text-sm text-destructive">{row.detail}</p>
-          {row.summaryMarkdown === null ? null : (
-            <Markdown
-              content={row.summaryMarkdown}
-              className="break-words text-sm text-muted-foreground"
-            />
-          )}
-        </div>
-      ) : row.state === "new_result" ? (
-        <div className="mt-2 space-y-2">
-          <p className="text-sm font-medium text-foreground">New result</p>
-          {row.summaryMarkdown === null ? null : (
-            <Markdown
-              content={row.summaryMarkdown}
-              className="break-words text-sm text-muted-foreground"
-            />
-          )}
-        </div>
-      ) : row.summaryMarkdown === null ? (
-        <p className="mt-2 break-words text-sm text-muted-foreground">
-          {row.detail}
-        </p>
-      ) : (
-        <Markdown
-          content={row.detail}
-          className="mt-2 break-words text-sm text-muted-foreground"
-        />
-      )}
+      <div id={contentId} hidden={collapsed}>
+        {row.state === "error" || row.state === "queued_failed" ? (
+          <div className="mt-2 space-y-2">
+            <p className="break-words text-sm text-destructive">{row.detail}</p>
+            {row.summaryMarkdown === null ? null : (
+              <Markdown
+                content={row.summaryMarkdown}
+                className="break-words text-sm text-muted-foreground"
+              />
+            )}
+          </div>
+        ) : row.state === "new_result" ? (
+          <div className="mt-2 space-y-2">
+            <p className="text-sm font-medium text-foreground">New result</p>
+            {row.summaryMarkdown === null ? null : (
+              <Markdown
+                content={row.summaryMarkdown}
+                className="break-words text-sm text-muted-foreground"
+              />
+            )}
+          </div>
+        ) : row.summaryMarkdown === null ? (
+          <p className="mt-2 break-words text-sm text-muted-foreground">
+            {row.detail}
+          </p>
+        ) : (
+          <Markdown
+            content={row.detail}
+            className="mt-2 break-words text-sm text-muted-foreground"
+          />
+        )}
+      </div>
       <div className="mt-2 flex justify-end">
         <button
           type="button"

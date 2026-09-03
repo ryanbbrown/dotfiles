@@ -75,6 +75,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   toastError.mockReset();
+  window.localStorage.clear();
 });
 
 describe("registration guards", () => {
@@ -287,6 +288,166 @@ describe("queue panel", () => {
     expect(toggle.className).toContain("text-[11px]");
     expect(toggle.className).toContain("text-muted-foreground");
   });
+
+  it("persists a collapsed row across an app reload without hiding its controls", async () => {
+    const stableRow = row({
+      state: "awaiting_review",
+      detail: "Stable detail",
+      summaryMarkdown: null,
+    });
+    const first = renderQueue({
+      rpc: { queueSnapshot: () => snapshot([stableRow]) },
+    });
+    const collapse = await first.findByRole("button", {
+      name: "Collapse details for Review child result",
+    });
+    const contentId = collapse.getAttribute("aria-controls")!;
+    const content = document.getElementById(contentId)!;
+
+    fireEvent.click(collapse);
+    expect(
+      first.getByRole("button", {
+        name: "Expand details for Review child result",
+      }),
+    ).toBeTruthy();
+    expect(content.hidden).toBe(true);
+    expect(first.getByText("Idle")).toBeTruthy();
+    expect(
+      (first.getByRole("button", {
+        name: "Archive Review child result",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (first.getByRole("switch", {
+        name: "User managed: Off",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(
+      first.getByRole("button", { name: "Review child result" }),
+    );
+    expect(first.inspection.navigateCalls.at(-1)).toEqual({
+      method: "toThread",
+      threadId: "child-1",
+    });
+    first.lifecycle.unmount();
+
+    const reloaded = renderQueue({
+      rpc: {
+        queueSnapshot: () =>
+          snapshot([
+            stableRow,
+            row({
+              id: "child-2",
+              title: "Other child",
+              state: "awaiting_review",
+              detail: "Stable detail",
+              summaryMarkdown: null,
+            }),
+          ]),
+      },
+    });
+    const persisted = await reloaded.findByRole("button", {
+      name: "Expand details for Review child result",
+    });
+    expect(
+      document.getElementById(persisted.getAttribute("aria-controls")!)?.hidden,
+    ).toBe(true);
+    expect(
+      reloaded.getByRole("button", {
+        name: "Collapse details for Other child",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps a row collapsed through an unchanged snapshot refresh", async () => {
+    const stableRow = row({
+      state: "awaiting_review",
+      detail: "Stable detail",
+      summaryMarkdown: null,
+    });
+    const slot = renderQueue({
+      rpc: { queueSnapshot: () => snapshot([stableRow]) },
+    });
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "Collapse details for Review child result",
+      }),
+    );
+
+    await slot.behavior.emitRealtime("queue-invalidated", {
+      threadId: "child-1",
+      reason: "thread.idle",
+    });
+    await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(2));
+
+    const persisted = slot.getByRole("button", {
+      name: "Expand details for Review child result",
+    });
+    expect(
+      document.getElementById(persisted.getAttribute("aria-controls")!)?.hidden,
+    ).toBe(true);
+  });
+
+  it.each(["detail", "summary"] as const)(
+    "auto-expands once when displayed %s changes",
+    async (changedField) => {
+      let changed = false;
+      const currentRow = () =>
+        changedField === "detail"
+          ? row({
+              state: "awaiting_review",
+              detail: changed ? "Updated detail" : "Earlier detail",
+              summaryMarkdown: null,
+            })
+          : row({
+              detail: "New result",
+              summaryMarkdown: changed
+                ? "Updated summary"
+                : "Earlier summary",
+            });
+      const slot = renderQueue({
+        rpc: { queueSnapshot: () => snapshot([currentRow()]) },
+      });
+      fireEvent.click(
+        await slot.findByRole("button", {
+          name: "Collapse details for Review child result",
+        }),
+      );
+      changed = true;
+
+      await slot.behavior.emitRealtime("queue-invalidated", {
+        threadId: "child-1",
+        reason: "thread.idle",
+      });
+      await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(2));
+
+      const expanded = slot.getByRole("button", {
+        name: "Collapse details for Review child result",
+      });
+      const content = document.getElementById(
+        expanded.getAttribute("aria-controls")!,
+      )!;
+      expect(content.hidden).toBe(false);
+      expect(
+        slot.getByText(
+          changedField === "detail" ? "Updated detail" : "Updated summary",
+        ),
+      ).toBeTruthy();
+
+      fireEvent.click(expanded);
+      await slot.behavior.emitRealtime("queue-invalidated", {
+        threadId: "child-1",
+        reason: "thread.idle",
+      });
+      await waitFor(() => expect(slot.inspection.rpcCalls).toHaveLength(3));
+      expect(
+        slot.getByRole("button", {
+          name: "Expand details for Review child result",
+        }),
+      ).toBeTruthy();
+      expect(content.hidden).toBe(true);
+    },
+  );
 
   it("refetches after archive failure instead of restoring a stale snapshot", async () => {
     let rejectArchive!: (error: Error) => void;
