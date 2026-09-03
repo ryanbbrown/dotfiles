@@ -21,6 +21,7 @@ export interface ThreadFacts {
   archivedAt: number | null;
   deletedAt: number | null;
   latestCompletionSeq: number;
+  hasActiveNativeTerminal: boolean;
   updatedAt: number;
 }
 
@@ -62,7 +63,9 @@ function statusLabel(status: ThreadStatus): string {
 function row(
   facts: ThreadFacts,
   annotation: Annotation | null,
-  values: Pick<QueueRow, "section" | "state" | "detail">,
+  values: Pick<QueueRow, "section" | "state" | "detail"> & {
+    statusLabel?: string;
+  },
 ): QueueRow {
   const status = parseStatus(facts.status);
   return {
@@ -70,7 +73,7 @@ function row(
     title: facts.title,
     section: values.section,
     state: values.state,
-    statusLabel: statusLabel(status),
+    statusLabel: values.statusLabel ?? statusLabel(status),
     detail: values.detail,
     summaryMarkdown: annotation?.summaryMarkdown ?? null,
     userManaged: annotation?.userManaged ?? false,
@@ -107,6 +110,14 @@ export function projectThread(
       section: "in_progress",
       state: "running",
       detail: annotation?.summaryMarkdown ?? "Work is in progress",
+    });
+  }
+  if (facts.hasActiveNativeTerminal) {
+    return row(facts, annotation, {
+      section: "in_progress",
+      state: "running",
+      statusLabel: "Active",
+      detail: annotation?.summaryMarkdown ?? "Native terminal is active",
     });
   }
   if (annotation?.userManaged === true) {

@@ -16,6 +16,7 @@ function facts(overrides: Partial<ThreadFacts> = {}): ThreadFacts {
     archivedAt: null,
     deletedAt: null,
     latestCompletionSeq: 0,
+    hasActiveNativeTerminal: false,
     updatedAt: 1_000,
     ...overrides,
   };
@@ -73,7 +74,60 @@ describe("projectThread", () => {
     });
   });
 
-  it("makes every user-managed idle thread need a response", () => {
+  it("projects an idle thread with an active native terminal as in progress", () => {
+    expect(
+      projectThread(facts({ hasActiveNativeTerminal: true }), null),
+    ).toMatchObject({
+      section: "in_progress",
+      state: "running",
+      statusLabel: "Active",
+      detail: "Native terminal is active",
+    });
+    expect(
+      projectThread(
+        facts({ hasActiveNativeTerminal: true }),
+        annotation({ userManaged: true }),
+      ),
+    ).toMatchObject({ section: "in_progress", statusLabel: "Active" });
+  });
+
+  it.each([
+    [
+      { status: "error", hasActiveNativeTerminal: true },
+      "needs_response",
+      "error",
+      "Error",
+    ],
+    [
+      { queuedWork: "failed", hasActiveNativeTerminal: true },
+      "needs_response",
+      "queued_failed",
+      "Idle",
+    ],
+    [
+      { queuedWork: "waiting", hasActiveNativeTerminal: true },
+      "in_progress",
+      "waiting",
+      "Idle",
+    ],
+    [
+      { status: "active", hasActiveNativeTerminal: true },
+      "in_progress",
+      "running",
+      "Active",
+    ],
+  ] as const)(
+    "keeps existing failure, queued-work, and provider priority for %o",
+    (overrides, section, state, expectedStatusLabel) => {
+      expect(projectThread(facts(overrides), null)).toMatchObject({
+        section,
+        state,
+        statusLabel: expectedStatusLabel,
+      });
+    },
+  );
+
+  it("keeps every otherwise-idle user-managed thread in Needs your response", () => {
     expect(
       projectThread(
         facts({ latestCompletionSeq: 30 }),

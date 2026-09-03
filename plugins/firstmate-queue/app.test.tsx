@@ -224,11 +224,11 @@ describe("queue panel", () => {
             row({ title: "Terminal Plugin Launch" }),
             row({
               id: "child-2",
-              title: "Active implementation",
+              title: "Native terminal work",
               section: "in_progress",
               state: "running",
               statusLabel: "Active",
-              detail: "Work is in progress",
+              detail: "Native terminal is active",
             }),
           ]),
       },
@@ -237,13 +237,14 @@ describe("queue panel", () => {
     const needsRow = (await slot.findByText("Terminal Plugin Launch")).closest(
       "li",
     )!;
-    const progressRow = slot.getByText("Active implementation").closest("li")!;
+    const progressRow = slot.getByText("Native terminal work").closest("li")!;
     expect(needsRow.querySelector("time")?.textContent).toBe(
       "Updated 1/2/2026, 3:04:05 PM",
     );
     expect(needsRow.querySelector("time")?.className).toContain(
       "text-muted-foreground",
     );
+    expect(progressRow.textContent).toContain("Active");
     expect(progressRow.querySelector("time")).toBeNull();
   });
 

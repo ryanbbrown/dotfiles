@@ -13,7 +13,7 @@ type ThreadListEntry = Awaited<
 >[number];
 type ThreadResponse = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
 
-const COMPLETION_LOOKUP_CONCURRENCY = 8;
+const CHILD_LOOKUP_CONCURRENCY = 8;
 const PAGE_SIZE = 100;
 
 type ReviewOutcome =
@@ -109,7 +109,7 @@ export class QueueService {
     this.assertSurface(surfaceThreadId, managerThreadId);
     await this.requireLiveManager(managerThreadId);
     const children = await this.listCurrentChildren(managerThreadId);
-    const completionSeqs = await this.completionSequences(children);
+    const runtimeFacts = await this.childRuntimeFacts(children);
     const facts: ThreadFacts[] = children.map((thread, index) => ({
       id: thread.id,
       title: thread.title ?? thread.titleFallback ?? "Untitled thread",
@@ -117,7 +117,9 @@ export class QueueService {
       queuedWork: thread.queuedWork,
       archivedAt: thread.archivedAt,
       deletedAt: thread.deletedAt,
-      latestCompletionSeq: completionSeqs[index] ?? 0,
+      latestCompletionSeq: runtimeFacts[index]?.latestCompletionSeq ?? 0,
+      hasActiveNativeTerminal:
+        runtimeFacts[index]?.hasActiveNativeTerminal ?? false,
       updatedAt: thread.updatedAt,
     }));
     return {
@@ -267,10 +269,18 @@ export class QueueService {
     throw new Error(STALE_MANAGER_MESSAGE);
   }
 
-  private async completionSequences(
+  private async childRuntimeFacts(
     children: readonly ThreadListEntry[],
-  ): Promise<number[]> {
-    const sequences = new Array<number>(children.length);
+  ): Promise<
+    Array<{
+      latestCompletionSeq: number;
+      hasActiveNativeTerminal: boolean;
+    }>
+  > {
+    const results = new Array<{
+      latestCompletionSeq: number;
+      hasActiveNativeTerminal: boolean;
+    }>(children.length);
     let nextIndex = 0;
     const worker = async () => {
       for (;;) {
@@ -278,15 +288,23 @@ export class QueueService {
         nextIndex += 1;
         const child = children[index];
         if (child === undefined) return;
-        sequences[index] = await this.latestCompletionSeq(child.id);
+        const latestCompletionSeq = await this.latestCompletionSeq(child.id);
+        const terminalList = await this.bb.sdk.terminals.list({
+          scope: { kind: "thread", threadId: child.id },
+        });
+        results[index] = {
+          latestCompletionSeq,
+          hasActiveNativeTerminal: terminalList.sessions.some(
+            (session) =>
+              session.threadId === child.id &&
+              (session.status === "starting" || session.status === "running"),
+          ),
+        };
       }
     };
-    const workerCount = Math.min(
-      COMPLETION_LOOKUP_CONCURRENCY,
-      children.length,
-    );
+    const workerCount = Math.min(CHILD_LOOKUP_CONCURRENCY, children.length);
     await Promise.all(Array.from({ length: workerCount }, worker));
-    return sequences;
+    return results;
   }
 
   private assertSurface(surfaceThreadId: string, managerThreadId: string): void {

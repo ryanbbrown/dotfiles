@@ -160,6 +160,33 @@ export default async function plugin(bb: BbPluginApi) {
     return currentSettings.managerThreadId?.trim() || undefined;
   }
 
+  bb.background.service("terminal-change-listener", {
+    async start(signal) {
+      const unsubscribe = bb.sdk.subscribe({
+        event: "thread:changed",
+        callback: (event) => {
+          if (
+            event.id !== undefined &&
+            event.changes.includes("terminals-changed")
+          ) {
+            void publishIfCurrent(event.id, "terminals-changed");
+          }
+        },
+      });
+      try {
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+          } else {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          }
+        });
+      } finally {
+        unsubscribe();
+      }
+    },
+  });
+
   function registerThreadEvent(
     event: Extract<
       PluginThreadEventName,

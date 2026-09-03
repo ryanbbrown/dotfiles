@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   BbPluginApi,
   PluginAgentConfigurationContext,
@@ -17,6 +17,20 @@ type ThreadListEntry = Awaited<
 type ThreadEventRow = Awaited<
   ReturnType<BbPluginApi["sdk"]["threads"]["events"]["list"]>
 >[number];
+type TerminalSession = Awaited<
+  ReturnType<BbPluginApi["sdk"]["terminals"]["list"]>
+>["sessions"][number];
+type SdkSubscription = Parameters<BbPluginApi["sdk"]["subscribe"]>[0];
+type ThreadChangedSubscription = Extract<
+  SdkSubscription,
+  { event: "thread:changed" }
+>;
+
+function isThreadChangedSubscription(
+  subscription: SdkSubscription,
+): subscription is ThreadChangedSubscription {
+  return subscription.event === "thread:changed";
+}
 
 function listEntry(
   id: string,
@@ -68,6 +82,54 @@ function completion(threadId: string, seq: number): ThreadEventRow {
   };
 }
 
+function terminalSession(
+  id: string,
+  threadId: string,
+  status: TerminalSession["status"],
+): TerminalSession {
+  return {
+    id,
+    title: `Terminal ${id}`,
+    threadId,
+    environmentId: null,
+    hostId: "host-1",
+    initialCwd: "/work",
+    status,
+    exitCode: status === "exited" ? 0 : null,
+    closeReason: status === "exited" ? "process-exit" : null,
+    rows: 24,
+    cols: 80,
+    createdAt: 100,
+    updatedAt: 200,
+    lastUserInputAt: null,
+  };
+}
+
+function terminalChanges(): {
+  emit(threadId: string): void;
+  subscribe: BbPluginApi["sdk"]["subscribe"];
+} {
+  let callback: ThreadChangedSubscription["callback"] | null = null;
+  return {
+    emit(threadId) {
+      callback?.({
+        type: "changed",
+        entity: "thread",
+        id: threadId,
+        changes: ["terminals-changed"],
+      });
+    },
+    subscribe(subscription) {
+      if (isThreadChangedSubscription(subscription)) {
+        callback = subscription.callback;
+      }
+      return () => {
+        if (isThreadChangedSubscription(subscription)) callback = null;
+      };
+    },
+  };
+}
+
 function toolResult(output: unknown): Record<string, unknown> {
   return JSON.parse(String(output)) as Record<string, unknown>;
 }
@@ -109,6 +171,8 @@ async function configuredHost(options: {
   get?: BbPluginApi["sdk"]["threads"]["get"];
   list?: (args: Parameters<BbPluginApi["sdk"]["threads"]["list"]>[0]) => Promise<ThreadListEntry[]>;
   events?: (args: Parameters<BbPluginApi["sdk"]["threads"]["events"]["list"]>[0]) => Promise<ThreadEventRow[]>;
+  terminals?: BbPluginApi["sdk"]["terminals"]["list"];
+  subscribe?: BbPluginApi["sdk"]["subscribe"];
   archive?: BbPluginApi["sdk"]["threads"]["archive"];
 } = {}) {
   const host = createFakePluginHost({
@@ -118,6 +182,7 @@ async function configuredHost(options: {
       agentWritesEnabled: options.writes ?? false,
     },
     sdk: {
+      subscribe: options.subscribe ?? (() => () => {}),
       threads: {
         get:
           options.get ??
@@ -137,6 +202,9 @@ async function configuredHost(options: {
           options.archive ??
           (async ({ threadId }) => ({ archivedThreadIds: [threadId], ok: true })),
       },
+      terminals: {
+        list: options.terminals ?? (async () => ({ sessions: [] })),
+      },
     },
   });
   await plugin(host.bb);
@@ -144,6 +212,28 @@ async function configuredHost(options: {
 }
 
 describe("queue discovery and snapshots", () => {
+  it("invalidates the queue for public native-terminal change signals", async () => {
+    const changes = terminalChanges();
+    const host = await configuredHost({ subscribe: changes.subscribe });
+    const service = host.harness.behavior.runService(
+      "terminal-change-listener",
+    );
+    await vi.waitFor(() => {
+      expect(host.harness.inspection.sdk.callsTo("subscribe")).toHaveLength(1);
+    });
+
+    changes.emit("child-1");
+
+    await vi.waitFor(() => {
+      expect(host.harness.inspection.realtimeSignals).toContainEqual({
+        channel: "queue-invalidated",
+        payload: { threadId: "child-1", reason: "terminals-changed" },
+      });
+    });
+    service.controller.abort();
+    await service.done;
+  });
+
   it("pages hidden cross-project direct children without a project filter and excludes grandchildren", async () => {
     const direct = Array.from({ length: 101 }, (_, index) =>
       listEntry(`child-${index}`, {
@@ -189,6 +279,85 @@ describe("queue discovery and snapshots", () => {
           offset: 100,
         },
       ],
+    ]);
+  });
+
+  it.each(["starting", "running"] as const)(
+    "projects an idle child with a %s scoped native terminal as In progress",
+    async (terminalStatus) => {
+      const host = await configuredHost({
+        list: async () => [listEntry("terminal-child", { status: "idle" })],
+        terminals: async () => ({
+          sessions: [
+            terminalSession("terminal-1", "terminal-child", terminalStatus),
+          ],
+        }),
+      });
+
+      const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+        surfaceThreadId: "manager-1",
+      })) as {
+        rows: Array<{
+          id: string;
+          section: string;
+          state: string;
+          statusLabel: string;
+          detail: string;
+        }>;
+      };
+
+      expect(snapshot.rows).toEqual([
+        expect.objectContaining({
+          id: "terminal-child",
+          section: "in_progress",
+          state: "running",
+          statusLabel: "Active",
+          detail: "Native terminal is active",
+        }),
+      ]);
+      expect(host.harness.inspection.sdk.callsTo("terminals.list")).toEqual([
+        [{ scope: { kind: "thread", threadId: "terminal-child" } }],
+      ]);
+    },
+  );
+
+  it("does not treat disconnected or exited native terminals as active", async () => {
+    const host = await configuredHost({
+      list: async () => [
+        listEntry("disconnected-child", { status: "idle" }),
+        listEntry("exited-child", { status: "idle" }),
+      ],
+      terminals: async ({ scope }) => {
+        if (scope.kind !== "thread") throw new Error("Expected thread scope");
+        return {
+          sessions: [
+            terminalSession(
+              `terminal-${scope.threadId}`,
+              scope.threadId,
+              scope.threadId === "disconnected-child"
+                ? "disconnected"
+                : "exited",
+            ),
+          ],
+        };
+      },
+    });
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as {
+      rows: Array<{
+        id: string;
+        section: string;
+        statusLabel: string;
+      }>;
+    };
+
+    expect(
+      snapshot.rows.map((row) => [row.id, row.section, row.statusLabel]),
+    ).toEqual([
+      ["disconnected-child", "needs_response", "Idle"],
+      ["exited-child", "needs_response", "Idle"],
     ]);
   });
 
@@ -245,13 +414,13 @@ describe("queue discovery and snapshots", () => {
     ]);
   });
 
-  it("bounds completion-history lookups while preserving each row's result", async () => {
+  it("bounds per-child completion and terminal lookups while preserving results", async () => {
     const children = Array.from({ length: 20 }, (_, index) =>
       listEntry(`child-${index}`),
     );
-    let active = 0;
-    let maximumActive = 0;
-    let started = 0;
+    let activeTerminalLookups = 0;
+    let maximumActiveTerminalLookups = 0;
+    let startedTerminalLookups = 0;
     let release!: () => void;
     let workersStarted!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -262,14 +431,20 @@ describe("queue discovery and snapshots", () => {
     });
     const host = await configuredHost({
       list: async () => children,
-      events: async ({ threadId }) => {
-        active += 1;
-        started += 1;
-        maximumActive = Math.max(maximumActive, active);
-        if (started === 8) workersStarted();
+      events: async ({ threadId }) => [
+        completion(threadId, Number(threadId.split("-")[1]) + 1),
+      ],
+      terminals: async () => {
+        activeTerminalLookups += 1;
+        startedTerminalLookups += 1;
+        maximumActiveTerminalLookups = Math.max(
+          maximumActiveTerminalLookups,
+          activeTerminalLookups,
+        );
+        if (startedTerminalLookups === 8) workersStarted();
         await gate;
-        active -= 1;
-        return [completion(threadId, Number(threadId.split("-")[1]) + 1)];
+        activeTerminalLookups -= 1;
+        return { sessions: [] };
       },
     });
 
@@ -277,14 +452,20 @@ describe("queue discovery and snapshots", () => {
       surfaceThreadId: "manager-1",
     });
     await firstWave;
-    const firstWaveSize = started;
+    const firstWaveSize = startedTerminalLookups;
     release();
     const snapshot = (await loading) as {
       rows: Array<{ id: string; latestCompletionSeq: number }>;
     };
 
     expect(firstWaveSize).toBe(8);
-    expect(maximumActive).toBeLessThanOrEqual(8);
+    expect(maximumActiveTerminalLookups).toBeLessThanOrEqual(8);
+    expect(
+      host.harness.inspection.sdk.callsTo("threads.events.list"),
+    ).toHaveLength(20);
+    expect(host.harness.inspection.sdk.callsTo("terminals.list")).toHaveLength(
+      20,
+    );
     expect(snapshot.rows).toHaveLength(20);
     expect(snapshot.rows.find((row) => row.id === "child-0")).toMatchObject({
       latestCompletionSeq: 1,
