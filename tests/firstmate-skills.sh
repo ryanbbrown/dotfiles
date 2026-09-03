@@ -82,16 +82,9 @@ reset_state() {
   printf '%s\n' "$old_id" > "$state/child_c_parent"
   : > "$state/pin_calls"
   : > "$state/unpin_calls"
-}
-
-supply_local_firstmate_rules() {
-  local workspace="$1"
-  mkdir -p "$workspace/.bb"
-  cat > "$workspace/.bb/AGENTS.md" <<'RULES'
-# Firstmate
-
-Read FIRSTMATE-QUEUE.md at the start of every turn.
-RULES
+  printf '%s\n' "$old_id" > "$state/manager_thread"
+  printf '%s\n' false > "$state/manager_writes"
+  : > "$state/queue_send_calls"
 }
 
 run_rotation() {
@@ -103,7 +96,7 @@ run_rotation() {
 
 trap cleanup EXIT
 
-for skill in update-bb rotate-firstmate firstmate; do
+for skill in update-bb rotate-firstmate firstmate-queue; do
   skill_file="$repo_root/skills/$skill/SKILL.md"
   [ -f "$skill_file" ] || fail "missing $skill_file"
   assert_file_contains "$skill_file" "name: $skill"
@@ -118,7 +111,8 @@ done
 
 [ ! -e "$repo_root/skills/sync-bb-personal" ] || fail "the superseded sync-bb-personal skill still exists"
 assert_file_contains "$repo_root/skills/rotate-firstmate/SKILL.md" '~/.agents/skills/rotate-firstmate/scripts/rotate-firstmate.sh'
-assert_file_contains "$repo_root/skills/firstmate/SKILL.md" 'Never use a relative queue path'
+assert_file_contains "$repo_root/skills/rotate-firstmate/SKILL.md" '`firstmate-queue` skill'
+[ ! -e "$repo_root/skills/firstmate" ] || fail "the superseded firstmate skill still exists"
 assert_file_contains "$repo_root/home/.config/git/ignore" 'FIRSTMATE-QUEUE.md'
 
 git_test="$test_root/git-ignore"
@@ -130,7 +124,6 @@ git -C "$git_test" -c core.excludesFile="$repo_root/home/.config/git/ignore" che
 
 local_workspace="$test_root/local workspace"
 reset_state success true null "$local_workspace"
-supply_local_firstmate_rules "$local_workspace"
 run_rotation > "$test_root/pinned-root.out"
 assert_file_contains "$test_root/pinned-root.out" "Firstmate rotation succeeded."
 assert_file_contains "$test_root/pinned-root.out" "Transferred unarchived direct children: 2"
@@ -150,31 +143,32 @@ assert_arg_value "$state/spawn_args" --title 'Deck Captain'
 assert_arg_value "$state/spawn_args" --section sec_review
 assert_arg_value "$state/spawn_args" --visibility hidden
 assert_no_arg "$state/spawn_args" --parent-thread
-assert_file_contains "$state/spawn_prompt" "$local_workspace/.bb/AGENTS.md"
-assert_file_contains "$state/spawn_prompt" "$local_workspace/FIRSTMATE-QUEUE.md"
-assert_file_lacks "$state/spawn_prompt" 'installed `firstmate` skill'
+assert_file_contains "$state/spawn_prompt" 'installed `firstmate-queue` skill'
+assert_file_contains "$state/spawn_prompt" '~/.agents/skills/firstmate-queue/SKILL.md'
+assert_file_lacks "$state/spawn_prompt" 'FIRSTMATE-QUEUE.md'
+assert_file_lacks "$state/spawn_prompt" '.bb/AGENTS.md'
 [ "$(<"$state/pin_calls")" = "$new_id" ] || fail "pinned rotation did not pin only the replacement"
 [ "$(<"$state/unpin_calls")" = "$old_id" ] || fail "pinned rotation did not unpin only the old thread"
+assert_arg_value "$state/spawn_args" --send-at 1h
+[ "$(<"$state/manager_thread")" = "$new_id" ] || fail "replacement was not bound as the Firstmate Queue manager"
+[ "$(<"$state/manager_writes")" = true ] || fail "Firstmate Queue agent writes were not enabled"
+[ "$(<"$state/queue_send_calls")" = "$new_id qmsg_first" ] || fail "the replacement's first message was not sent"
 
 dynamic_workspace="$test_root/dynamic workspace"
-decoy_workspace="$test_root/other workspace"
-mkdir -p "$decoy_workspace"
-printf 'do not access\n' > "$decoy_workspace/FIRSTMATE-QUEUE.md"
 reset_state success false null "$dynamic_workspace"
 printf '%s\n' null > "$state/old_section"
 printf '%s\n' visible > "$state/old_visibility"
+printf '%s\n' '' > "$state/manager_thread"
 run_rotation > "$test_root/unpinned-root.out"
+[ "$(<"$state/manager_thread")" = "$new_id" ] || fail "replacement was not bound when no manager was configured"
 [ "$(<"$state/old_pinned")" = false ] || fail "unpinned old root became pinned"
 [ "$(<"$state/new_pinned")" = false ] || fail "unpinned replacement became pinned"
 [ ! -s "$state/pin_calls" ] || fail "unpinned rotation called pin"
 [ ! -s "$state/unpin_calls" ] || fail "unpinned rotation called unpin"
 assert_no_arg "$state/spawn_args" --parent-thread
 assert_no_arg "$state/spawn_args" --section
-assert_file_contains "$state/spawn_prompt" 'installed `firstmate` skill'
-assert_file_contains "$state/spawn_prompt" "absolute path \`$dynamic_workspace\`"
-assert_file_contains "$state/spawn_prompt" "$dynamic_workspace/FIRSTMATE-QUEUE.md"
-assert_file_lacks "$state/spawn_prompt" "$decoy_workspace"
-assert_file_lacks "$state/spawn_prompt" 'Read .bb/AGENTS.md'
+assert_file_contains "$state/spawn_prompt" 'installed `firstmate-queue` skill'
+assert_file_lacks "$state/spawn_prompt" "$dynamic_workspace"
 
 parented_workspace="$test_root/parented"
 reset_state success false thr_parent "$parented_workspace"
@@ -185,7 +179,6 @@ assert_arg_value "$state/spawn_args" --title 'Child Firstmate'
 
 rollback_workspace="$test_root/rollback"
 reset_state fail-child-c true null "$rollback_workspace"
-supply_local_firstmate_rules "$rollback_workspace"
 if run_rotation > "$test_root/rollback.out" 2>&1; then
   fail "rotation succeeded after a child move failed"
 fi
@@ -195,18 +188,21 @@ assert_file_contains "$test_root/rollback.out" "Rollback complete."
 [ "$(<"$state/child_a_parent")" = "$old_id" ] || fail "rollback did not return moved child"
 [ "$(<"$state/child_b_parent")" = "$old_id" ] || fail "rollback changed archived child"
 [ "$(<"$state/child_c_parent")" = "$old_id" ] || fail "failed child changed parent"
+[ "$(<"$state/manager_thread")" = "$old_id" ] || fail "rollback did not restore the Firstmate Queue manager"
+[ "$(<"$state/manager_writes")" = false ] || fail "rollback did not restore Firstmate Queue agent writes"
 
 reset_state fail-child-c false null "$rollback_workspace"
+printf '%s\n' '' > "$state/manager_thread"
 if run_rotation > "$test_root/unpinned-rollback.out" 2>&1; then
   fail "unpinned rotation succeeded after a child move failed"
 fi
+[ -z "$(<"$state/manager_thread")" ] || fail "rollback did not unset the Firstmate Queue manager"
 [ "$(<"$state/old_pinned")" = false ] || fail "unpinned rollback pinned the old thread"
 [ "$(<"$state/new_pinned")" = false ] || fail "unpinned rollback pinned the replacement"
 [ ! -s "$state/pin_calls" ] || fail "unpinned rollback called pin"
 [ ! -s "$state/unpin_calls" ] || fail "unpinned rollback called unpin"
 
 reset_state fail-child-c-rollback-a true null "$rollback_workspace"
-supply_local_firstmate_rules "$rollback_workspace"
 if run_rotation > "$test_root/incomplete.out" 2>&1; then
   fail "rotation succeeded after an incomplete rollback"
 fi

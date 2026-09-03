@@ -8,6 +8,10 @@ state_dir=""
 completed=false
 rollback_started=false
 old_was_pinned=false
+plugin_id=firstmate-queue
+manager_rebound=false
+previous_manager=""
+previous_writes=false
 
 cleanup() {
   [ -z "$state_dir" ] || rm -rf "$state_dir"
@@ -80,11 +84,40 @@ ensure_unpinned() {
   }
 }
 
+plugin_values_json() {
+  "$bb_bin" plugin config "$plugin_id" --json | jq -ce '.values | select(type == "object")'
+}
+
+manager_is() {
+  local thread_id="$1"
+  plugin_values_json | jq -e --arg id "$thread_id" '.managerThreadId == $id and .agentWritesEnabled == true' >/dev/null
+}
+
+bind_manager() {
+  local thread_id="$1"
+  "$bb_bin" plugin config "$plugin_id" set managerThreadId "$thread_id" --json >/dev/null &&
+    "$bb_bin" plugin config "$plugin_id" set agentWritesEnabled true --json >/dev/null &&
+    manager_is "$thread_id"
+}
+
+restore_manager() {
+  if [ -n "$previous_manager" ]; then
+    "$bb_bin" plugin config "$plugin_id" set managerThreadId "$previous_manager" --json >/dev/null || return 1
+  else
+    "$bb_bin" plugin config "$plugin_id" unset managerThreadId --json >/dev/null || return 1
+  fi
+  "$bb_bin" plugin config "$plugin_id" set agentWritesEnabled "$previous_writes" --json >/dev/null || return 1
+  plugin_values_json | jq -e --arg id "$previous_manager" --argjson writes "$previous_writes" '
+    ((.managerThreadId // "") == $id) and ((.agentWritesEnabled // false) == $writes)
+  ' >/dev/null
+}
+
 rollback() {
   local child_id
   local rollback_incomplete=false
   local old_pin_restored=false
   local replacement_unpinned=false
+  local manager_restored=true
 
   rollback_started=true
   : > "$state_dir/rollback-child-failures"
@@ -123,8 +156,13 @@ rollback() {
     fi
   fi
 
+  if [ "$manager_rebound" = true ] && ! restore_manager; then
+    manager_restored=false
+    rollback_incomplete=true
+  fi
+
   if [ "$rollback_incomplete" = false ]; then
-    echo "Rollback complete. Old thread $old_id and replacement thread $new_id have their safe pre-rotation pin state." >&2
+    echo "Rollback complete. Old thread $old_id and replacement thread $new_id have their safe pre-rotation pin state, and the Firstmate Queue manager is restored." >&2
     return
   fi
 
@@ -138,6 +176,7 @@ rollback() {
   fi
   [ "$old_pin_restored" = true ] || echo "Old thread pin state could not be restored: $old_id" >&2
   [ "$replacement_unpinned" = true ] || echo "Replacement thread unpin could not be verified: $new_id" >&2
+  [ "$manager_restored" = true ] || echo "Firstmate Queue manager could not be restored to: ${previous_manager:-unset}" >&2
   echo "Manual recovery is required for the exact IDs above." >&2
 }
 
@@ -150,13 +189,6 @@ on_exit() {
   fi
   cleanup
   exit "$status"
-}
-
-workspace_supplies_firstmate() {
-  local agents_path="$1"
-  [ -f "$agents_path" ] || return 1
-  grep -Eq '^#{1,6}[[:space:]]+Firstmate[[:space:]]*$' "$agents_path" &&
-    grep -F 'FIRSTMATE-QUEUE.md' "$agents_path" >/dev/null
 }
 
 trap on_exit EXIT
@@ -180,8 +212,6 @@ title="$(printf '%s' "$old_json" | jq -er '.thread.title | select(type == "strin
 parent_id="$(printf '%s' "$old_json" | jq -r '.thread.parentThreadId // empty')"
 section_id="$(printf '%s' "$old_json" | jq -r '.thread.sectionId // empty')"
 visibility="$(printf '%s' "$old_json" | jq -r '.thread.visibility // empty')"
-workspace_root="$(printf '%s' "$old_json" | jq -er '.environment.path | select(type == "string")')" ||
-  die "current thread workspace root is missing"
 
 valid_id "$project_id" proj || die "current thread project is malformed"
 valid_id "$environment_id" env || die "current thread environment is malformed"
@@ -193,11 +223,6 @@ case "$visibility" in
   ""|visible|hidden) ;;
   *) die "current thread visibility is malformed" ;;
 esac
-valid_text "$workspace_root" || die "current thread workspace root is malformed"
-[[ "$workspace_root" == /* && "$workspace_root" != "/" ]] || die "current thread workspace root must be absolute"
-workspace_root="${workspace_root%/}"
-queue_path="$workspace_root/FIRSTMATE-QUEUE.md"
-agents_path="$workspace_root/.bb/AGENTS.md"
 
 if printf '%s' "$old_json" | jq -e '.thread.pinnedAt != null' >/dev/null; then
   old_was_pinned=true
@@ -227,16 +252,15 @@ case "$service_tier" in
   *) die "current service tier is malformed" ;;
 esac
 
+previous_values="$(plugin_values_json)" || die "cannot read the Firstmate Queue plugin settings"
+previous_manager="$(printf '%s' "$previous_values" | jq -r '.managerThreadId // empty')"
+previous_writes="$(printf '%s' "$previous_values" | jq -r '.agentWritesEnabled // false')"
+
 state_dir="$(mktemp -d "${TMPDIR:-/tmp}/rotate-firstmate.XXXXXX")"
 : > "$state_dir/moved"
 
-if workspace_supplies_firstmate "$agents_path"; then
-  printf -v prompt 'You replace thread %s as Firstmate for the same workspace setup. Read `%s` and `%s` now; they are the sources of truth. Use only that exact absolute queue path. Do not invoke the firstmate skill, search for another queue, or copy the old transcript. Do not start or delegate queue work in this turn. Existing direct children are being transferred to you. Confirm that you are ready, report any missing source-of-truth file, and give the user a clickable Markdown link to `%s`.' \
-    "$old_id" "$agents_path" "$queue_path" "$queue_path"
-else
-  printf -v prompt 'You replace thread %s as Firstmate for the same workspace setup. Explicitly use the installed `firstmate` skill now. Bind `<workspace-root>` in that skill to the absolute path `%s`; its only queue is `%s`. Do not use a relative queue path, search for another queue, or copy the old transcript. Do not start or delegate queue work in this turn. Existing direct children are being transferred to you. Confirm that you are ready, report any missing source-of-truth file, and give the user a clickable Markdown link to `%s`.' \
-    "$old_id" "$workspace_root" "$queue_path" "$queue_path"
-fi
+printf -v prompt 'You replace thread %s as Firstmate. You are already bound as the Firstmate Queue manager. Use the installed `firstmate-queue` skill now: read `~/.agents/skills/firstmate-queue/SKILL.md` and follow it, including opening the queue panel. Do not copy the old transcript. Do not start or delegate queue work in this turn. Existing direct children are being transferred to you. Confirm that you are ready.' \
+  "$old_id"
 
 spawn_args=(
   thread spawn
@@ -249,6 +273,7 @@ spawn_args=(
   --permission-mode "$permission_mode"
   --title "$title"
   --prompt "$prompt"
+  --send-at 1h
   --json
 )
 [ -z "$parent_id" ] || spawn_args+=(--parent-thread "$parent_id")
@@ -258,6 +283,16 @@ spawn_args=(
 spawn_json="$("$bb_bin" "${spawn_args[@]}")" || die "could not create the replacement thread"
 new_id="$(printf '%s' "$spawn_json" | jq -er '.thread.id // .id | select(type == "string" and test("^thr_[[:alnum:]]+$"))')" ||
   die "bb created a replacement but did not return a valid thread ID"
+
+# The first message is scheduled, not sent, so the manager binding is in place before the first session starts.
+manager_rebound=true
+bind_manager "$new_id" || die "could not bind the Firstmate Queue manager to $new_id"
+
+queued_json="$("$bb_bin" thread queue list "$new_id" --json)" || die "cannot list the queued first message of $new_id"
+message_id="$(printf '%s' "$queued_json" | jq -er 'select(type == "array" and length == 1) | .[0].id | select(type == "string")')" ||
+  die "replacement thread $new_id does not have exactly one queued first message"
+"$bb_bin" thread queue send "$new_id" "$message_id" --json >/dev/null ||
+  die "could not send the first message of $new_id"
 
 "$bb_bin" thread wait "$new_id" --status idle --json >/dev/null ||
   die "replacement thread $new_id did not become ready"

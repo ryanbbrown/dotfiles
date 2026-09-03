@@ -34,7 +34,7 @@ Forks: D<n>: <the other choice a reasonable agent might have made, one line>.
 Not authorized: <one line, when the plan names one>.
 ```
 
-With `brief`, also write `.reviews/briefs/<slug>.md`, post it in the thread, and wait for approval before any panel or implementation. The brief is for the user, who reads it to catch a wrong direction before it is built. It contains:
+With `brief`, also write `.reviews/briefs/<slug>.md`, post a short message with a Markdown link to that file (not its contents), and wait for approval before any panel or implementation. The brief is for the user, who reads it to catch a wrong direction before it is built. It contains:
 
 - Result shape: every responsibility the task touches, including the ones that stay where they are, with the language, process, or layer each one runs in after the change.
 - A decision entry for each plan decision that the user would change the plan over: where a responsibility lives or what runs it, an interface, data format, or storage that other code depends on, a removed or replaced behaviour, a number such as a limit, default, or budget, and every fork named in the summary. Leave out naming, file layout inside one module, and test structure. The test: if the user disagreed, would the plan change?

@@ -140,6 +140,7 @@ record_spawn() {
       --service-tier) set_value spawn_tier "$arg" ;;
       --title) set_value spawn_title "$arg" ;;
       --prompt) set_value spawn_prompt "$arg" ;;
+      --send-at) set_value spawn_send_at "$arg" ;;
       --parent-thread) set_value spawn_parent "$arg" ;;
       --section) set_value spawn_section "$arg" ;;
       --visibility) set_value spawn_visibility "$arg" ;;
@@ -167,7 +168,49 @@ case "$command_name" in
     printf '{"thread":{"id":"%s"}}\n' "$new_id"
     ;;
   "thread wait")
+    if [ "$3" = "$new_id" ] && [ ! -s "$state/queue_send_calls" ]; then
+      echo "waited for the replacement before sending its first message" >&2
+      exit 2
+    fi
     printf '{"status":"idle"}\n'
+    ;;
+  "thread queue")
+    case "$3" in
+      list)
+        [ "$4" = "$new_id" ] || exit 2
+        printf '[{"id":"qmsg_first"}]\n'
+        ;;
+      send)
+        { [ "$4" = "$new_id" ] && [ "$5" = qmsg_first ]; } || exit 2
+        printf '%s\n' "$4 $5" >> "$state/queue_send_calls"
+        printf '{"ok":true}\n'
+        ;;
+      *) exit 2 ;;
+    esac
+    ;;
+  "plugin config")
+    [ "$3" = firstmate-queue ] || exit 2
+    case "${4:-}" in
+      --json)
+        jq -cn --arg manager "$(value manager_thread)" --argjson writes "$(value manager_writes)" '
+          {ok: true, values: {managerThreadId: (if $manager == "" then null else $manager end), agentWritesEnabled: $writes}}
+        '
+        ;;
+      set)
+        case "$5" in
+          managerThreadId) set_value manager_thread "$6" ;;
+          agentWritesEnabled) set_value manager_writes "$6" ;;
+          *) exit 2 ;;
+        esac
+        printf '{"ok":true}\n'
+        ;;
+      unset)
+        [ "$5" = managerThreadId ] || exit 2
+        set_value manager_thread ""
+        printf '{"ok":true}\n'
+        ;;
+      *) exit 2 ;;
+    esac
     ;;
   "thread pin")
     printf '%s\n' "$3" >> "$state/pin_calls"

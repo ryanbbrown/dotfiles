@@ -17,6 +17,7 @@
 
 - Always talk in ASD-STE100 Simplified Technical English.
 - Always talk to me like I have ADHD.
+- Please remove all mannered prose.
 
 ## Comments and documentation
 
@@ -27,7 +28,7 @@
 ## BB
 
 - You run inside BB. Put user-facing content only in the final assistant response; use intermediate messages only for operational coordination.
-- Treat BB as local-machine-only by default. Evaluate bb connect or remote-client behavior only when the user explicitly says they are using bb connect.
+- Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - Use BB child threads instead of in-process subagents. Spawn them with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model openai-codex/gpt-5.6-sol --reasoning-level high`; use `--new-environment worktree` when a task needs isolated edits.
 - Keep each child brief focused on the objective, relevant constraints, expected result, and validation. Return control after spawning; BB reports child blockers and completion to the parent.
 - Each parent owns cleanup of the immediate BB children it spawns; this applies recursively to children that spawn children.
@@ -40,5 +41,5 @@
 
 - Store global coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
 - Store project-specific agent configuration, including MCP servers, in the project that uses it.
-- Projects should use `.env` for API keys and sensitive values. If it does not exist, run `doppler-to-env --help`.
-- When you encounter small workflow friction—a failed tool call, unclear setup, flaky command, stale cache, misleading error, or unexpected gotcha—log it immediately with `papercut "what you were doing; what got in the way"`. Log non-blocking friction too; repeated papercuts reveal where the workflow needs improvement.
+- Never use the `secrets` skill before checking the project `.env` and Doppler with `doppler-to-env`. Use secure entry only when the required key is confirmed absent.
+- Log friction with `papercut "what you were doing; what got in the way"` only when it comes from the shared development workflow: BB and its CLI or plugins, dotfiles skills and commands, hooks, sandboxes, or provider tooling. Test: would this happen in any repository? Never log a problem that belongs to one project or its code; project instructions are updated later from thread analysis.
