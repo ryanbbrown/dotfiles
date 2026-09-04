@@ -45,7 +45,7 @@ When a direct child goes idle:
 2. Check the claims the user's decision depends on.
 3. Call `firstmate_queue_update` with `childThreadId`, `summaryMarkdown`, and `disposition`:
    - `needs_response` when the user must decide, approve, answer, or act on a result. Give only the evidence that changes the decision, then ask one specific question. Target 300 words and never exceed 500.
-   - `done` when no user action is needed and the workstream may need follow-up. Use one to three sentences and at most 100 words.
+   - `done` when no user action is needed. Use one to three sentences and at most 100 words, enough for the user to decide whether to archive.
 4. Write the summary as current state. Keep long reports and artifacts in the child's chat; the row title links there.
 
 A child's proposal, plan, or result does not authorize its next action. The user authorizes it from the row or in chat.
@@ -60,6 +60,4 @@ The user can reply to a child from its row. The message goes directly to the chi
 
 ## Cleanup
 
-- Review direct children when one finishes and before spawning when more than six are unarchived.
-- Keep a child while work is active, a decision is pending, or follow-up is likely.
-- When no further work is likely, use AskUserQuestion with the thread ID and reason. Archive only after approval. The user can also archive from the row.
+The user archives direct children from their rows. Do not archive a direct child and do not ask to. This replaces the global rule that a parent archives its safe idle leaves.
