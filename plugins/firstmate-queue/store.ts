@@ -81,6 +81,47 @@ export class AnnotationStore {
     return this.get(threadId)!;
   }
 
+  restoreUserManagedIfUnchanged(
+    threadId: string,
+    written: Annotation,
+    previous: Annotation | null,
+  ): boolean {
+    let restored = false;
+    this.immediate(() => {
+      const result = this.db
+        .prepare(
+          `UPDATE queue_annotations SET
+             user_managed = ?,
+             mode_updated_at = ?
+           WHERE thread_id = ?
+             AND user_managed = ?
+             AND mode_updated_at IS ?`,
+        )
+        .run(
+          previous?.userManaged === true ? 1 : 0,
+          previous?.modeUpdatedAt ?? null,
+          threadId,
+          written.userManaged ? 1 : 0,
+          written.modeUpdatedAt,
+        );
+      this.db
+        .prepare(
+          `DELETE FROM queue_annotations
+           WHERE thread_id = ?
+             AND summary_markdown IS NULL
+             AND idle_disposition IS NULL
+             AND reviewed_through_seq = 0
+             AND user_managed = 0
+             AND summary_updated_at IS NULL
+             AND disposition_updated_at IS NULL
+             AND mode_updated_at IS NULL`,
+        )
+        .run(threadId);
+      restored = result.changes === 1;
+    });
+    return restored;
+  }
+
   startReplyCycle(threadId: string): void {
     this.immediate(() => {
       this.db

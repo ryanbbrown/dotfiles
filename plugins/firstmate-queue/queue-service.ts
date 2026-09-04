@@ -143,11 +143,39 @@ export class QueueService {
     userManaged: boolean;
   }): Promise<{ childThreadId: string; userManaged: boolean }> {
     const managerThreadId = await this.authorizedManager(input.surfaceThreadId);
-    await this.requireCurrentChild(managerThreadId, input.childThreadId);
+    const child = await this.requireCurrentChild(
+      managerThreadId,
+      input.childThreadId,
+    );
+    const previous = this.store.get(input.childThreadId);
+    if ((previous?.userManaged ?? false) === input.userManaged) {
+      return {
+        childThreadId: input.childThreadId,
+        userManaged: input.userManaged,
+      };
+    }
     const annotation = this.store.setUserManaged(
       input.childThreadId,
       input.userManaged,
     );
+    const title = child.title ?? child.titleFallback ?? "Untitled thread";
+    const notice = input.userManaged
+      ? `[firstmate-queue] ${child.id} (${title}) is now user-managed. Skip review.`
+      : `[firstmate-queue] ${child.id} (${title}) is no longer user-managed. Resume normal review.`;
+    try {
+      await this.bb.sdk.threads.send({
+        threadId: managerThreadId,
+        mode: "auto",
+        input: [{ type: "text", text: notice, mentions: [] }],
+      });
+    } catch (error) {
+      this.store.restoreUserManagedIfUnchanged(
+        input.childThreadId,
+        annotation,
+        previous,
+      );
+      throw error;
+    }
     this.publish(input.childThreadId, "mode-changed");
     return {
       childThreadId: input.childThreadId,

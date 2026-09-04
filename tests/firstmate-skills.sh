@@ -112,6 +112,11 @@ done
 [ ! -e "$repo_root/skills/sync-bb-personal" ] || fail "the superseded sync-bb-personal skill still exists"
 assert_file_contains "$repo_root/skills/rotate-firstmate/SKILL.md" '~/.agents/skills/rotate-firstmate/scripts/rotate-firstmate.sh'
 assert_file_contains "$repo_root/skills/rotate-firstmate/SKILL.md" '`firstmate-queue` skill'
+firstmate_queue_skill="$repo_root/skills/firstmate-queue/SKILL.md"
+assert_file_contains "$firstmate_queue_skill" '[firstmate-queue] <id> (<title>) is now user-managed. Skip review.'
+assert_file_contains "$firstmate_queue_skill" '[firstmate-queue] <id> (<title>) is no longer user-managed. Resume normal review.'
+assert_file_contains "$firstmate_queue_skill" 'Track current ownership by child thread ID from the latest matching notice'
+assert_file_contains "$firstmate_queue_skill" 'skip its result review, `firstmate_queue_update`, and unsolicited follow-up'
 [ ! -e "$repo_root/skills/firstmate" ] || fail "the superseded firstmate skill still exists"
 assert_file_contains "$repo_root/home/.config/git/ignore" 'FIRSTMATE-QUEUE.md'
 

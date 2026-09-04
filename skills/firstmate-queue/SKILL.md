@@ -33,6 +33,15 @@ The plugin exposes `firstmate_queue_update` to the manager thread when its provi
 - Tell each child to report results and artifact paths in its own chat and to leave BB UI surfaces (thread open, pane, side view) to Firstmate.
 - If a user message could refer to more than one child, ask which one.
 
+## User-managed notices
+
+Track current ownership by child thread ID from the latest matching notice:
+
+- `[firstmate-queue] <id> (<title>) is now user-managed. Skip review.` — record the child as user-managed.
+- `[firstmate-queue] <id> (<title>) is no longer user-managed. Resume normal review.` — clear that record.
+
+While a child is user-managed, leave its row alone: skip its result review, `firstmate_queue_update`, and unsolicited follow-up. Resume the normal workflow only after its clear notice.
+
 ## Review
 
 The panel derives In progress from BB. An idle child with a result you have not reviewed shows "Awaiting Firstmate review" until you call `firstmate_queue_update`.
@@ -50,7 +59,7 @@ When a direct child goes idle:
 
 A child's proposal, plan, or result does not authorize its next action. The user authorizes it from the row or in chat.
 
-Tool outcomes: `user_managed` means the user is handling that child; leave its row alone and send it no unsolicited follow-up. `not_current_child` means the thread is not a current direct child of this manager.
+Tool outcomes: `user_managed` is equivalent to a user-managed notice. `not_current_child` means the thread is not a current direct child of this manager.
 
 The tool call is the update. After a review-only turn, reply `[Queue updated.]`.
 

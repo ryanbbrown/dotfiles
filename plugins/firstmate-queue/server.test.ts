@@ -1276,6 +1276,7 @@ describe("manual mode, archive, configuration, and invalidation", () => {
       );
       expect(toolResult(output)).toEqual({ outcome: "not_current_child" });
       expect(host.harness.inspection.sdk.callsTo("threads.archive")).toEqual([]);
+      expect(host.harness.inspection.sdk.callsTo("threads.send")).toEqual([]);
       expect(host.harness.inspection.sdk.callsTo("threads.list")).toEqual([]);
     },
   );
@@ -1318,6 +1319,106 @@ describe("manual mode, archive, configuration, and invalidation", () => {
       reviewed_through_seq: 12,
       user_managed: 0,
     });
+  });
+
+  it("sends one exact manager notice for each ownership transition", async () => {
+    const host = await configuredHost();
+    const target = {
+      surfaceThreadId: "manager-1",
+      childThreadId: "child-1",
+    };
+
+    await host.harness.behavior.callRpc("setUserManaged", {
+      ...target,
+      userManaged: true,
+    });
+    await host.harness.behavior.callRpc("setUserManaged", {
+      ...target,
+      userManaged: true,
+    });
+    await host.harness.behavior.callRpc("setUserManaged", {
+      ...target,
+      userManaged: false,
+    });
+
+    expect(host.harness.inspection.sdk.callsTo("threads.send")).toEqual([
+      [
+        {
+          threadId: "manager-1",
+          mode: "auto",
+          input: [
+            {
+              type: "text",
+              text: "[firstmate-queue] child-1 (Title child-1) is now user-managed. Skip review.",
+              mentions: [],
+            },
+          ],
+        },
+      ],
+      [
+        {
+          threadId: "manager-1",
+          mode: "auto",
+          input: [
+            {
+              type: "text",
+              text: "[firstmate-queue] child-1 (Title child-1) is no longer user-managed. Resume normal review.",
+              mentions: [],
+            },
+          ],
+        },
+      ],
+    ]);
+    expect(
+      host.harness.inspection.realtimeSignals.filter(
+        (signal) =>
+          (signal.payload as { reason?: string }).reason === "mode-changed",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("restores the prior review when manager notice delivery fails", async () => {
+    const host = await configuredHost({
+      writes: true,
+      events: async ({ threadId }) => [completion(threadId, 12)],
+      send: async () => {
+        throw new Error("Manager unavailable");
+      },
+    });
+    await host.harness.behavior.callAgentTool(
+      "firstmate_queue_update",
+      {
+        childThreadId: "child-1",
+        summaryMarkdown: "Accepted review",
+        disposition: "done",
+      },
+      { threadId: "manager-1" },
+    );
+
+    await expect(
+      host.harness.behavior.callRpc("setUserManaged", {
+        surfaceThreadId: "manager-1",
+        childThreadId: "child-1",
+        userManaged: true,
+      }),
+    ).rejects.toThrow("Manager unavailable");
+
+    const snapshot = (await host.harness.behavior.callRpc("queueSnapshot", {
+      surfaceThreadId: "manager-1",
+    })) as { rows: Array<Record<string, unknown>> };
+    expect(snapshot.rows[0]).toMatchObject({
+      section: "done",
+      state: "done",
+      detail: "Accepted review",
+      summaryMarkdown: "Accepted review",
+      userManaged: false,
+    });
+    expect(
+      host.harness.inspection.realtimeSignals.filter(
+        (signal) =>
+          (signal.payload as { reason?: string }).reason === "mode-changed",
+      ),
+    ).toEqual([]);
   });
 
   it("ownership toggles do not synthesize Needs, and archive uses one validated RPC", async () => {
