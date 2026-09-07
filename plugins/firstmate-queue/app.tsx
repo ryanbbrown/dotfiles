@@ -416,7 +416,7 @@ function QueueRowView({
             {row.summaryMarkdown === null ? null : (
               <Markdown
                 content={row.summaryMarkdown}
-                className="break-words text-sm text-muted-foreground"
+                className="min-w-0 max-w-full overflow-x-hidden break-words text-sm text-muted-foreground"
               />
             )}
           </div>
@@ -427,7 +427,7 @@ function QueueRowView({
         ) : (
           <Markdown
             content={row.detail}
-            className="mt-2 break-words text-sm text-muted-foreground"
+            className="mt-2 min-w-0 max-w-full overflow-x-hidden break-words text-sm text-muted-foreground"
           />
         )}
       </div>

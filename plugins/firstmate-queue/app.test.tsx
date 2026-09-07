@@ -214,6 +214,42 @@ describe("queue panel", () => {
     expect(slot.getByText("Active")).toBeTruthy();
   });
 
+  it("contains Markdown tables in normal and error summaries", async () => {
+    const normalTable =
+      "| Result | Reference |\n| --- | --- |\n| Ready | https://example.com/a/long/breakable/reference |";
+    const errorTable =
+      "| Failure | Identifier |\n| --- | --- |\n| Build | failure-identifier-with-breakable-segments |";
+    const slot = renderQueue({
+      rpc: {
+        queueSnapshot: () =>
+          snapshot([
+            row({
+              detail: normalTable,
+              summaryMarkdown: normalTable,
+            }),
+            row({
+              id: "child-error",
+              title: "Failed child",
+              state: "error",
+              detail: "Provider failed",
+              summaryMarkdown: errorTable,
+            }),
+          ]),
+      },
+    });
+
+    const markdownSummaries = await slot.findAllByTestId("bb-markdown");
+    expect(markdownSummaries.map((summary) => summary.textContent)).toEqual([
+      normalTable,
+      errorTable,
+    ]);
+    for (const summary of markdownSummaries) {
+      expect(summary.className.split(" ")).toEqual(
+        expect.arrayContaining(["min-w-0", "max-w-full", "overflow-x-hidden"]),
+      );
+    }
+  });
+
   it("shows the local update time to the minute only for Needs rows", async () => {
     const formatLocalTime = vi
       .spyOn(Date.prototype, "toLocaleString")
