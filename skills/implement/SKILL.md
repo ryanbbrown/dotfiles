@@ -5,7 +5,7 @@ description: Plan and implement a task from an approved plan, with a cross-model
 
 # Implement
 
-## Invocation
+Invoke as:
 
 ```text
 /implement <task or approved plan>
@@ -13,14 +13,12 @@ description: Plan and implement a task from an approved plan, with a cross-model
 
 The plan gets one cross-model review unless the user asks to skip it.
 
-Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6 Sol code review before the push, and any PR bots named in Tools review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the current environment is the only implementation writer for a stack.
+Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6 Sol code review before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the current environment is the only implementation writer for a stack.
 
 ## Tools
 
-- **Branch:** `git switch -c <branch>` on top of the previous branch.
-- **Submit:** for each branch, bottom first, `git push -u origin <branch>`, then `gh pr create --base <parent branch> --fill`.
-- **App setup:** the repository's own setup, service, seed, and health commands.
-- **PR bots:** none.
+- **Branch:** `git switch -c <branch>`
+- **App setup:** the repository's documented commands.
 
 ## Plan
 
@@ -47,7 +45,7 @@ Spawn the writer with `bb thread spawn --project "$BB_PROJECT_ID" --environment 
 ```text
 Scope: build what the plan's steps and the behavior spec scenarios they map to need, including work no step names (a test fixture, a config entry, a caller), and nothing else. The plan's "Out of scope" section is binding. Do not add defensive mechanisms (a lock, revision fence, retry, sweep, fallback, cache) that no scenario needs. If a scenario cannot be met as planned, or meeting it needs a decision the plan and spec do not settle, stop and ask. Same rule for every fix round.
 Local state: never run destructive local commands (database reset, seed, data deletion) unless the validation section names them.
-Git: one branch per PR in the plan's "PR split" section, in merge order. Create each with `<branch command>` on top of the previous branch, commit that PR's steps there, and run each step's "Verify" line and the plan's "Test & verification plan" commands that apply before you start the next branch. No push and no PR.
+Git: one branch per PR in the plan's "PR split" section, in merge order. Create each with `<branch command>` on top of the previous branch, commit that PR's steps there, and run each step's "Verify" line and the plan's "Test & verification plan" commands that apply before you start the next branch. No push, no PR.
 ```
 
 Return control after spawning. BB reports the child's blockers and completion to this thread; do not poll or wait. Continue the same child with `bb thread tell <id> "..." --reasoning-level high --mode auto` until every step and its verification are complete. One writer builds the whole stack: each fix low in the stack restacks everything above it, so two writers would rebase over each other. Start a fresh writer for a new stack, or when the current one has accumulated its own design ideas; context is not worth drift.
@@ -62,7 +60,7 @@ Return control. When the reports land, verify each finding against the code and 
 
 Skip this when the plan's "Test & verification plan" names no browser flows; its commands are the verification. Otherwise, after the code review:
 
-1. Have the writer bring the app up with the App setup from Tools. Run each service in its own BB terminal, `bb terminal create --environment "$BB_ENVIRONMENT_ID" --title <service> --command "<command> 2>&1 | tee .reviews/verify/<slug>/logs/<service>.log"`, so it persists and shows in the BB UI. It reuses a healthy running service and stops for a human-owned blocker such as expired auth or Docker down, which you report as unverified.
+1. Have the writer bring the app up with the repository's own setup, service, seed, and health commands, as listed under App setup in Tools. Run each service in its own BB terminal, `bb terminal create --environment "$BB_ENVIRONMENT_ID" --title <service> --command "<command> 2>&1 | tee .reviews/verify/<slug>/logs/<service>.log"`, so it persists and shows in the BB UI. It reuses a healthy running service and stops for a human-owned blocker such as expired auth or Docker down, which you report as unverified.
 2. Have the writer write `.reviews/verify/<slug>/readiness.md` with these headings, each filled:
    - **Flows**: the browser flows from the plan's "Test & verification plan": entry URL, steps, expected UI result, and tables written per flow.
    - **Services**: URL and port per service, and the health check that passed for each.
@@ -78,23 +76,22 @@ Skip this when the plan's "Test & verification plan" names no browser flows; its
 
 ## Push
 
-Push only on the user's word. Before pushing, identify whether the result is one PR or a stack. Submit the one PR, or the whole stack, with Submit from Tools. Submit ready for review, never draft; the bots skip drafts. Record every PR whose head was created or changed, in bottom-to-top order, including existing descendants changed by the restack.
+Push only on the user's word. Before pushing, identify whether the result is one PR or a stack. For each branch, bottom first, run `git push -u origin <branch>`, then `gh pr create --base <parent branch> --fill`. Submit ready for review, never draft; the bots skip drafts. Record every PR whose head was created or changed, in bottom-to-top order.
 
 After pushing, use the repository's CI and preview wait scripts and documented stop rules when available; wait for the matching preview before browser verification against it.
 
-## After push
+## Bot review loop
 
-Report every PR link. When Tools names no PR bots, the work is done.
+Report every PR link. When the repository has no PR bots, the work is done.
 
 ## Stop boundaries
 
-Stop for the user when a material product, scope, architecture, security, privacy, data-loss, or irreversible decision cannot be safely inferred, and at every point named above: plan approval (unless skipped), push, and findings raised under the `decide` skill.
+Stop for the user when a material product, scope, architecture, security, privacy, data-loss, or irreversible decision cannot be safely inferred, and at every point named above: plan approval, push, and findings raised under the `decide` skill.
 
 For a stack, the push checkpoint must name every branch or PR that the stack submit will create or update. If that set changes, stop for renewed push approval.
 
-The invocation does not authorize deployment, publishing, external communication, production changes, or spending outside the plan review and the bot-review fix cycles.
+The invocation does not authorize deployment, publishing, external communication, production changes, or spending outside the plan review and the requested fix cycles.
 
 ## Complete
 
-Inspect the final diff and validation. Report the result, whether the plan was reviewed, the code review reports per branch, any bot-review fix cycles and their synthesis files, deferred findings, and residual risks.
- 
+Inspect the final diff and validation. Report the result, whether the plan was reviewed, the code review reports per branch, the fix cycles run and their synthesis files, deferred findings, and residual risks.

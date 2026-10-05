@@ -1,11 +1,11 @@
 ---
 name: behavior-spec
-description: Break a product project into capabilities and write behavior scenarios for Ryan to review and use to direct implementation. Use when creating a capabilities document, defining changes from main, or revising scenarios for staged releases. Draft in Markdown for review. Not an implementation plan or a code inventory.
+description: Break a project into capabilities and write behavior scenarios for Ryan to review and use to direct implementation. Use when creating a capabilities document, defining changes from main, or revising scenarios for staged releases. Draft in Markdown. Not an implementation plan or a code inventory.
 ---
 
 # Behavior spec
 
-Write **capabilities and scenarios** for a product project: a document Ryan can understand, correct, and use to direct implementation. A capability groups related outcomes; a scenario explains one situation and its result.
+Write **capabilities and scenarios** for a project: a document Ryan can understand, correct, and use to direct implementation. A capability groups related outcomes; a scenario explains one situation and its result.
 
 Read the sibling `../plain-words/SKILL.md` before writing. The reader understands the product goal but may not know the existing screens, data model, or code. The document supplies that context where needed.
 
@@ -15,13 +15,13 @@ Keep user flows and product rules here; review screen design separately in Figma
 
 The spec is not an implementation plan. Leave out file paths, modules, flags, env files, job or entry counts, which code changes, and how `main` implements the current behavior. Those belong in the plan. A refactor that keeps behavior the same gets a short spec or none; "works the same as on main" is one line in "Does not change," not a scenario per job or command.
 
-Calibrate length against the approved examples listed under Approved examples, when it lists any.
+Calibrate length against the approved examples in Approved examples.
 
 ## 1. Establish what the document covers
 
 Use the user's stated scope. Ask only when a missing choice would change the document.
 
-- **Default:** include only observable behavior that changes from the product's `main` in the project or phase being reviewed. Check current `main` to establish the existing behavior, then describe the intended changes. If implementation already exists, use it as evidence without copying its screen-by-screen mechanics. Record the baseline commit and any inspected implementation commits in working notes. Unchanged setup can appear in Before; unchanged behavior does not need its own scenario. New features count as changes from main.
+- **Default:** include only observable behavior that changes from `main` in the project or phase being reviewed. Check current `main` to establish the existing behavior, then describe the intended changes. If implementation already exists, use it as evidence without copying its screen-by-screen mechanics. Record the baseline commit and any inspected implementation commits in working notes. Unchanged setup can appear in Before; unchanged behavior does not need its own scenario. New features count as changes from main.
 - **If Ryan explicitly asks for a full behavior reference:** cover the agreed scope, including unchanged behavior.
 - **Approved design doc:** when an approved proposal, ticket, or design doc already defines the behavior, write scenarios only for what it leaves open or contradicts. If it leaves nothing open, write no spec; report the open product questions instead.
 - **Staged delivery:** include the eventual behavior even when its code is absent or temporarily removed. Explain different delivery outcomes within the same scenario.
@@ -45,7 +45,7 @@ Build one hierarchy based on **the outcomes the product provides**. Apply these 
 
 Aim for a reviewable outline, often 6–12 categories for a substantial project. Derive the count from the behavior; smaller projects can have fewer. Each category can contain many scenarios, and categories need not have equal numbers.
 
-A source or channel can appear in a title when it clarifies the outcome. For example, “Connect Slack to a workspace” describes a setup result; “Slack” alone does not. “Notify people about issue updates” describes a different result, even when Slack delivers the message. Derive the categories for each project rather than copying another project's categories.
+A source or channel can appear in a title when it clarifies the outcome. For example, “Connect Slack to a workspace” describes a setup result; “Slack” alone does not. “Notify people about issue updates” describes a different result, even when Slack delivers the message. Derive the categories for each project rather than copying Directory's categories.
 
 Test the outline before expanding it:
 
@@ -74,7 +74,7 @@ Find saved people by their names and profile details. Changes to those details b
 - **After:** The search finds Jordan. On main, search does not look at descriptions.
 ```
 
-Examples illustrate the format, not approved requirements for another project. Use a completed project as a reference only after Ryan approves it as an example; preserve the method, not that project's categories or decisions. The files listed under Approved examples are approved.
+Examples illustrate the format, not approved requirements for another project. Use a completed project as a reference only after Ryan approves it as an example; preserve the method, not that project's categories or decisions.
 
 - **Before:** the facts needed to understand the decision. State who has access, what is already saved, or which source supplied a value when that changes the result.
 - **Action:** the named person or system does one concrete thing. Say “a workspace administrator” or “Okta,” not “someone.” State when a step is manual. Describe “a user adds a person to an issue,” rather than the buttons and forms used.
@@ -129,11 +129,11 @@ Keep source links, code paths, baseline commits, and coverage notes in a separat
 
 ## 5. Draft locally, then edit where review happens
 
-Write the document in `~/code/scratch/<project>-capabilities.md` unless Ryan names an existing document to edit. Keep evidence in a separate `<project>-capabilities-evidence.md` file. The Markdown file is the document; apply review changes to it directly with targeted edits.
+Start in `~/code/scratch/<project>-capabilities.md` unless Ryan names an existing document to edit. Keep evidence in a separate `<project>-capabilities-evidence.md` file. The Markdown draft is authoritative.
 
 “Reply to comments” authorizes replies, not body edits. “Comments only” and “no changes” keep the document unchanged. Preserve the wording of user-approved changes instead of rewriting adjacent sections for style.
 
-**Done when:** the requested document is saved and the user has a working link. Report remaining decisions without claiming the draft is approved or exhaustive beyond the checked scope.
+**Done when:** the requested document is saved, its destination is verified, and the user has a working link. Report remaining decisions without claiming the draft is approved or exhaustive beyond the checked scope.
 
 ## From scenarios to implementation
 

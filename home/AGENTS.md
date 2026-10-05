@@ -43,7 +43,6 @@
 - Store global coding-agent skills, instructions, settings, hooks, themes, extensions, and shared tools in `~/code/dotfiles`.
 - Store project-specific agent configuration, including MCP servers, in the project that uses it.
 - Create branches and pull requests with the repository's documented branch and PR tooling; use `git` and `gh` when it documents none.
-- Use `gh` to read pull request state, reviews, checks, and the GitHub API.
 - Write throwaway output that is not part of the repo, such as explanatory HTML, reports, and notes, to `~/code/scratch/`. Never write it inside a checkout.
 - Log friction with `papercut "what you were doing; what got in the way"` only when it comes from the shared development workflow: BB and its CLI or plugins, dotfiles skills and commands, hooks, sandboxes, or provider tooling. Test: would this happen in any repository? Never log a problem that belongs to one project or its code; project instructions are updated later from thread analysis.
 - When you finish with `agent-browser`, run `agent-browser close --all` before you report completion. Old versions keep their daemon and headless Chrome running forever.
