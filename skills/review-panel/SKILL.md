@@ -1,6 +1,6 @@
 ---
 name: review-panel
-description: Run independent Codex, Claude Code, and Grok 4.5 reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
+description: Run Claude Code and Pi GPT-6 Sol reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
 ---
 
 # Review panel
@@ -22,13 +22,13 @@ bb terminal-job run \
   --delivery queue \
   --json \
   -- \
-  ~/.claude/skills/review-panel/scripts/review-round.sh \
+  ~/.claude/skills/review-panel/scripts/review-round-pi.sh \
   --feature "feature name" \
   --plan-file .plans/<plan-slug>.md \
   --base-ref <pre-implementation-sha>
 ```
 
-Replace only the review arguments after `review-round.sh` for plan or custom mode. The result must contain a job ID; report a launch error and stop if it does not. The terminal ID can be null while the plugin resolves an uncertain launch. Keep the job ID. Then return control to BB. The plugin sends the queued stable-marker completion. Do not poll or wait.
+Replace only the review arguments after `review-round-pi.sh` for plan or custom mode. The result must contain a job ID; report a launch error and stop if it does not. The terminal ID can be null while the plugin resolves an uncertain launch. Keep the job ID. Then return control to BB. The plugin sends the queued stable-marker completion. Do not poll or wait.
 
 Capture the base SHA before implementation starts. The implementation writer can commit before review, so current `HEAD` cannot define the feature range. The review command rejects an implementation review without a base or with an empty base-to-snapshot diff.
 
@@ -46,9 +46,13 @@ For a custom review, use these review arguments:
 
 Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The custom text defines the review objective. The command still supplies the frozen snapshot, read-only rules, and repository context.
 
+The panel runs Claude Code and Pi GPT-6 Sol against the same frozen snapshot. Its purpose is two different models on one review, not two independent tools.
+
+The unused `scripts/review-round.sh` keeps the Codex and Grok reviewers. Neither CLI is installed on this machine. Do not run it.
+
 Claude reviews use Claude Code OAuth only. The command removes Anthropic API key variables and verifies a first-party OAuth login before preflight. If OAuth is unavailable, stop and ask the user to run `claude auth login`.
 
-Grok reviews always use the script-owned `grok-4.5` model through the official Grok Build CLI and grok.com OAuth from the user's SuperGrok account. Callers cannot override this model. The command removes `XAI_API_KEY` from every Grok process, checks for a cached account login, and verifies model access during preflight. Grok receives built-in read, list, grep, and terminal tools under `bypassPermissions` and a read-only sandbox, so a denied call returns to the model instead of ending its turn. It inspects the exact base-to-snapshot changes with supported read-only commands such as `git diff`; edit, write, web, subagent, and MCP access remain unavailable. If OAuth is unavailable, stop and ask the user to run `grok login` and complete the browser sign-in.
+Sol runs through the Pi CLI (`pi`) with the `openai-codex` OAuth login at high thinking. The command checks the login with `pi auth check` during preflight and runs the reviewer with `--no-context-files`, `--no-extensions`, and `--no-skills`, so the frozen prompt is its whole instruction set. If the login is unavailable, stop and ask the user to run `pi`, then `/login`, and choose `openai-codex`.
 
 When the completion message arrives, run `bb terminal-job show <job-id> --json`. On success, inspect the review manifest and reports. On failure, inspect the terminal-job `output.log` and the retained review logs. Report the result, output directory, and review round. This skill does not synthesize or act on findings.
 
@@ -57,10 +61,10 @@ When the completion message arrives, run `bb terminal-job show <job-id> --json`.
 Outside BB, or when durable execution is not needed, run the review command in the foreground:
 
 ```bash
-~/.claude/skills/review-panel/scripts/review-round.sh <review arguments>
+~/.claude/skills/review-panel/scripts/review-round-pi.sh <review arguments>
 ```
 
-It writes the same review artifacts. A round succeeds when at least two reviewers produce valid reports, or when the only reviewer that runs does. The manifest Outcome section names each reviewer that failed or produced an invalid report, and its logs stay under `.logs/vN/`. The command returns a non-zero status when preflight fails or fewer reviewers succeed than the round needs. It does not send a BB completion notice.
+It writes the same review artifacts. A round succeeds when both reviewers produce valid reports, or when the only reviewer that runs does. The manifest Outcome section names each reviewer that failed or produced an invalid report, and its logs stay under `.logs/vN/`. The command returns a non-zero status when preflight fails or fewer reviewers succeed than the round needs. It does not send a BB completion notice.
 
 ## Options
 
@@ -73,18 +77,19 @@ It writes the same review artifacts. A round succeeds when at least two reviewer
 --prompt TEXT|@PATH  Custom objective as inline text or an @-prefixed repository file. Required for custom mode.
 --plan-file PATH     Existing implementation plan, relative to repo or absolute within it. Required for implementation mode.
 --base-ref REF       Git commit recorded before implementation. Required for implementation mode.
---skip LIST          Comma-separated reviewers to skip: codex, claude, grok. Repeatable.
-                     Cannot skip all three.
+--skip LIST          Comma-separated reviewers to skip: claude, sol. Repeatable.
+                     Cannot skip both.
 --preflight-only     Run CLI smoke checks, then exit before starting reviewers.
 ```
 
 ## Environment
 
 ```text
-MAX_ROUNDS=3                 Hard cap; defaults to 3.
-CODEX_MODEL=gpt-5.6-sol      Default Codex reviewer model.
-REVIEW_TIMEOUT_SECONDS=900   Per-reviewer timeout.
-SKIP_PREFLIGHT=1             Optional local debugging switch.
+MAX_ROUNDS=3                    Hard cap; defaults to 3.
+SOL_MODEL=openai-codex/gpt-6-sol
+                                Pi Sol reviewer model.
+REVIEW_TIMEOUT_SECONDS=900      Per-reviewer timeout.
+SKIP_PREFLIGHT=1                Optional local debugging switch.
 ```
 
 `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` never authenticate the Claude reviewer.
@@ -107,12 +112,10 @@ The review command chooses the next `vN` and writes:
 .reviews/custom/<feature-slug>/                 # custom mode
 .reviews/implementations/<feature-slug>/       # implementation mode
   <feature-slug>-manifest-vN.md
-  <feature-slug>-codex-vN.md
   <feature-slug>-claude-vN.md
-  <feature-slug>-grok-4-5-vN.md
+  <feature-slug>-sol-vN.md
   .logs/vN/*.stdout
-  .logs/vN/grok.streaming.jsonl        # Grok tool and message stream.
   .logs/vN/*.stderr                    # Retained after a failure, timeout, or invalid report.
 ```
 
-The command freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot, the review configuration, and a Timing section with wall seconds per reviewer and the Grok-reported duration and cost.
+The command freezes one repository snapshot for all reviewers without changing the real branch, index, or dirty worktree. The manifest records the snapshot, the review configuration, and a Timing section with wall seconds per reviewer.

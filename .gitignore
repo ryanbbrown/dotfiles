@@ -12,3 +12,6 @@ __pycache__/
 /.gstack/
 /.pi-subagents/
 /.reference-skills/
+
+# Claude Code downloads Anthropic skills here through the ~/.claude/skills link
+/skills/synced/

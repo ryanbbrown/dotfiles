@@ -9,6 +9,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 home_source="$repo_root/home"
 skills_source="$repo_root/skills"
 
+[ "$#" -eq 0 ] || { echo "usage: link-home.sh" >&2; exit 2; }
+
 die() {
   echo "error: $*" >&2
   exit 1
@@ -58,6 +60,23 @@ install_executable_copy() {
   echo "Installed $target from $source"
 }
 
+# Cursor reads only .mdc rules with frontmatter, so the shared instructions
+# are generated rather than linked.
+install_cursor_rule() {
+  local source="$1"
+  local target="$2"
+
+  mkdir -p "$(dirname "$target")"
+  {
+    printf -- '---\n'
+    printf 'description: Shared global agent instructions\n'
+    printf 'alwaysApply: true\n'
+    printf -- '---\n\n'
+    cat "$source"
+  } > "$target"
+  echo "Generated $target from $source"
+}
+
 clean_legacy_codex_skill_links() {
   local target_dir="$HOME/.codex/skills"
   local target
@@ -78,15 +97,12 @@ clean_legacy_codex_skill_links() {
 [ -x "$repo_root/bin/sync-bb-personal" ] || die "missing executable $repo_root/bin/sync-bb-personal"
 [ -x "$repo_root/bin/install-bb-personal.command" ] ||
   die "missing executable $repo_root/bin/install-bb-personal.command"
-[ -x "$repo_root/bin/doppler-to-env" ] || die "missing executable $repo_root/bin/doppler-to-env"
-[ -x "$repo_root/bin/claude" ] || die "missing executable $repo_root/bin/claude"
-[ -x "$repo_root/bin/codex" ] || die "missing executable $repo_root/bin/codex"
 [ -d "$skills_source" ] || die "missing $skills_source"
 [ -f "$home_source/.claude/settings.json" ] || die "missing $home_source/.claude/settings.json"
-[ -f "$home_source/.claude/mcp.json" ] || die "missing Claude MCP config"
 [ -f "$home_source/.codex/hooks.json" ] || die "missing Codex hooks"
 [ -f "$home_source/.pi/agent/settings.json" ] || die "missing $home_source/.pi/agent/settings.json"
 [ -f "$home_source/.pi/agent/mcp.json" ] || die "missing $home_source/.pi/agent/mcp.json"
+[ -f "$home_source/.config/git/ignore" ] || die "missing $home_source/.config/git/ignore"
 
 if [ "$repo_root" != "$HOME/.dotfiles" ]; then
   create_symlink "$repo_root" "$HOME/.dotfiles"
@@ -94,19 +110,17 @@ fi
 create_symlink "$repo_root/bin/papercut" "$HOME/.local/bin/papercut"
 create_symlink "$repo_root/bin/sync-bb-personal" "$HOME/.local/bin/sync-bb-personal"
 install_executable_copy "$repo_root/bin/install-bb-personal.command" "$HOME/Desktop/install-bb-personal.command"
-create_symlink "$repo_root/bin/doppler-to-env" "$HOME/.local/bin/doppler-to-env"
-create_symlink "$repo_root/bin/claude" "$HOME/.local/bin/claude"
-create_symlink "$repo_root/bin/codex" "$HOME/.local/bin/codex"
 create_symlink "$home_source/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 create_symlink "$home_source/AGENTS.md" "$HOME/.codex/AGENTS.md"
 create_symlink "$home_source/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
 create_symlink "$skills_source" "$HOME/.agents/skills"
 create_symlink "$skills_source" "$HOME/.claude/skills"
 create_symlink "$home_source/.claude/settings.json" "$HOME/.claude/settings.json"
-create_symlink "$home_source/.claude/mcp.json" "$HOME/.claude/mcp.json"
 create_symlink "$home_source/.codex/hooks.json" "$HOME/.codex/hooks.json"
 create_symlink "$home_source/.pi/agent/settings.json" "$HOME/.pi/agent/settings.json"
 create_symlink "$home_source/.pi/agent/mcp.json" "$HOME/.pi/agent/mcp.json"
+create_symlink "$home_source/.config/git/ignore" "$HOME/.config/git/ignore"
+install_cursor_rule "$home_source/AGENTS.md" "$HOME/.cursor/rules/agents.mdc"
 
 clean_legacy_codex_skill_links
 

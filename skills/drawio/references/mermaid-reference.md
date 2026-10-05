@@ -41,6 +41,31 @@ flowchart TD
   end
   ```
 
+### Layout for complex flowcharts
+
+draw.io's Mermaid parser lays flowcharts out itself, but the result gets cramped or unbalanced once the diagram has any structural complexity. Switch that flowchart to the **ELK layered layout** (the same engine as draw.io's *Arrange ▸ Layout ▸ Vertical/Horizontal Flow*) when ANY of these holds:
+
+- ≥ ~20 nodes, OR
+- ≥ 3 decision diamonds (`{...}`), OR
+- any feedback/back-edge (an edge pointing back to an earlier node — an error path looping to a retry), OR
+- ≥ 3 distinct endpoints.
+
+Two ways to ask for it, depending on the tool:
+
+- **A `postLayout: "elk"` field** on the call, if the tool offers one — use it.
+- **Otherwise select it in the source**, as a YAML frontmatter block at the very top. draw.io honors it wherever it converts Mermaid (editor, opened link, desktop CLI):
+  ```
+  ---
+  config:
+    layout: elk
+  ---
+  flowchart TD
+    A[Start] --> B{Retry?}
+  ```
+  Combines with a `title:` — both are keys of the same frontmatter block.
+
+The flow direction always follows the flowchart code (`TD`/`TB` vs `LR`/`RL`). **Flowcharts only** — sequence, class, ER, gantt and the rest lay themselves out and ignore the setting. Simple flowcharts (linear chains, < 20 nodes, no branching or back-edges) don't need it either.
+
 ### Styling & colors
 
 Three ways — pick one, don't mix for the same node:

@@ -222,7 +222,7 @@ The draw.io desktop app includes a command-line interface used for **converting 
 
 ### Locating the CLI
 
-First, detect the environment, then locate the CLI accordingly:
+First, detect the environment, then locate the CLI accordingly. On Windows (native and WSL2) the installer does **not** put draw.io on PATH and the install directory is user-selectable, so work through the whole fallback chain before concluding the CLI is absent.
 
 #### WSL2 (Windows Subsystem for Linux)
 
@@ -250,6 +250,23 @@ If draw.io is installed in a non-default location, check common alternatives:
 "/mnt/c/Users/$WIN_USER/AppData/Local/Programs/draw.io/draw.io.exe"
 ```
 
+If neither exists, the install is on another drive or in a custom directory — scan the other mounted drives, then ask the registry:
+
+```bash
+# Program Files on the other drives (D:, E:, …)
+ls /mnt/*/Program\ Files/draw.io/draw.io.exe 2>/dev/null | head -1
+
+# Registry — the installer records the directory the user picked
+for KEY in 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall' \
+           'HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall' \
+           'HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'; do
+  WIN_DIR=$(reg.exe query "$KEY" /s /v InstallLocation 2>/dev/null |
+            grep -i 'REG_SZ.*draw\.io' | head -1 |
+            sed 's/.*REG_SZ[[:space:]]*//' | tr -d '\r')
+  [ -n "$WIN_DIR" ] && DRAWIO_CMD="$(wslpath -u "${WIN_DIR%\\}")/draw.io.exe" && break
+done
+```
+
 #### macOS
 
 ```bash
@@ -262,13 +279,45 @@ If draw.io is installed in a non-default location, check common alternatives:
 drawio   # typically on PATH via snap/apt/flatpak
 ```
 
+Use `which drawio` to confirm it is on PATH.
+
 #### Windows (native, non-WSL2)
 
-```
-"C:\Program Files\draw.io\draw.io.exe"
+Check, in order — a missing PATH entry or a non-`C:` install drive is normal, not a sign that draw.io is missing:
+
+1. **PATH**: `where.exe draw.io` (note the dot — the executable is `draw.io.exe`, not `drawio.exe`)
+2. **Default install paths**: `C:\Program Files\draw.io\draw.io.exe`, then the per-user install `%LOCALAPPDATA%\Programs\draw.io\draw.io.exe`
+3. **The registry** uninstall keys, which record the directory the user picked
+4. **The other drives**: `Program Files\draw.io\draw.io.exe` on `D:`, `E:`, …
+
+Save this as `find-drawio.ps1` to run the whole chain at once — it prints the first executable it finds, and nothing at all if draw.io really is not installed:
+
+```powershell
+$c = @()
+$c += (where.exe draw.io 2>$null)
+$c += "$env:ProgramFiles\draw.io\draw.io.exe", "$env:LOCALAPPDATA\Programs\draw.io\draw.io.exe"
+$c += Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                       'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                       'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+      Where-Object { $_.DisplayName -like '*draw.io*' } |
+      ForEach-Object { if ($_.InstallLocation) { Join-Path $_.InstallLocation 'draw.io.exe' } else { ($_.DisplayIcon -split ',')[0] } }
+$c += (Get-PSDrive -PSProvider FileSystem).Root | ForEach-Object { Join-Path $_ 'Program Files\draw.io\draw.io.exe' }
+$c | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 ```
 
-Use `which drawio` (or `where draw.io` on Windows) to check if it's on PATH before falling back to the platform-specific path.
+From a bash or cmd shell, run it with:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File find-drawio.ps1
+```
+
+Quote the resulting path on every call — it almost always contains spaces:
+
+```
+& "D:\Program Files\draw.io\draw.io.exe" -x -f xml -o diagram.drawio diagram.mmd
+```
+
+Only once every step comes up empty should you treat the CLI as absent and fall back to XML authoring with `.drawio` / `url` output. When you do find it outside PATH, mention to the user that adding that folder (e.g. `D:\Program Files\draw.io`) to PATH makes it discoverable next time.
 
 ### Convert / layout / export commands
 
@@ -309,6 +358,7 @@ Key flags:
 - `--width` / `--height`: fit into specified dimensions (preserves aspect ratio)
 - `-a` / `--all-pages`: export all pages (PDF only)
 - `-p` / `--page-index`: select a specific page (1-based)
+- `--disable-gpu`: skip GPU initialisation — add it when a command dies with `GPU process isn't usable` (Windows remote-desktop sessions, VMs, CI runners); no convert, layout, or export path needs the GPU
 
 ### Opening the result
 
@@ -359,6 +409,8 @@ Every diagram must have this structure:
 - Cell `id="0"` is the root layer
 - Cell `id="1"` is the default parent layer
 - All diagram elements use `parent="1"` unless using multiple layers
+- **Cells inside a container** use `parent="<container_id>"` and coordinates relative to that container
+- **Edges belong to the innermost container that holds BOTH endpoints** — same container (at any nesting depth) → that container's id; one end outside every container → `parent="1"`. An auto-layout reads an edge's coordinates in its parent's frame, so an edge parked further out than its endpoints is laid out in the wrong place
 
 (The example above uses an XML comment only to point out where cells go — never emit comments in real output; see [XML well-formedness](#critical-xml-well-formedness).)
 
@@ -384,6 +436,7 @@ For nontrivial diagrams, read and follow the local references before writing XML
 | Diagram opens but looks blank | Missing root cells `id="0"` and `id="1"` | Ensure the basic mxGraphModel structure is complete |
 | Edges not rendering | Edge mxCell is self-closing (no child mxGeometry element) | Every edge must have `<mxGeometry relative="1" as="geometry" />` as a child element |
 | File won't open after export | Incorrect file path or missing file association | Print the absolute file path so the user can open it manually |
+| `GPU process isn't usable. Goodbye.` during convert/layout/export | Electron cannot start a GPU process — typical on Windows remote-desktop sessions, VMs, and CI runners. The `os_crypt` / `Failed to decrypt` lines printed before it are unrelated noise | Retry the same command with `--disable-gpu` added; draw.io Desktop's own `--disable-acceleration` switch has the same effect |
 | Browser opens with empty diagram in `url` mode | `cmd.exe` stripped the `#create=...` fragment | Use the `.url` temp-file workaround on Windows/WSL2 (see [Opening the URL](#opening-the-url)) — never pass the URL directly to `cmd.exe /c start` |
 | URL is too long for the browser | Very large diagram exceeds browser URL length limit | Fall back to writing the `.drawio` file and opening it locally |
 

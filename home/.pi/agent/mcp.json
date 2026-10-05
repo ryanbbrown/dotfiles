@@ -9,6 +9,10 @@
     },
     "grep": {
       "url": "https://mcp.grep.app"
+    },
+    "posthog": {
+      "url": "https://mcp.posthog.com/mcp",
+      "auth": "oauth"
     }
   }
 }

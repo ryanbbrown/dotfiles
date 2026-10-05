@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 skill="$repo_root/skills/review-panel/SKILL.md"
-review_script="$repo_root/skills/review-panel/scripts/review-round.sh"
+review_script="$repo_root/skills/review-panel/scripts/review-round-pi.sh"
 removed_wrapper="$repo_root/skills/review-panel/scripts/review-round-bb.sh"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/review-panel-launch-test.XXXXXX")"
 trap 'rm -rf "$test_root"' EXIT
@@ -25,11 +25,13 @@ assert_contains "$skill" 'bb terminal-job run'
 assert_contains "$skill" '--thread "$BB_THREAD_ID"'
 assert_contains "$skill" '--notify-thread "$BB_THREAD_ID"'
 assert_contains "$skill" '--artifact-root "$BB_THREAD_STORAGE/terminal-jobs"'
-assert_contains "$skill" '~/.claude/skills/review-panel/scripts/review-round.sh'
+assert_contains "$skill" '~/.claude/skills/review-panel/scripts/review-round-pi.sh'
 assert_contains "$skill" 'Launch exactly once'
 assert_contains "$skill" 'Direct local use'
-assert_contains "$skill" 'Codex, Claude Code, and Grok 4.5'
-assert_contains "$review_script" 'grok_model="grok-4.5"'
+assert_contains "$skill" 'Claude Code and Pi GPT-6 Sol'
+assert_contains "$review_script" 'claude_model="claude-opus-5"'
+assert_contains "$review_script" 'sol_model="${SOL_MODEL:-openai-codex/gpt-6-sol}"'
+assert_contains "$review_script" '--thinking high'
 
 if grep -F 'review-round-bb.sh' "$skill" >/dev/null; then
   fail "skill still names the removed wrapper"

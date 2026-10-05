@@ -1,7 +1,8 @@
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1"
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
   },
   "permissions": {
     "allow": [
@@ -23,19 +24,7 @@
     ]
   },
   "model": "opus[1m]",
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/Users/ryanbrown/.local/bin/dcg"
-          }
-        ]
-      }
-    ]
-  },
+  "outputStyle": "Concise",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/hooks/statusline.sh"
@@ -75,5 +64,11 @@
   "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "preferredNotifChannel": "terminal_bell"
+  "preferredNotifChannel": "terminal_bell",
+  "disabledMcpjsonServers": [
+    "playwright",
+    "raindrop",
+    "vercel"
+  ],
+  "autoCompactWindow": 400000
 }

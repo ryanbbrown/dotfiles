@@ -12,10 +12,9 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 
 - `home/` contains global instructions and durable settings for Claude Code, Codex, and Pi.
 - `skills/` contains the skills exposed to all three coding agents.
-- `plugins/` contains personal BB plugins that belong with this configuration.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
-- `bin/` contains small shared commands, including `papercut`, `doppler-to-env`, and `sync-bb-personal`.
+- `bin/` contains small shared commands, including `papercut` and `sync-bb-personal`.
 - `tests/` contains checks for shared commands and installation behavior.
 
 Each entry under `skills/` is one of:
@@ -67,7 +66,6 @@ Shared skills
 
 Claude Code
   ~/.claude/settings.json
-  ~/.claude/mcp.json
 
 Codex
   ~/.codex/hooks.json
@@ -77,9 +75,6 @@ Pi
   ~/.pi/agent/mcp.json
 
 Other
-  ~/.local/bin/claude
-  ~/.local/bin/codex
-  ~/.local/bin/doppler-to-env
   ~/.local/bin/papercut
   ~/.local/bin/sync-bb-personal
   ~/Desktop/install-bb-personal.command
@@ -87,39 +82,15 @@ Other
 
 Codex and Pi discover `~/.agents/skills`. Claude Code discovers `~/.claude/skills`. Both locations resolve to the same `skills/` directory.
 
-The installer preserves an existing file or directory with a `.pre-dotfiles` suffix. It stops rather than overwrite an existing backup.
+The installer preserves an existing file or directory with a `.pre-dotfiles` suffix. It stops rather than overwrite an existing backup. It removes an existing symlink at a managed target without a backup.
+
+This repository does not wrap the `claude` or `codex` executables. Each tool uses its own installer and launcher.
 
 Pi installs configured package contents under `~/.pi/agent`. Claude Code and Codex also retain their own runtime state outside this repository.
 
-### Personal BB plugins
+### BB plugins
 
-Personal plugins can live under `plugins/` when they are part of this configuration and do not need an independent release lifecycle. Each plugin is a standalone package with its own dependencies, lockfile, tests, and build output.
-
-The Firstmate Queue plugin is under `plugins/firstmate-queue`. Keep its agent writes disabled until the documented queue cutover is complete. After installing its package dependencies as documented in the plugin README, run its top-level check with:
-
-```bash
-tests/firstmate-queue-plugin.sh
-```
-
-### Terminal jobs
-
-The [Terminal Jobs plugin](https://github.com/ryanbbrown/bb-plugin-terminal-jobs) owns its source, runner, setup, tests, and releases. This package remains an exception to the personal plugin policy above. This repository keeps only shared agent policy and integrations that use an installed `bb terminal-job` command.
-
-### Create local environment files
-
-This requires an installed and authenticated Doppler CLI. Create or replace `.env` in the current directory from a Doppler project and config:
-
-```bash
-doppler-to-env --project api-keys --config dev_personal OPENAI_API_KEY
-```
-
-Add more key names to write multiple entries. List the available names without exposing their values:
-
-```bash
-doppler-to-env --project api-keys --config dev_personal --list
-```
-
-Use `--output PATH` to select another file. The command writes only the requested keys, replaces the file atomically with `0600` permissions, and refuses to write a tracked or unignored file inside a Git repository. `scripts/link-home.sh` installs the tracked command from `bin/doppler-to-env` at `~/.local/bin/doppler-to-env`.
+BB plugins live in their own repositories, which own their source, skills, tests, and releases. The [Terminal Jobs plugin](https://github.com/ryanbbrown/bb-plugin-terminal-jobs) supplies `bb terminal-job`, and the [Firstmate plugin](https://github.com/ryanbbrown/bb-plugin-firstmate) supplies the Firstmate queue and its `firstmate-queue` skill. This repository keeps only shared agent policy and integrations that use those installed plugins.
 
 The review panel uses the official Grok Build CLI with a SuperGrok account login. Install it and complete browser OAuth before the first review:
 
@@ -142,24 +113,6 @@ Test the skill without running the sync:
 
 ```bash
 tests/update-bb-skill.sh
-```
-
-### Rotate Firstmate
-
-From the Firstmate thread to replace, run:
-
-```text
-/rotate-firstmate
-```
-
-This manual-only skill creates a fresh thread in the same project and environment. It preserves the current title, parent or root relationship, provider, model, reasoning level, service tier, permission mode, visibility, section, and pinned or unpinned state. It moves all direct children, including hidden, archived, and cross-project children. Pin changes occur only when the old thread was pinned.
-
-The handoff always names the absolute workspace queue path. A workspace `.bb/AGENTS.md` that supplies Firstmate rules remains the source of truth. Other workspaces bootstrap through the installed `firstmate` skill. The script does not copy the transcript or inspect another workspace's queue. A later failure triggers a best-effort rollback and reports exact thread IDs when manual recovery is necessary.
-
-Test the lifecycle against the fixture stub. The test does not change live threads or start a model call:
-
-```bash
-tests/firstmate-skills.sh
 ```
 
 ### Sync the bb personal branch
@@ -216,12 +169,6 @@ $HOME/.dotfiles/scripts/update-skill-sources.sh --push
 The scheduled push reads the existing GitHub credential from macOS Keychain.
 It does not store a token in the script or cron environment.
 
-Update the Destructive Command Guard binary separately:
-
-```bash
-$HOME/.dotfiles/scripts/update-dcg.sh
-```
-
 Update the browser automation CLI separately:
 
 ```bash
@@ -269,7 +216,9 @@ Claude Code, Codex, and Pi receive the same global instructions from `home/AGENT
 
 ### Pi
 
-Pi defaults to `openai-codex/gpt-5.6-sol` with high reasoning.
+Install Pi with `npm install -g @earendil-works/pi-coding-agent`. The older `@mariozechner/pi-coding-agent` package is frozen at 0.73.1 and cannot load the extensions below.
+
+Pi defaults to `openai-codex/gpt-6-sol` with high reasoning.
 
 The tracked Pi settings install these packages:
 
@@ -290,24 +239,16 @@ Claude Code uses the shared skills plus several Claude-specific plugins:
 - Swift LSP
 - OpenAI Codex
 
-Claude Code and Codex run the Destructive Command Guard before shell commands.
-
 ### MCP servers
 
-The custom MCP set is the same for Claude Code, Codex, and Pi:
+Pi uses this custom MCP set:
 
 - `context7` provides current documentation for libraries, frameworks, SDKs, APIs, CLI tools, and cloud services.
 - `grep` finds real code examples in public GitHub repositories through grep.app.
 
-The repository tracks one agent-specific representation of this set for each tool:
+The repository tracks it in `home/.pi/agent/mcp.json`, and the installer links that file into the Pi agent directory.
 
-- `home/.claude/mcp.json`
-- `bin/codex`
-- `home/.pi/agent/mcp.json`
-
-The installer links the Claude Code and Pi files into their agent directories. The Codex wrapper passes its MCP settings as command-line overrides.
-
-Codex stores hook trust in its untracked `~/.codex/config.toml`. The wrapper does not use a writable tracked profile.
+Codex stores hook trust and any MCP servers in its untracked `~/.codex/config.toml`. Add `context7` and `grep` there if Codex needs them.
 
 Pi uses `pi-mcp-adapter` to search cached tool metadata. It starts an MCP server only when the agent needs it.
 
@@ -319,20 +260,18 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 #### Firstmate operations
 
-- `update-bb` runs the installed bb personal sync in a durable BB terminal.
-- `firstmate` promotes an explicitly selected root thread to manage its workspace queue.
-- `rotate-firstmate` replaces the current Firstmate thread without copying its transcript or changing its BB route.
-
-Both skills run only when invoked as `/update-bb` or `/rotate-firstmate`.
+- `update-bb` runs the installed bb personal sync in a durable BB terminal. It runs only when invoked as `/update-bb`.
 
 #### Planning and delivery
 
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
+- `eli5` explains an unfamiliar topic in plain language, with a comic-strip HTML graphic in `~/code/scratch/`. It runs only when invoked as `/eli5`.
 - `implement` runs the main implementation and review workflow described below.
-- `write-plan` writes a minimal implementation plan file with decisions, changes per unit, acceptance checks, and validation, and keeps defensive mechanisms out until a failure is observed.
-- `review-panel` runs independent Codex, Claude Code, and Grok 4.5 reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
+- `write-plan` writes an implementation plan for one project phase against its behavior spec: planning evidence, affected paths, ordered steps with a verify line each, data and DB changes, verification, risks, out of scope, acceptance criteria mapping by scenario ID, and a PR split under the PR split rule.
+- `review-panel` runs independent Claude Code and Pi GPT-6 Sol reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
+- `retro` reviews a coding session's logs and suggests improvements to navigation, automated checks, coding standards, steering files, and tool use. It runs only when invoked as `/retro`.
 
 #### Review and browser QA
 
