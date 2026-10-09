@@ -22,7 +22,7 @@ The readiness file, `.reviews/verify/<slug>/readiness.md`, has these headings:
 
 1. The app is already running. Use the services as given; a service that is not reachable is a FAIL with the reason, and you stop there.
 2. Log in through the login path when a flow needs it.
-3. Walk every flow as a user would: navigate, fill, click, and read what the UI shows. Take a screenshot at each flow's end state into `.reviews/verify/<slug>/shots/`. Screenshots stay on disk.
+3. Record each flow as a video. Before its first action, run `agent-browser record start .reviews/verify/<slug>/videos/<flow>.mp4 [entry URL] --cursor --contact-sheet`, with `<flow>` a short kebab-case name. Walk the flow as a user would: navigate, fill, click, and read what the UI shows. Run each click as one command, `agent-browser hover <ref> && agent-browser wait 250 && agent-browser click <ref>`, so the video shows the pointer on the target before the click. At the end, wait for the end state itself with `wait --url` or `wait --text`, then `wait 1000` so the video holds it, take a screenshot with `mkdir -p .reviews/verify/<slug>/shots && agent-browser screenshot ./.reviews/verify/<slug>/shots/<flow>.png` (without `./`, agent-browser reads the path as a CSS selector), then run `record stop`. Trim the static spans with `python3 <this skill's directory>/scripts/trim-video.py .reviews/verify/<slug>/videos/<flow>.mp4 .reviews/verify/<slug>/videos/<flow>.trimmed.mp4`. When recording or trimming fails, walk the flow anyway and report the failure under Issues. All files stay on disk.
 4. After each step, read the browser console for errors, list failed network requests with the response body, and read the tail of each log.
 5. For every create, update, or delete, query the affected table before and after and confirm the row changed with the expected values.
 6. After the last flow, run `agent-browser close --all`, also on FAIL.
@@ -37,7 +37,7 @@ Write the verdict to the path the brief names:
 # Verdict: PASS | FAIL
 
 ## Walkthrough
-For each flow: the steps taken, what the UI showed, the log lines and the before and after rows that confirmed it, and the screenshot path.
+For each flow: the steps taken, what the UI showed, the log lines and the before and after rows that confirmed it, and the paths of the screenshot, the trimmed video, and the contact sheet.
 
 ## Issues
 Each broken, unreachable, or unverifiable flow with the exact observation. "None" on PASS.

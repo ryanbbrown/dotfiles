@@ -72,7 +72,7 @@ Skip this when the plan's "Test & verification plan" names no browser flows; its
 4. Spawn the verifier with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider claude-code --model "claude-opus-5-5[1m]" --reasoning-level high --permission-mode full`. The brief is one line: read the `browser-verify` skill, verify `.reviews/verify/<slug>/readiness.md`, and write the verdict to `.reviews/verify/<slug>/round-<N>.md`. Return control.
 5. On completion, recompute the fingerprint. A changed worktree voids the verdict: discard it and rerun the round. A missing round file, an unparseable verdict, or a PASS with an empty walkthrough is unverified, never a pass; rerun the round once, then treat it as FAIL with the verifier's output as the issue.
 6. FAIL: send the issues to the writer as a fix round, then start the next round from step 2. Three rounds is the cap; past it, report the open issues as unverified and stop for the user.
-7. PASS: the round file's walkthrough goes into the PR body as verification evidence.
+7. PASS: the round file's walkthrough goes into the PR body as verification evidence, and your report to the user links each flow's trimmed video.
 
 ## Push
 
