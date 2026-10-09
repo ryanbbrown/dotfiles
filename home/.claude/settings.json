@@ -67,7 +67,6 @@
   "preferredNotifChannel": "terminal_bell",
   "disabledMcpjsonServers": [
     "playwright",
-    "raindrop",
     "vercel"
   ],
   "autoCompactWindow": 400000
