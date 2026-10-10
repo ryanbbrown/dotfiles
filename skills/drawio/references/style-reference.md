@@ -342,6 +342,9 @@ Major libraries:
 | `entryDy` | number | — | Absolute y offset from entry point |
 | `entryPerimeter` | `0`, `1` | `1` | Use perimeter for entry point |
 | `portConstraint` | `eastwest`, `northsouth`, `perimeter`, `fixed` | — | Port constraint |
+| `sourcePerimeterSpacing` | number | `0` | Gap between the edge start and the source shape (Line start offset) |
+| `targetPerimeterSpacing` | number | `0` | Gap between the edge end and the target shape (Line end offset) |
+| `fixedPointSpacing` | `0`, `1` | `0` | Also apply `sourcePerimeterSpacing` / `targetPerimeterSpacing` to ends attached to a fixed connection point. Negative values extend the end outward. Set automatically when Line start/end offset is edited in the Format panel |
 
 ### 4.7 Container / Swimlane Properties
 
