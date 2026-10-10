@@ -74,6 +74,10 @@ Skip this when the plan's "Test & verification plan" names no browser flows; its
 6. FAIL: send the issues to the writer as a fix round, then start the next round from step 2. Three rounds is the cap; past it, report the open issues as unverified and stop for the user.
 7. PASS: the round file's walkthrough goes into the PR body as verification evidence, and your report to the user links each flow's trimmed video.
 
+### Write-path rehearsal
+
+Run this after the code review whenever the change affects a write path, as the `write-path-rehearsal` skill defines it, whether or not browser verification runs. Spawn one child with the same provider and model as the verifier; the brief is one line: read the `write-path-rehearsal` skill, rehearse the stack at `.plans/<slug>.md`, and write the report. A blocking finding goes to the writer as a fix round, then the rehearsal reruns its failed cases; three rounds is the cap.
+
 ## Push
 
 Push only on the user's word. Before pushing, identify whether the result is one PR or a stack. For each branch, bottom first, run `git push -u origin <branch>`, then `gh pr create --base <parent branch> --fill`. Submit ready for review, never draft; the bots skip drafts. Record every PR whose head was created or changed, in bottom-to-top order.
