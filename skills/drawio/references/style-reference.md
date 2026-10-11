@@ -1,10 +1,9 @@
 # draw.io Style Reference for AI File Generation
 
 This document is a companion to [`mxfile.xsd`](https://github.com/jgraph/drawio-mcp/blob/main/shared/mxfile.xsd) and provides all information
-needed to programmatically generate valid draw.io (.drawio) files. All data
-was extracted from the draw.io source code.
+needed to programmatically generate valid draw.io (.drawio) files. All data was extracted from the draw.io source code.
 
-See also: [Generate and validate draw.io diagrams with AI](https://www.drawio.com/doc/faq/ai-drawio-generation)
+See also: [Generate and validate draw.io diagrams with AI](https://www.drawio.com/docs/reference/diagram-generation/)
 
 ---
 
@@ -162,7 +161,8 @@ These are registered via `mxCellRenderer.registerShape()`:
 | `pipe` | Pipe connector |
 | `zigzag` | Zigzag connector |
 | `filledEdge` | Filled edge connector |
-| `table` | Table container |
+| `taperedArrow` | Connector that tapers from `startWidth` (default `12`) to `endWidth` (default `2`). Supports `rounded` and `curved`, and `fillColor` / `gradientColor` like `flexArrow` (no fill by default). `startSize` / `endSize` is how much wider the arrow head is than the band at that end. |
+| `table` | Table container. `evenRowColor` / `oddRowColor` and `evenColumnColor` / `oddColumnColor` add alternating stripes to rows and columns |
 | `tableRow` | Table row |
 | `tableLine` | Table line |
 | `rect2` | Alternative rectangle |
@@ -218,10 +218,10 @@ Major libraries:
 
 | Property | Values | Default | Description |
 |---|---|---|---|
-| `fillColor` | `#RRGGBB`, `none`, `default` | `default` | Shape fill color |
-| `gradientColor` | `#RRGGBB`, `none` | none | Gradient end color (gradient from fillColor to gradientColor) |
+| `fillColor` | `#RRGGBB`, `none`, `default`, [keyword](#special-color-values) | `default` | Shape fill color |
+| `gradientColor` | `#RRGGBB`, `none`, [keyword](#special-color-values) | none | Gradient end color (gradient from fillColor to gradientColor) |
 | `gradientDirection` | `north`, `south`, `east`, `west` | `south` | Gradient direction |
-| `strokeColor` | `#RRGGBB`, `none`, `default` | `default` | Border/stroke color |
+| `strokeColor` | `#RRGGBB`, `none`, `default`, [keyword](#special-color-values) | `default` | Border/stroke color |
 | `strokeWidth` | number | `1` | Border width in pixels |
 | `dashed` | `0`, `1` | `0` | Dashed stroke |
 | `dashPattern` | string | — | Dash pattern, e.g. `"1 3"` (1px dash, 3px gap), `"8 8"` |
@@ -246,6 +246,12 @@ Major libraries:
 | `rotation` | number (degrees) | `0` | Free rotation angle (0–360) |
 | `fixedSize` | `0`, `1` | `0` | Shape keeps size independent of label |
 
+From version 31.7.1 onwards:
+
+| Property | Values | Default | Description |
+|---|---|---|---|
+| `roundedPerimeter` | `0`, `1` | `0` | With `rounded=1` on rectangles and labels, perimeter connection points and floating edges end on the rounded outline instead of the bounding box. Corner connection points sit at 45° on the arc. Ignored by other shapes |
+
 ### 4.3 Text and Labels
 
 | Property | Values | Default | Description |
@@ -254,7 +260,7 @@ Major libraries:
 | `whiteSpace` | `wrap`, `nowrap` | — | Text wrapping mode. Use `wrap` for most shapes |
 | `fontSize` | number | `12` | Font size in pixels |
 | `fontFamily` | string | `Helvetica` | Font family name |
-| `fontColor` | `#RRGGBB`, `default` | `default` | Text color |
+| `fontColor` | `#RRGGBB`, `default`, [keyword](#special-color-values) | `default` | Text color |
 | `fontStyle` | bitmask | `0` | Font style: 0=normal, 1=bold, 2=italic, 4=underline (combine by adding: 3=bold+italic) |
 | `align` | `left`, `center`, `right` | `center` | Horizontal text alignment |
 | `verticalAlign` | `top`, `middle`, `bottom` | `middle` | Vertical text alignment |
@@ -278,15 +284,20 @@ Major libraries:
 | Property | Values | Default | Description |
 |---|---|---|---|
 | `edgeStyle` | see Edge Styles below | — | Routing algorithm |
+| `libavoidRouting` | `0`, `1` | `0` | Auto-route the edge around shapes (obstacle-avoiding orthogonal routing, paired with `edgeStyle=orthogonalEdgeStyle`). Re-routed when a terminal or a shape on the route changes; a manual waypoint edit removes it |
 | `curved` | `0`, `1` | `0` | Curved edge path |
+| `curveGeometry` | `0`, `1` | `0` | With `curved=1` or `bezier=1`: labels and line jumps follow the painted curve instead of the control points. Added to new curved edges |
+| `labelOnCurve` | `0`, `1` | `0` | With `curved=1` or `bezier=1`, edge labels are placed along the painted curve instead of the line through the waypoints (`x` and `y` of the label geometry are measured along the curve). The editor sets and removes it together with `curved` and adds it to new curved edges. Ignored before version 32.2.1 |
 | `rounded` | `0`, `1` | `1` | Round edge corners (for orthogonal) |
 | `jettySize` | `auto`, number | `auto` | Spacing from port for orthogonal edges |
 | `sourceJettySize` | number | — | Source-side jetty override |
 | `targetJettySize` | number | — | Target-side jetty override |
 | `orthogonalLoop` | `0`, `1` | `1` | Self-loop routing style |
 | `elbow` | `horizontal`, `vertical` | — | Elbow edge direction |
-| `jumpStyle` | `arc`, `gap`, `sharp` | — | Line crossing visualization |
+| `jumpStyle` | `arc`, `gap`, `sharp`, `line` | — | Line crossing visualization (curved edges need `curveGeometry=1`) |
 | `jumpSize` | number | `6` | Jump width at crossings |
+| `jumpLayers` | `0`, `1` | `1` | `0` only adds jumps for crossings with edges in the same layer as this edge |
+| `followTerminals` | `0`, `1` | `0` | Waypoints move with the terminals when these are moved, resized or arranged: orthogonal edges keep axis-parallel segments, other edges keep each waypoint's relative position along and distance from the line between the terminal centres. No effect with `libavoidRouting=1` |
 
 ### 4.5 Arrow Markers
 
@@ -298,6 +309,10 @@ Major libraries:
 | `endSize` | number | — | End marker size |
 | `startFill` | `0`, `1` | `1` | Fill start marker |
 | `endFill` | `0`, `1` | `1` | Fill end marker |
+| `startFillColor` | `#RRGGBB` | — | Fill colour of the start marker (default: line colour) |
+| `endFillColor` | `#RRGGBB` | — | Fill colour of the end marker (default: line colour) |
+| `startStrokeColor` | `#RRGGBB` | — | Outline colour of the start marker (default: line colour) |
+| `endStrokeColor` | `#RRGGBB` | — | Outline colour of the end marker (default: line colour) |
 
 **Arrow type values:**
 
@@ -356,12 +371,46 @@ Major libraries:
 | `swimlaneFillColor` | `#RRGGBB` | — | Swimlane header fill color |
 | `startSize` | number | `23` | Swimlane header height in pixels |
 | `horizontal` | `0`, `1` | `1` | Swimlane orientation (1=header on top, 0=header on left) |
-| `childLayout` | `stackLayout`, `treeLayout`, `flowLayout` | — | Auto-layout for children |
-| `resizeParent` | `0`, `1` | — | Parent resizes to fit children |
-| `resizeParentMax` | `0`, `1` | — | Limit parent resize |
-| `resizeLast` | `0`, `1` | — | Last child fills remaining space |
-| `horizontalStack` | `0`, `1` | — | Stack direction (1=horizontal, 0=vertical) |
-| `marginBottom` | number | — | Bottom margin for stack layout |
+| `childLayout` | `stackLayout`, `tableLayout`, `rack`, `circleLayout`, `flowLayout`, `treeLayout`, `organicLayout`, URL-encoded JSON | — | Layout that arranges the children (see below) |
+
+**`childLayout` values:** The layout runs when the container or its children change, not when the diagram is opened.
+
+| Value | Layout |
+|---|---|
+| `stackLayout` | Stacks the children in a row or column and stretches them across the container, e.g. lists and UML class members |
+| `tableLayout` | Rows and cells of a `shape=table` table |
+| `rack` | Rack cabinet: stacks the devices from top to bottom |
+| `circleLayout` | Places the children on a circle |
+| `flowLayout` | Layered flow, runs as the ELK layout `elkLayered` |
+| `treeLayout` | Tree, runs as the ELK layout `elkTree`; connectors retain their style |
+| `organicLayout` | Force-directed, runs as the ELK layout `elkOrganic` |
+| URL-encoded JSON | A layout list as in the [JSON layout specification](https://www.drawio.com/docs/reference/json-layout-specification), URL-encoded so that no `;` or `=` breaks the style string, e.g. `childLayout=%5B%7B%22layout%22%3A%22elkTree%22%7D%5D` for `[{"layout":"elkTree"}]` |
+
+From version 32.3.1 onwards, `flowLayout`, `treeLayout` and `organicLayout` run as ELK layouts, and their style keys below are translated to ELK options (§3.3 of the [JSON layout specification](https://www.drawio.com/docs/reference/json-layout-specification)).
+
+**Layout style keys:**
+
+| Property | Values | Default | Description |
+|---|---|---|---|
+| `resizeParent` | `0`, `1` | `1` | The container resizes to fit its children (`stackLayout`, `circleLayout`, `flowLayout`, `treeLayout`, `organicLayout`) |
+| `resizeParentMax` | `0`, `1` | `1` | `stackLayout`: the container only grows, it never shrinks |
+| `resizeLast` | `0`, `1` | `0` | `stackLayout`: the last child fills the remaining space |
+| `horizontalStack` | `0`, `1` | `1` | `stackLayout`: `1` places the children side by side, `0` stacks them top to bottom |
+| `stackSpacing` | number | `0` | `stackLayout`: gap between the children |
+| `stackBorder` | number | `0` | `stackLayout`: gap between the container and its children |
+| `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | number | `0` | `stackLayout`, `rack`: additional space inside the container |
+| `allowGaps` | `1` | — | `stackLayout`, `rack`: retain the gaps between the children, in steps of `stackUnitSize` or `rackUnitSize`. Omit for no gaps (any value, including `0`, will enable gaps) |
+| `stackUnitSize` | number | `20` | `stackLayout` with `allowGaps`: step size of the gaps |
+| `rackUnitSize` | number | `20` | `rack`: height of one rack unit |
+| `horizontalRack` | `0`, `1` | `0` | `rack`: `1` places the devices side by side |
+| `flowOrientation` | `north`, `west`, `east`, `south` | `east` | `flowLayout`: side of the roots — `north` top to bottom, `west` left to right, `east` right to left, `south` bottom to top |
+| `intraCellSpacing` | number | `30` | `flowLayout`: gap between shapes in the same rank |
+| `interRankCellSpacing` | number | `100` | `flowLayout`: gap between ranks |
+| `interHierarchySpacing` | number | `60` | `flowLayout`: gap between unconnected parts |
+| `parallelEdgeSpacing` | number | `10` | `flowLayout`: gap between parallel connectors |
+| `horizontalTree` | `0`, `1` | `1` | `treeLayout`: `1` left to right, `0` top to bottom |
+| `treeLevelDistance` | number | `30` | `treeLayout`: gap between levels and between siblings (minimum `20`) |
+| `parentPadding` | number | `20` | `flowLayout`, `treeLayout`, `organicLayout`: gap between the container border (below its title) and its children |
 
 ### 4.8 Image Properties
 
@@ -398,11 +447,13 @@ Major libraries:
 | `resizable` | `0`, `1` | `1` | Allow resizing |
 | `rotatable` | `0`, `1` | `1` | Allow rotation |
 | `bendable` | `0`, `1` | `1` | Allow bending edges |
+| `collapsedPoints` | `0`, `1` | `1` | `0` ignores the edge's waypoints while one of its ends is hidden in a collapsed container (the stored waypoints are kept and used again when expanded; the edge can't be bent in that state) |
 | `editable` | `0`, `1` | `1` | Allow label editing |
 | `deletable` | `0`, `1` | `1` | Allow deletion |
 | `cloneable` | `0`, `1` | `1` | Allow cloning |
 | `foldable` | `0`, `1` | — | Allow fold/collapse |
 | `connectable` | `0`, `1` | `1` | Allow connections |
+| `newEdgeStyle` | URL-encoded JSON style | — | Style of new connectors drawn from this shape. Set it with _Set as Default for New Connections_ on a connector from this shape, and remove it with _Clear Default for New Connections_ on the shape |
 | `pointerEvents` | `0`, `1` | `1` | Enable mouse events |
 | `autosize` | `0`, `1` | `0` | Auto-size to fit content |
 
@@ -532,6 +583,23 @@ These are commonly used in the draw.io UI:
 
 - `none` — transparent / no color (removes fill or stroke)
 - `default` — uses the current theme's default (resolves at render time)
+
+The following keywords refer to another colour. They can be used as the value
+of `fillColor`, `strokeColor`, `gradientColor` and `fontColor`:
+
+- `inherit` — the same colour of the parent cell, e.g. `fillColor=inherit` uses
+  the fill colour of the container
+- `fillColor`, `strokeColor` — the fill or stroke colour of the cell itself,
+  e.g. `fillColor=strokeColor` fills the shape with its stroke colour
+
+From version 31.6.2 onwards:
+
+- `parentFillColor`, `parentStrokeColor` — the fill or stroke colour of the
+  parent cell, e.g. `strokeColor=parentFillColor` draws the border in the fill
+  colour of the container
+
+Cells on a layer have no parent shape, so `inherit`, `parentFillColor` and
+`parentStrokeColor` use the default colour there.
 
 ---
 
@@ -693,6 +761,7 @@ Edge labels are usually encoded in the edge cell's `value`. The label position i
 
 - `x` on geometry: position along edge (-1 to 1, where 0 = center, -1 = near source, 1 = near target)
 - `y` on geometry: perpendicular offset in pixels
+- With `labelOnCurve=1` on a curved edge, `x` and `y` are measured along and perpendicular to the painted curve instead of the line through the waypoints
 
 ### Unconnected Edge (Floating)
 
