@@ -24,7 +24,10 @@
     ]
   },
   "model": "opus[1m]",
-  "outputStyle": "Concise",
+  "disabledMcpjsonServers": [
+    "playwright",
+    "vercel"
+  ],
   "statusLine": {
     "type": "command",
     "command": "~/.claude/hooks/statusline.sh"
@@ -33,7 +36,8 @@
     "code-simplifier@claude-plugins-official": true,
     "swiftui-expert@swiftui-expert-skill": true,
     "swift-lsp@claude-plugins-official": true,
-    "codex@openai-codex": true
+    "codex@openai-codex": true,
+    "slack@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "openai-codex": {
@@ -44,6 +48,7 @@
       "autoUpdate": true
     }
   },
+  "outputStyle": "Concise",
   "sandbox": {
     "enabled": false,
     "autoAllowBashIfSandboxed": true,
@@ -62,12 +67,8 @@
     }
   },
   "effortLevel": "high",
+  "autoCompactWindow": 400000,
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "preferredNotifChannel": "terminal_bell",
-  "disabledMcpjsonServers": [
-    "playwright",
-    "vercel"
-  ],
-  "autoCompactWindow": 400000
+  "preferredNotifChannel": "terminal_bell"
 }
