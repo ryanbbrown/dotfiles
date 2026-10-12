@@ -13,7 +13,7 @@ Invoke as:
 
 The plan gets one cross-model review unless the user asks to skip it.
 
-Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6 Sol code review before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the current environment is the only implementation writer for a stack.
+Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6 Sol code review before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the stack environment is the only implementation writer for a stack.
 
 ## Tools
 
@@ -45,7 +45,7 @@ Accept a finding only after you verify it against the code. A finding that propo
 
 Require a clean worktree and record the pre-implementation Git SHA after the plan is settled.
 
-Spawn the writer with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider claude-code --model "claude-opus-5-5[1m]" --reasoning-level high --permission-mode full`. The writer brief contains the plan path, the branch name prefix, and these standing terms, verbatim, with `<branch command>` replaced by the Branch command from Tools:
+The stack environment is this thread's environment when it is a BB worktree; otherwise it is a new BB worktree that the writer creates. Spawn the writer with `bb thread spawn --project "$BB_PROJECT_ID" <stack environment flag> --parent-self --provider claude-code --model "claude-opus-5-5[1m]" --reasoning-level high --permission-mode full`. `<stack environment flag>` is `--environment "$BB_ENVIRONMENT_ID"` or `--new-environment worktree`. The writer brief contains the absolute plan path, the branch name prefix, and these standing terms, verbatim, with `<branch command>` replaced by the Branch command from Tools:
 
 ```text
 Scope: build what the plan's steps and the spec scenarios or rules they map to need, including work no step names (a config entry, a caller), and nothing else. The plan's "Out of scope" section is binding. Do not add defensive mechanisms (a lock, revision fence, retry, sweep, fallback, cache) that no scenario or rule needs. If a scenario or rule cannot be met as planned, or meeting it needs a decision the plan and spec do not settle, stop and ask. Same rule for every fix round.
@@ -58,7 +58,7 @@ Return control after spawning. BB reports the child's blockers and completion to
 
 ### Code review
 
-When the writer reports the build complete, review every branch before browser verification or push. Spawn one read-only reviewer per branch, in parallel, with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --model openai-codex/gpt-6-sol --reasoning-level high --permission-mode full`. The brief is short: read the `code-review` skill; review branch B against parent P, the plan at `.plans/<slug>.md`, and the spec at <location>; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. From round 2 on, the brief also carries the previous round's findings, each marked accepted with its fix commit or rejected with the reason.
+When the writer reports the build complete, review every branch before browser verification or push. Spawn one read-only reviewer per branch, in parallel, with `bb thread spawn --project "$BB_PROJECT_ID" --environment <stack environment ID> --parent-self --provider pi --model openai-codex/gpt-6-sol --reasoning-level high --permission-mode full`. The brief is short: read the `code-review` skill; review branch B against parent P, the plan at its absolute path, and the spec at <location>; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. From round 2 on, the brief also carries the previous round's findings, each marked accepted with its fix commit or rejected with the reason.
 
 Return control. When the reports land, verify each finding against the code and apply the `decide` skill: fix what falls inside the plan and spec by sending the writer one fix round, grouped by branch, bottom of the stack first; raise a finding that needs a preference the plan and spec did not settle. A round is clean when it confirms zero P0 and zero P1; accepted P2 and P3 findings ride along in a fix round that happens anyway and are otherwise left to the PR bots. After a fix round, rerun the reviewer with a fresh child on every branch the round changed. Stop at a clean round, or after three rounds, when the open P0 and P1 findings go to the user.
 
@@ -70,7 +70,7 @@ After the code review is clean, have the writer run the `final-test-pass` skill 
 
 Skip this when the plan's "Test & verification plan" names no browser flows; its commands are the verification. Otherwise, after the code review:
 
-1. Have the writer bring the app up with the repository's own setup, service, seed, and health commands, as listed under App setup in Tools. Run each service in its own BB terminal, `bb terminal create --environment "$BB_ENVIRONMENT_ID" --title <service> --command "<command> 2>&1 | tee .reviews/verify/<slug>/logs/<service>.log"`, so it persists and shows in the BB UI. It reuses a healthy running service and stops for a human-owned blocker such as expired auth or Docker down, which you report as unverified.
+1. Have the writer bring the app up with the repository's own setup, service, seed, and health commands, as listed under App setup in Tools. Run each service in its own BB terminal, `bb terminal create --environment <stack environment ID> --title <service> --command "<command> 2>&1 | tee .reviews/verify/<slug>/logs/<service>.log"`, so it persists and shows in the BB UI. It reuses a healthy running service and stops for a human-owned blocker such as expired auth or Docker down, which you report as unverified.
 2. Have the writer write `.reviews/verify/<slug>/readiness.md` with these headings, each filled:
    - **Flows**: the browser flows from the plan's "Test & verification plan": entry URL, steps, expected UI result, and tables written per flow.
    - **Services**: URL and port per service, and the health check that passed for each.
@@ -79,7 +79,7 @@ Skip this when the plan's "Test & verification plan" names no browser flows; its
    - **Database**: how to open a query shell and the tables the flows write.
    - **Previous round** (round 2 and later): the last verdict's issues, now claimed fixed.
 3. Record a fingerprint: `git status --porcelain` and `git diff HEAD | shasum -a 256`.
-4. Spawn the verifier with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider claude-code --model "claude-opus-5-5[1m]" --reasoning-level high --permission-mode full`. The brief is one line: read the `browser-verify` skill, verify `.reviews/verify/<slug>/readiness.md`, and write the verdict to `.reviews/verify/<slug>/round-<N>.md`. Return control.
+4. Spawn the verifier with `bb thread spawn --project "$BB_PROJECT_ID" --environment <stack environment ID> --parent-self --provider claude-code --model "claude-opus-5-5[1m]" --reasoning-level high --permission-mode full`. The brief is one line: read the `browser-verify` skill, verify `.reviews/verify/<slug>/readiness.md`, and write the verdict to `.reviews/verify/<slug>/round-<N>.md`. Return control.
 5. On completion, recompute the fingerprint. A changed worktree voids the verdict: discard it and rerun the round. A missing round file, an unparseable verdict, or a PASS with an empty walkthrough is unverified, never a pass; rerun the round once, then treat it as FAIL with the verifier's output as the issue.
 6. FAIL: send the issues to the writer as a fix round, then start the next round from step 2. Three rounds is the cap; past it, report the open issues as unverified and stop for the user.
 7. PASS: the round file's walkthrough goes into the PR body as verification evidence, and your report to the user links each flow's trimmed video.
