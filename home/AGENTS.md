@@ -13,6 +13,12 @@
 - Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
 - Use dependencies already in the project before writing a new implementation or adding a package. Check their documentation and types before assuming they lack a needed capability.
 
+## Tests
+
+- New work adds no unit tests, except tests that prove a database migration's SQL. When a reviewer or bot asks for tests, reply with this rule.
+- While building, check work with type checks, lint, and by running the change. Existing test suites run once, in the final test pass.
+- When the code for a task or stack is done, run the `final-test-pass` skill once, on the top branch.
+
 ## Writing
 
 - Always talk in ASD-STE100 Simplified Technical English.

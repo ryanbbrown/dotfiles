@@ -18,7 +18,7 @@ The report starts with the file checklist. Do not write a finding before the che
 
 ## What to find
 
-Full scope: correctness, data integrity, missing wiring, unhandled states, behaviour the plan or spec did not name, and tests that do not prove what they claim. Report only a defect you can show in the code or a regression from `main`. Do not propose defensive mechanisms (retries, locks, fallbacks, and similar) unless you cite an observed failure. Work the plan's scenarios need but no step names, such as a missing config entry or test fixture, is a finding. Do not report speculative edge cases.
+Full scope: correctness, data integrity, missing wiring, unhandled states, behaviour the plan or spec did not name. Report only a defect you can show in the code or a regression from `main`. Do not propose defensive mechanisms (retries, locks, fallbacks, and similar) unless you cite an observed failure. Work the plan's scenarios need but no step names, such as a missing config entry, is a finding. The stack adds no unit tests by design; judge the product code. Do not report speculative edge cases.
 
 Check each of these classes on every branch. They are the classes that reached production review on this codebase after local review missed them:
 
@@ -30,7 +30,6 @@ Check each of these classes on every branch. They are the classes that reached p
 - **Snapshot and restore**: a new table or column missing from the snapshot, restore, or registry paths.
 - **Concurrency**: event-key collisions, missing row locks, and non-idempotent replays.
 - **Migration safety**: `lock_timeout`, concurrent index creation, checksum files, and a migration that carries application code.
-- **Tests at the changed boundary**: a test that fakes the boundary the branch changed, so it proves the fake and not the code.
 - **PR split**: the branch still follows the PR split rule in the `write-plan` skill. A reasonable departure from the plan's split with a clear reason is fine; report only a branch that is hard to review or revert, such as a migration mixed with application code, as P3.
 
 ## Severity
@@ -39,7 +38,7 @@ Assign every finding one level by consequence, not by effort to fix:
 
 - **P0**: data loss or corruption, a security or tenant-scope breach, or a state the system cannot recover from.
 - **P1**: a spec scenario or rule fails, a regression from `main`, or a wrong write on a main path.
-- **P2**: a wrong result on an edge path the spec does not name, or a missing test for a changed boundary.
+- **P2**: a wrong result on an edge path the spec does not name.
 - **P3**: naming, style, documentation.
 
 The verdict is `changes requested` when any P0 or P1 stands, otherwise `pass`.
@@ -73,8 +72,6 @@ pass | changes requested
 ## Prior round
 
 - <finding>: fixed in <sha> | not fixed | regressed: <what> | rejected, not re-raised
-
-## Missing or follow-up tests
 
 ## Open questions
 ```

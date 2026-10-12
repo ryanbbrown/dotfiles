@@ -40,7 +40,7 @@ Length: one sitting. The reader should finish it in a few minutes. Fewer than tw
 
 **Test plan**
 
-10. Manual steps state the account, the data, and what was checked. Keep the existing test plan when it already does. Bot review counts and fix rounds are history and stay out.
+10. Manual steps state the account, the data, and what was checked. Keep the existing test plan when it already does. List each test the final test pass updated for structure only, one line each: the test and what changed in it. Bot review counts and fix rounds are history and stay out.
 
 **Screenshots**
 

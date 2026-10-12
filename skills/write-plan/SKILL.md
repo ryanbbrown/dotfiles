@@ -21,7 +21,7 @@ Do this:
    the same or adjacent behavior. Prefer reusing, extending, or calling existing
    code over duplicating it. If reuse is not appropriate, explain why in the plan.
 3. **Learn the conventions.** How does this repo structure code, handle errors,
-   validate input, write tests, and name things? Mirror them — don't invent new
+   validate input and name things? Mirror them — don't invent new
    patterns.
 4. **Find the seams.** Locate the central **logger**, the **data/DB layer**, auth,
    config/env, feature flags, and the **build / run / test** commands (check
@@ -56,7 +56,9 @@ Then write the plan to `.plans/<slug>.md` using Markdown `##` section headings.
 - `## Data/DB` — schema or query changes, migrations, and the exact CRUD operations
   the feature will perform.
 - `## Test & verification plan` — the user flows you'll walk in the browser, and the
-  before/after DB checks for each CRUD step.
+  before/after DB checks for each CRUD step. The stack adds no unit test files,
+  except the tests that prove a migration's SQL; existing tests run once, in the
+  final test pass.
 - `## Risks & edge cases` — from your audit, with how the plan handles each.
 - `## Out of scope` — every requested or parity-implied behavior this plan
   deliberately does NOT implement, each with why (write `None.` if nothing is
