@@ -1,13 +1,13 @@
 ---
 name: write-plan
-description: Write an implementation plan for one phase of a project from its behavior spec. Use when the user invokes /write-plan or when a skill names it.
+description: Write an implementation plan for one phase of a project from its spec (behavior spec or rules spec). Use when the user invokes /write-plan or when a skill names it.
 ---
 
 # Write plan
 
 What planning is for: understand the codebase deeply, record the evidence that grounded the plan, and produce a plan good enough that implementation is mechanical. Do NOT implement the feature during planning — product-code changes belong after approval. Web research stays available — use it.
 
-The behavior spec for the phase is the acceptance criteria. Plan and build directly against it. Read it in full before the steps below; every scenario ID it contains must appear in `## Acceptance criteria mapping`.
+The spec for the phase is the acceptance criteria: a behavior spec (scenario IDs) or a rules spec (rule IDs). Plan and build directly against it. Read it in full before the steps below; every scenario or rule ID it contains must appear in `## Acceptance criteria mapping`.
 
 Do this:
 
@@ -41,7 +41,7 @@ Then write the plan to `.plans/<slug>.md` using Markdown `##` section headings.
 **The plan must contain these exact sections:**
 
 - `## Goal` — one paragraph restating the feature and the acceptance criteria,
-  naming the behavior spec document and phase.
+  naming the spec document and phase.
 - `## Planning evidence` — the concrete local reads/searches/child threads and external
   sources that grounded the plan.
 - `## Affected files/areas` — concrete paths, with what changes in each and why.
@@ -65,10 +65,10 @@ Then write the plan to `.plans/<slug>.md` using Markdown `##` section headings.
   "Assumption:" line, hedged wording in a step) is a planning defect the plan
   review will block on.
 - `## Open questions` — anything you need the human to decide.
-- `## Acceptance criteria mapping` — map EVERY scenario in the behavior spec, by
+- `## Acceptance criteria mapping` — map EVERY scenario or rule in the spec, by
   ID, to the plan step(s) that implement it and the verification that proves it.
-  Map the scenario as WRITTEN, not a narrowed restatement of it — narrowing
-  belongs in `## Out of scope` where the human sees it. A scenario the plan
+  Map each item as WRITTEN, not a narrowed restatement of it — narrowing
+  belongs in `## Out of scope` where the human sees it. An item the plan
   cannot, should not, or does not satisfy goes in `## Open questions` with its
   ID and the reason; never map it to a step that does not deliver it.
 - `## PR split` — the steps grouped into PRs in merge order, one line per PR
@@ -76,7 +76,7 @@ Then write the plan to `.plans/<slug>.md` using Markdown `##` section headings.
 
 Finally, post exactly three sections to the human, verbatim and nothing else:
 `## PR split`, `## Out of scope`, and `## Open questions`. Then stop and wait
-for the human. Any open question that names a spec scenario blocks approval
+for the human. Any open question that names a spec scenario or rule blocks approval
 until the human answers it.
 
 > Writes during planning are for notes, scratch files, and child-thread

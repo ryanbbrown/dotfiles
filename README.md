@@ -23,7 +23,7 @@ Each entry under `skills/` is one of:
 - a generated wrapper around selected upstream material
 - a link to a skill in an upstream repository under `vendor/`
 
-Skills use flat names such as `implement`, `agent-browser`, and `test-quality`. They do not use agent-specific plugin namespaces.
+Skills use flat names such as `ship`, `agent-browser`, and `test-quality`. They do not use agent-specific plugin namespaces.
 
 ### Install
 
@@ -267,8 +267,9 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
 - `wait-what` explains confusing code or concepts from first principles.
 - `eli5` explains an unfamiliar topic in plain language, with a comic-strip HTML graphic in `~/code/scratch/`. It runs only when invoked as `/eli5`.
-- `implement` runs the main implementation and review workflow described below.
-- `write-plan` writes an implementation plan for one project phase against its behavior spec: planning evidence, affected paths, ordered steps with a verify line each, data and DB changes, verification, risks, out of scope, acceptance criteria mapping by scenario ID, and a PR split under the PR split rule.
+- `ship` runs the main implementation and review workflow described below.
+- `rules-spec` writes numbered rules for how a system decides, each compared with main, as the spec for scoring, validation, permissions, or pipeline work.
+- `write-plan` writes an implementation plan for one project phase against its spec (behavior spec or rules spec): planning evidence, affected paths, ordered steps with a verify line each, data and DB changes, verification, risks, out of scope, acceptance criteria mapping by scenario or rule ID, and a PR split under the PR split rule.
 - `review-panel` runs independent Claude Code and Pi GPT-6 Sol reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 - `retro` reviews a coding session's logs and suggests improvements to navigation, automated checks, coding standards, steering files, and tool use. It runs only when invoked as `/retro`.
@@ -298,10 +299,10 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 ## Main implementation flow
 
-Invoke the `implement` skill with optional words and explicit review counts:
+Invoke the `ship` skill with optional words and explicit review counts:
 
 ```text
-/implement [interview] [brief] p<N> i<N> — <task or approved plan>
+/ship [interview] [brief] p<N> i<N> — <task or approved plan>
 ```
 
 The agent decides by default and asks only for a fork that changes product behavior or for a fact the task and code cannot supply. `interview` forces the design questions first. `brief` writes a decision brief to `.reviews/briefs/<slug>.md` for the user to approve before any panel or implementation. Every run posts a result-shape summary after the plan is written. An existing approved plan is used without recreation.
