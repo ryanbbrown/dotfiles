@@ -22,7 +22,7 @@
 ## Writing
 
 - Always talk in ASD-STE100 Simplified Technical English.
-- Always talk to me like I have ADHD.
+- Assume I know nothing about the project: answer my question in the first sentence, define every label or name before you use it, and tell me when you change an earlier answer or do less than I asked.
 - Please remove all mannered prose.
 
 ## Comments and documentation
