@@ -32,7 +32,7 @@ Every diagram becomes a native `.drawio` file first, then is delivered in the re
      drawio -x -f xml -o diagram.drawio diagram.mmd
      ```
      Delete the `.mmd` afterward — the `.drawio` is the artifact. draw.io's Mermaid parser has already laid the diagram out, so no `--layout` is needed.
-   - **XML**: write the mxGraphModel XML to `diagram.drawio` (see [XML format](#xml-format)). Optionally apply an ELK layout (see [ELK layout for XML](#elk-layout-for-xml)).
+   - **XML**: write the mxGraphModel XML to `diagram.drawio` (see [XML format](#xml-format)), then run the [repair pass](#repair-pass) on it. Optionally apply an ELK layout (see [ELK layout for XML](#elk-layout-for-xml)).
 2. **Deliver** (identical for both sources):
    - *(no format)* → keep `diagram.drawio` and open it.
    - **png / svg / pdf** → export from the `.drawio` with embedded XML, then delete the source `.drawio`:
@@ -137,7 +137,7 @@ When the user requests `url` format, generate a draw.io URL that opens the diagr
 
 1. The `.drawio` file is written to disk as usual (gives the user a persistent local copy they can re-edit)
 2. The XML is compressed with Node.js's built-in `zlib` and base64-encoded
-3. The result is embedded in a `https://app.diagrams.net/#create=...` URL
+3. The result is embedded in a `https://app.diagrams.net/#R...` URL
 4. The URL is opened in the default browser
 
 This uses only Node.js built-in modules (`zlib`, `child_process`) — no external dependencies.
@@ -152,12 +152,11 @@ const fs = require("fs");
 const zlib = require("zlib");
 const xml = fs.readFileSync(process.argv[1], "utf8");
 const compressed = zlib.deflateRawSync(encodeURIComponent(xml)).toString("base64");
-const payload = encodeURIComponent(JSON.stringify({ type: "xml", compressed: true, data: compressed }));
-console.log("https://app.diagrams.net/?grid=0&pv=0&border=10&edit=_blank#create=" + payload);
+console.log("https://app.diagrams.net/?grid=0&pv=0&border=10&edit=_blank#R" + encodeURIComponent(compressed));
 ' "DIAGRAM.drawio")
 ```
 
-The URL format matches the MCP Tool Server. Node.js's `zlib.deflateRawSync` and `pako.deflateRaw` both implement RFC 1951 and produce identical output, so URLs from either source are interchangeable.
+The URL format matches the MCP Tool Server's XML links: `#R` followed by the compressed XML, which draw.io opens as it is. Don't use a `#create=` URL for XML: draw.io rewrites that hash after loading it, and when the rewrite differs from the link (it does for Node's `zlib` output, which isn't byte-identical to draw.io's pako) it asks "All changes will be lost!".
 
 ### Opening the URL
 
@@ -168,7 +167,7 @@ The URL format matches the MCP Tool Server. Node.js's `zlib.deflateRawSync` and 
 | WSL2 | Write a temp `.url` file, open via `cmd.exe` (see below) |
 | Windows (native) | Write a temp `.url` file, open via `start` (see below) |
 
-**Why the `.url` workaround on Windows/WSL2?** `cmd.exe`'s `start` command treats `&` as a command separator and strips everything after `#` in URLs. The diagram payload lives in the `#create=...` fragment, so passing the URL directly causes it to be silently lost. A `.url` shortcut file preserves the URL intact.
+**Why the `.url` workaround on Windows/WSL2?** `cmd.exe`'s `start` command treats `&` as a command separator and strips everything after `#` in URLs. The diagram payload lives in the `#R...` fragment, so passing the URL directly causes it to be silently lost. A `.url` shortcut file preserves the URL intact.
 
 **macOS / Linux example:**
 
@@ -414,15 +413,33 @@ Every diagram must have this structure:
 
 (The example above uses an XML comment only to point out where cells go — never emit comments in real output; see [XML well-formedness](#critical-xml-well-formedness).)
 
+### Repair pass
+
+Run this right after writing XML to a `.drawio` file, before any layout, export or URL step. It fixes the mechanical slips that make draw.io reject a diagram: text around the diagram (a code fence, a sentence, a stray closing tag), `<` or a stray `&` inside an attribute value (an unescaped HTML label, "R&D", `&nbsp;`), and the default layer written as its own parent (`<mxCell id="1" parent="1"/>`, which hides everything). It changes nothing in a well-formed file, and needs only Node.js (skip it if `node` isn't installed). Replace `DIAGRAM.drawio` with the actual filename:
+
+```bash
+node -e '
+const fs = require("fs");
+const file = process.argv[1];
+let xml = fs.readFileSync(file, "utf8");
+const diagram = xml.match(/<mxfile[\s\S]*?<\/mxfile>|<mxGraphModel[\s\S]*?<\/mxGraphModel>/);
+if (diagram && xml.trim() !== diagram[0]) xml = diagram[0];
+xml = xml.replace(/="([^"]*)"/g, function(m, v)
+{
+  return "=\"" + v.replace(/</g, "&lt;").replace(/&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/g, "&amp;") + "\"";
+});
+xml = xml.replace(/<mxCell id="([^"]+)" parent="\1"\s*\/>/g, "<mxCell id=\"$1\" parent=\"0\"/>");
+fs.writeFileSync(file, xml);
+' "DIAGRAM.drawio"
+```
+
 ## XML reference
 
-For nontrivial diagrams, read and follow the local references before writing XML:
+Before authoring XML, fetch and follow the condensed XML rules — skeleton, vertex and edge templates, labels, shapes, the layout grid, containers, swimlanes and edge styles:
+https://raw.githubusercontent.com/jgraph/drawio-mcp/main/shared/xml-essentials.md
 
-- `references/xml-reference.md` for mxGraphModel structure, edge routing, containers, layers, tags, metadata, dark mode colors, and XML well-formedness rules
-- `references/style-reference.md` for draw.io style strings, shapes, labels, connectors, and visual conventions
-- `references/mxfile.xsd` when schema-level validation would help debug generated XML
-
-`references/mermaid-reference.md` is included from upstream for comparison with the MCP variants, but this skill should still generate native draw.io XML directly.
+They cover most diagrams. Only when a diagram needs layers, tags, metadata and placeholders, tables, cross-functional grids or dark-mode colors, also fetch the full XML reference (it describes the draw.io MCP servers, so where it mentions their `search_shapes` tool or `postLayout` / `routing` options, use the CLI's [`--layout`](#elk-layout-for-xml) here instead):
+https://raw.githubusercontent.com/jgraph/drawio-mcp/main/shared/xml-reference.md
 
 ## Troubleshooting
 
@@ -437,7 +454,7 @@ For nontrivial diagrams, read and follow the local references before writing XML
 | Edges not rendering | Edge mxCell is self-closing (no child mxGeometry element) | Every edge must have `<mxGeometry relative="1" as="geometry" />` as a child element |
 | File won't open after export | Incorrect file path or missing file association | Print the absolute file path so the user can open it manually |
 | `GPU process isn't usable. Goodbye.` during convert/layout/export | Electron cannot start a GPU process — typical on Windows remote-desktop sessions, VMs, and CI runners. The `os_crypt` / `Failed to decrypt` lines printed before it are unrelated noise | Retry the same command with `--disable-gpu` added; draw.io Desktop's own `--disable-acceleration` switch has the same effect |
-| Browser opens with empty diagram in `url` mode | `cmd.exe` stripped the `#create=...` fragment | Use the `.url` temp-file workaround on Windows/WSL2 (see [Opening the URL](#opening-the-url)) — never pass the URL directly to `cmd.exe /c start` |
+| Browser opens with empty diagram in `url` mode | `cmd.exe` stripped the `#R...` fragment | Use the `.url` temp-file workaround on Windows/WSL2 (see [Opening the URL](#opening-the-url)) — never pass the URL directly to `cmd.exe /c start` |
 | URL is too long for the browser | Very large diagram exceeds browser URL length limit | Fall back to writing the `.drawio` file and opening it locally |
 
 ## CRITICAL: XML well-formedness
