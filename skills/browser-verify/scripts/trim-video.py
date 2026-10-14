@@ -2,11 +2,15 @@
 """Shorten static spans in a screen recording so only UI changes remain.
 
 Usage: trim-video.py in.mp4 out.mp4 [--min-cells 3] [--flicker 4] [--min-freeze 1.0] [--hold 1.0] [--preroll 0.3]
+
+The removed spans, in input seconds, go to out.cuts.json for make-combined-video.py.
 """
 
 import argparse
+import json
 import subprocess
 from collections import Counter
+from pathlib import Path
 
 # Frames are compared at this size, so a changed cell is an 8x8-pixel block of a 1280-wide video.
 GRID_W, GRID_H = 160, 80
@@ -88,6 +92,7 @@ def main():
     cuts = [(start, end) for start, end in cuts if end > start]
     removed = sum(end - start for start, end in cuts)
     print(f"{len(cuts)} static spans cut, {duration:.1f}s -> {duration - removed:.1f}s")
+    Path(args.output).with_suffix(".cuts.json").write_text(json.dumps({"cuts": cuts}))
 
     drop = "+".join(f"between(t,{start:.3f},{end:.3f})" for start, end in cuts) or "0"
     subprocess.run(

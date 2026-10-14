@@ -43,12 +43,12 @@ Run the `final-test-pass` skill on the branch. An unexpected failure stops for t
 
 ## Browser verification
 
-Run this only when the change affects UI. Bring the app up with the repository's own commands. Record the changed flow as the Recording section of the `browser-verify` skill describes; for a static visual change, take only its screenshot. Skip the rest of that skill. Run `agent-browser close --all` when done. Done when the capture shows the change working.
+Run this only when the change affects UI. Bring the app up with the repository's own commands. Record the changed flow as the Recording section of the `browser-verify` skill describes, then build the combined video as its Combined video section describes; for a static visual change, take only its screenshot. Skip the rest of that skill. Run `agent-browser close --all` when done. Done when the capture shows the change working.
 
 ## Push
 
-Push only on the user's word. Open the PR ready for review and report its link.
+Push only on the user's word. Open the PR ready for review and report its link. When the task has a Linear ticket and you made a combined video, attach it to the ticket, and link the ticket in the PR body for the video, since Linear file URLs expire.
 
 ## Complete
 
-Report the result, the code review rounds and their findings, the final test pass table, and links to the video or screenshot if one was made.
+Report the result, the code review rounds and their findings, the final test pass table, and a link to the combined video or the screenshot if one was made.
