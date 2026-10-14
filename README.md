@@ -268,6 +268,7 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 - `wait-what` explains confusing code or concepts from first principles.
 - `eli5` explains an unfamiliar topic in plain language, with a comic-strip HTML graphic in `~/code/scratch/`. It runs only when invoked as `/eli5`.
 - `ship` runs the main implementation and review workflow described below.
+- `pr-review-loop` runs after any push that opens or updates a PR: it waits for CI and the review bots, then fixes or answers every failing check and open review thread. `ship` uses it, and `home/AGENTS.md` requires it for every other push.
 - `rules-spec` writes numbered rules for how a system decides, each compared with main, as the spec for scoring, validation, permissions, or pipeline work.
 - `write-plan` writes an implementation plan for one project phase against its spec (behavior spec or rules spec): planning evidence, affected paths, ordered steps with a verify line each, data and DB changes, verification, risks, out of scope, acceptance criteria mapping by scenario or rule ID, and a PR split under the PR split rule.
 - `review-panel` runs independent Claude Code and Pi GPT-6 Sol reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.

@@ -96,7 +96,7 @@ After pushing, use the repository's CI and preview wait scripts and documented s
 
 ## Bot review loop
 
-Report every PR link. When the repository has no PR bots, the work is done.
+Report every PR link. Then run the `pr-review-loop` skill on the PR set recorded at push. Send the writer the synthesis of accepted findings, never the raw review. The writer's scope terms apply to fix rounds.
 
 ## Stop boundaries
 
