@@ -5,10 +5,11 @@ description: After a push that opens or updates pull requests, wait for CI and t
 
 # PR review loop
 
-A PR is done only when both are true on its current head:
+A PR is done only when all are true on its current head:
 
 - Every check passes, or each failure has a named cause that the user has seen.
 - Every review thread, from a bot or a person, has a fix on the PR head or a reply that gives the reason for no fix.
+- The PR body has the text you wrote, not only the repository's template.
 
 Never tell the user a PR is done, clean, or ready from memory or from an earlier head. Check again after every push.
 
@@ -19,6 +20,8 @@ List every PR whose head the push created or changed, in bottom-to-top order for
 ## Wait
 
 Use the repository's CI and preview wait scripts and documented stop rules when available. Pin each wait to the current head SHA. Wait for the review bots to post on that head before you read threads; a bot that has not finished is not a clean review. When the repository has no PR bots, wait only for checks.
+
+After the wait, read each PR body. Bots that add a footer can save an old copy of the body over your edit. When your text is gone, write it again and keep the bots' text below it.
 
 ## Read every thread
 
