@@ -50,7 +50,7 @@ If Mermaid was requested but no desktop CLI is available, fall back to authoring
 
 ## ELK layout for XML
 
-XML-authored diagrams can be auto-positioned by the CLI's `--layout` pass — the same ELK layouts as the editor's *Arrange ▸ Layout* menu and the same engine the draw.io MCP app server uses. Generate the cells with approximate (or even `0,0`) positions and let ELK place them; you only have to get the graph *structure* — nodes and edges — right.
+XML-authored diagrams can be auto-positioned by the CLI's `--layout` step — the same ELK layouts as the editor's *Arrange ▸ Layout* menu and the same engine the draw.io MCP app server uses. Generate the cells with approximate (or even `0,0`) positions and let ELK place them; you only have to get the graph *structure* — nodes and edges — right.
 
 Add `--layout <name>` to any CLI call that reads your XML. The simplest form lays out in place after you write the file (reading and overwriting the same path is supported):
 
@@ -258,10 +258,10 @@ If neither exists, the install is on another drive or in a custom directory — 
 ls /mnt/*/Program\ Files/draw.io/draw.io.exe 2>/dev/null | head -1
 
 # Registry — the installer records the directory the user picked
-for KEY in 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall' \
-           'HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall' \
-           'HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'; do
-  WIN_DIR=$(reg.exe query "$KEY" /s /v InstallLocation 2>/dev/null |
+for REG_PATH in 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall' \
+                'HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall' \
+                'HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'; do
+  WIN_DIR=$(reg.exe query "$REG_PATH" /s /v InstallLocation 2>/dev/null |
             grep -i 'REG_SZ.*draw\.io' | head -1 |
             sed 's/.*REG_SZ[[:space:]]*//' | tr -d '\r')
   [ -n "$WIN_DIR" ] && DRAWIO_CMD="$(wslpath -u "${WIN_DIR%\\}")/draw.io.exe" && break
