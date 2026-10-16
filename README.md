@@ -99,6 +99,18 @@ curl -fsSL https://x.ai/cli/install.sh | bash
 grok login
 ```
 
+### Claude Code behind Cloud NAT (agent host only)
+
+The GCP agent host reaches the internet through Cloud NAT, which allows 64 ports per destination. After every turn, BB asks Claude Code for a full context breakdown, which opens about 30 token-count connections to the Anthropic API. `bin/claude-bb` starts Claude Code and rewrites that request to `detail: "summary"`, so a BB Claude thread uses about 3 connections instead of 33. The context total stays exact; the per-category numbers become estimates.
+
+On the agent host, run:
+
+```bash
+scripts/install-bb-claude-wrapper.sh
+```
+
+The script links `~/.local/bin/claude-bb`, adds a systemd drop-in that sets `BB_CLAUDE_CODE_EXECUTABLE` for `bb.service`, and restarts the service. BB and Claude Code updates keep both. Do not run it on the Mac.
+
 ### Update bb from Firstmate
 
 In a Firstmate thread that loaded the installed skills, run:
@@ -222,10 +234,10 @@ Pi defaults to `openai-codex/gpt-6.1-sol` with high reasoning.
 
 The tracked Pi settings install these packages:
 
-| Package | Purpose |
-| --- | --- |
-| [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt. |
-| [`pi-web-access`](https://github.com/nicobailon/pi-web-access) | Adds web search, source checks, page extraction, repository fetching, and video analysis. |
+| Package                                                                                    | Purpose                                                                                                      |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)                           | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt.                               |
+| [`pi-web-access`](https://github.com/nicobailon/pi-web-access)                             | Adds web search, source checks, page extraction, repository fetching, and video analysis.                    |
 | [`pi-openai-server-compaction`](https://github.com/ryanbbrown/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
 
 The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
