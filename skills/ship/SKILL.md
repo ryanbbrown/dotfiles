@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Plan and implement a task from an approved plan, with a cross-model plan review, a per-branch GPT-6 Sol code review through the `code-review` skill, browser verification, and a bot-review fix loop after push. Use only when the user explicitly requests the ship skill.
+description: Plan and implement a task from an approved plan, with a cross-model plan review, a per-branch GPT-6.1 Sol code review through the `code-review` skill, browser verification, and a bot-review fix loop after push. Use only when the user explicitly requests the ship skill.
 ---
 
 # Ship
@@ -13,7 +13,7 @@ Invoke as:
 
 The plan gets one cross-model review unless the user asks to skip it.
 
-Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6 Sol code review before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the stack environment is the only implementation writer for a stack.
+Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6.1 Sol code review before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the stack environment is the only implementation writer for a stack.
 
 ## Tools
 
@@ -58,7 +58,7 @@ Return control after spawning. BB reports the child's blockers and completion to
 
 ### Code review
 
-When the writer reports the build complete, review every branch before browser verification or push. Spawn one read-only reviewer per branch, in parallel, with `bb thread spawn --project "$BB_PROJECT_ID" --environment <stack environment ID> --parent-self --provider pi --model openai-codex/gpt-6-sol --reasoning-level high --permission-mode full`. The brief is short: read the `code-review` skill; review branch B against parent P, the plan at its absolute path, and the spec at <location>; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. From round 2 on, the brief also carries the previous round's findings, each marked accepted with its fix commit or rejected with the reason.
+When the writer reports the build complete, review every branch before browser verification or push. Spawn one read-only reviewer per branch, in parallel, with `bb thread spawn --project "$BB_PROJECT_ID" --environment <stack environment ID> --parent-self --provider pi --model openai-codex/gpt-6.1-sol --reasoning-level high --permission-mode full`. The brief is short: read the `code-review` skill; review branch B against parent P, the plan at its absolute path, and the spec at <location>; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. From round 2 on, the brief also carries the previous round's findings, each marked accepted with its fix commit or rejected with the reason.
 
 Return control. When the reports land, verify each finding against the code and apply the `decide` skill: fix what falls inside the plan and spec by sending the writer one fix round, grouped by branch, bottom of the stack first; raise a finding that needs a preference the plan and spec did not settle. A round is clean when it confirms zero P0 and zero P1; accepted P2 and P3 findings ride along in a fix round that happens anyway and are otherwise left to the PR bots. After a fix round, rerun the reviewer with a fresh child on every branch the round changed. Stop at a clean round, or after three rounds, when the open P0 and P1 findings go to the user.
 

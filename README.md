@@ -218,7 +218,7 @@ Claude Code, Codex, and Pi receive the same global instructions from `home/AGENT
 
 Install Pi with `npm install -g @earendil-works/pi-coding-agent`. The older `@mariozechner/pi-coding-agent` package is frozen at 0.73.1 and cannot load the extensions below.
 
-Pi defaults to `openai-codex/gpt-6-sol` with high reasoning.
+Pi defaults to `openai-codex/gpt-6.1-sol` with high reasoning.
 
 The tracked Pi settings install these packages:
 
@@ -271,7 +271,7 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 - `pr-review-loop` runs after any push that opens or updates a PR: it waits for CI and the review bots, then fixes or answers every failing check and open review thread. `ship` uses it, and `home/AGENTS.md` requires it for every other push.
 - `rules-spec` writes numbered rules for how a system decides, each compared with main, as the spec for scoring, validation, permissions, or pipeline work.
 - `write-plan` writes an implementation plan for one project phase against its spec (behavior spec or rules spec): planning evidence, affected paths, ordered steps with a verify line each, data and DB changes, verification, risks, out of scope, acceptance criteria mapping by scenario or rule ID, and a PR split under the PR split rule.
-- `review-panel` runs independent Claude Code and Pi GPT-6 Sol reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
+- `review-panel` runs independent Claude Code and Pi GPT-6.1 Sol reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
 - `retro` reviews a coding session's logs and suggests improvements to navigation, automated checks, coding standards, steering files, and tool use. It runs only when invoked as `/retro`.
 

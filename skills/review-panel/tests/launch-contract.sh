@@ -28,9 +28,9 @@ assert_contains "$skill" '--artifact-root "$BB_THREAD_STORAGE/terminal-jobs"'
 assert_contains "$skill" '~/.claude/skills/review-panel/scripts/review-round-pi.sh'
 assert_contains "$skill" 'Launch exactly once'
 assert_contains "$skill" 'Direct local use'
-assert_contains "$skill" 'Claude Code and Pi GPT-6 Sol'
+assert_contains "$skill" 'Claude Code and Pi GPT-6.1 Sol'
 assert_contains "$review_script" 'claude_model="claude-opus-5"'
-assert_contains "$review_script" 'sol_model="${SOL_MODEL:-openai-codex/gpt-6-sol}"'
+assert_contains "$review_script" 'sol_model="${SOL_MODEL:-openai-codex/gpt-6.1-sol}"'
 assert_contains "$review_script" '--thinking high'
 
 if grep -F 'review-round-bb.sh' "$skill" >/dev/null; then

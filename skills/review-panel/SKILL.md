@@ -1,6 +1,6 @@
 ---
 name: review-panel
-description: Run Claude Code and Pi GPT-6 Sol reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
+description: Run Claude Code and Pi GPT-6.1 Sol reviews against one frozen snapshot and report the output files. Use only when the user explicitly requests the review-panel skill.
 ---
 
 # Review panel
@@ -46,7 +46,7 @@ For a custom review, use these review arguments:
 
 Use `--prompt @path/to/prompt.md` for a prompt stored in the repository. The custom text defines the review objective. The command still supplies the frozen snapshot, read-only rules, and repository context.
 
-The panel runs Claude Code and Pi GPT-6 Sol against the same frozen snapshot. Its purpose is two different models on one review, not two independent tools.
+The panel runs Claude Code and Pi GPT-6.1 Sol against the same frozen snapshot. Its purpose is two different models on one review, not two independent tools.
 
 The unused `scripts/review-round.sh` keeps the Codex and Grok reviewers. Neither CLI is installed on this machine. Do not run it.
 
@@ -86,7 +86,7 @@ It writes the same review artifacts. A round succeeds when both reviewers produc
 
 ```text
 MAX_ROUNDS=3                    Hard cap; defaults to 3.
-SOL_MODEL=openai-codex/gpt-6-sol
+SOL_MODEL=openai-codex/gpt-6.1-sol
                                 Pi Sol reviewer model.
 REVIEW_TIMEOUT_SECONDS=900      Per-reviewer timeout.
 SKIP_PREFLIGHT=1                Optional local debugging switch.

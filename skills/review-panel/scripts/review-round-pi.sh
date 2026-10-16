@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Usage: review-round.sh --feature NAME [--repo PATH] [--output-dir PATH] [--mode MODE] [--target-file PATH] [--prompt TEXT|@PATH] [--plan-file PATH] [--base-ref REF] [--preflight-only]
 
-Runs Claude Code and Pi GPT-6 Sol reviewers in parallel.
+Runs Claude Code and Pi GPT-6.1 Sol reviewers in parallel.
 
 Options:
   --feature NAME       Required stable feature label.
@@ -24,7 +24,7 @@ Options:
 
 Environment:
   MAX_ROUNDS           Hard cap for review versions. Defaults to 3.
-  SOL_MODEL            Pi Sol reviewer model. Defaults to openai-codex/gpt-6-sol.
+  SOL_MODEL            Pi Sol reviewer model. Defaults to openai-codex/gpt-6.1-sol.
   REVIEW_TIMEOUT_SECONDS
                        Per-reviewer timeout. Defaults to 900.
   SKIP_PREFLIGHT       Set to 1 to skip CLI smoke checks.
@@ -288,7 +288,7 @@ is_skipped claude || need_cmd jq
 
 # Reviewer models are explicit so the round manifest can fingerprint them.
 claude_model="claude-opus-5"
-sol_model="${SOL_MODEL:-openai-codex/gpt-6-sol}"
+sol_model="${SOL_MODEL:-openai-codex/gpt-6.1-sol}"
 
 # De-nest reviewers from a host Claude Code session.
 denest=(env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT)

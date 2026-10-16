@@ -102,7 +102,7 @@ grep -Fq -- '- Prompt version: 4' "$manifest"
 grep -Fq -- '- Mode: custom' "$manifest"
 grep -Fq -- '- Target: .html/architecture.html' "$manifest"
 grep -Fq -- '- Custom prompt source: inline' "$manifest"
-grep -Eq -- '^- Sol: model openai-codex/gpt-6-sol, thinking high; harness pi 0\.0\.0-fake \(Pi CLI via openai-codex OAuth\)$' "$manifest"
+grep -Eq -- '^- Sol: model openai-codex/gpt-6\.1-sol, thinking high; harness pi 0\.0\.0-fake \(Pi CLI via openai-codex OAuth\)$' "$manifest"
 test -s "$report"
 grep -Fq -- '## Timing' "$manifest"
 grep -Fq -- '- Claude: skipped' "$manifest"
@@ -115,7 +115,7 @@ args = open(sys.argv[1], encoding="utf-8").read().splitlines()
 def values(flag):
     return [args[index + 1] for index, value in enumerate(args[:-1]) if value == flag]
 
-assert values("--model") == ["openai-codex/gpt-6-sol"], args
+assert values("--model") == ["openai-codex/gpt-6.1-sol"], args
 assert values("--thinking") == ["high"], args
 assert values("--mode") == ["text"], args
 assert values("--tools") == ["read,grep,find,ls,bash"], args

@@ -1,6 +1,6 @@
 ---
 name: ship-small
-description: Build a small, low-risk change on one branch, with one GPT-6 Sol code review, the final test pass, and browser verification for UI changes. The light version of `ship`.
+description: Build a small, low-risk change on one branch, with one GPT-6.1 Sol code review, the final test pass, and browser verification for UI changes. The light version of `ship`.
 disable-model-invocation: true
 ---
 
@@ -33,7 +33,7 @@ Done when none of these apply, or you have stopped for the user.
 
 ## Code review
 
-Spawn one read-only reviewer with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --model openai-codex/gpt-6-sol --reasoning-level high --permission-mode full`. The brief: read the `code-review` skill; review branch B against parent P; there is no plan or spec, so the task statement below is the acceptance criteria; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. Paste the task statement into the brief.
+Spawn one read-only reviewer with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --model openai-codex/gpt-6.1-sol --reasoning-level high --permission-mode full`. The brief: read the `code-review` skill; review branch B against parent P; there is no plan or spec, so the task statement below is the acceptance criteria; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. Paste the task statement into the brief.
 
 Return control. When the report lands, verify each finding against the code and apply the `decide` skill. Fix the accepted P0 and P1 findings and rerun the review with a fresh child. Stop at a clean round (zero P0 and zero P1), or after two rounds, when the open findings go to the user.
 
