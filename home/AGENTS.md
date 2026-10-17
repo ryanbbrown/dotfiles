@@ -4,7 +4,8 @@
 
 - Reply in at most three paragraphs of at most 80 words each. A list counts as a paragraph. Do not add caveats, headings, or summaries unless they change the answer. Write more only when the user asks for detail.
 - DNC means "do not change." If a message includes DNC, answer its question or concern without making or continuing code changes.
-- Treat corrections as constraints on authorized work. Ask for confirmation before performing a materially new action that only you proposed.
+- Treat corrections as constraints on authorized work.
+- A request from Ryan or from another BB thread is authorization. Do it. Ask Ryan first only when an action deletes data, sends data outside his machines and accounts, or changes prod.
 - Never estimate implementation time.
 
 ## Implementation
