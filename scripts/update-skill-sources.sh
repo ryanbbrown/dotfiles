@@ -11,8 +11,6 @@ submodules=(
   "vendor/mattpocock-skills"
   "vendor/drawio-mcp"
   "vendor/taste-skill"
-  "vendor/last30days-skill"
-  "vendor/crit"
   "vendor/vercel-agent-skills"
 )
 

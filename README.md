@@ -111,22 +111,6 @@ scripts/install-bb-claude-wrapper.sh
 
 The script links `~/.local/bin/claude-bb`, adds a systemd drop-in that sets `BB_CLAUDE_CODE_EXECUTABLE` for `bb.service`, and restarts the service. BB and Claude Code updates keep both. Do not run it on the Mac.
 
-### Update bb from Firstmate
-
-In a Firstmate thread that loaded the installed skills, run:
-
-```text
-/update-bb
-```
-
-This manual-only skill checks for an existing `update-bb` terminal, then starts `sync-bb-personal` in a thread-scoped BB terminal. It records a durable log and final outcome marker under the invoking thread's storage, so the update survives a provider-session replacement. Skills load when a thread starts, so a running Firstmate does not discover a newly installed skill.
-
-Test the skill without running the sync:
-
-```bash
-tests/update-bb-skill.sh
-```
-
 ### Sync the bb personal branch
 
 Run on demand from anywhere:
@@ -270,27 +254,19 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 ### Major skills
 
-#### Firstmate operations
-
-- `update-bb` runs the installed bb personal sync in a durable BB terminal. It runs only when invoked as `/update-bb`.
-
 #### Planning and delivery
 
 - `grilling` stress-tests a plan, decision, or idea through focused questions.
-- `wait-what` explains confusing code or concepts from first principles.
-- `eli5` explains an unfamiliar topic in plain language, with a comic-strip HTML graphic in `~/code/scratch/`. It runs only when invoked as `/eli5`.
 - `ship` runs the main implementation and review workflow described below.
 - `pr-review-loop` runs after any push that opens or updates a PR: it waits for CI and the review bots, then fixes or answers every failing check and open review thread. `ship` uses it, and `home/AGENTS.md` requires it for every other push.
 - `rules-spec` writes numbered rules for how a system decides, each compared with main, as the spec for scoring, validation, permissions, or pipeline work.
 - `write-plan` writes an implementation plan for one project phase against its spec (behavior spec or rules spec): planning evidence, affected paths, ordered steps with a verify line each, data and DB changes, verification, risks, out of scope, acceptance criteria mapping by scenario or rule ID, and a PR split under the PR split rule.
 - `review-panel` runs independent Claude Code and Pi GPT-6.1 Sol reviews against one frozen snapshot. Its skill starts the review with one direct Terminal Jobs command; the review script also works in a local foreground shell.
 - `test-quality` favors tests that prove observable behavior and protect against costly regressions.
-- `retro` reviews a coding session's logs and suggests improvements to navigation, automated checks, coding standards, steering files, and tool use. It runs only when invoked as `/retro`.
 
 #### Review and browser QA
 
 - `agent-browser` drives a browser for automation, product testing, and site dogfooding.
-- `crit` collects structured inline feedback on code, plans, HTML files, and live pages.
 
 #### Architecture and design
 
@@ -301,13 +277,11 @@ The vendored draw.io repository only supplies the generated `drawio` skill. This
 
 #### Research and framework guidance
 
-- `last30days` researches recent public discussion across social networks, video sites, GitHub, and the web.
 - `vercel-react-best-practices` guides React and Next.js performance work.
 
 #### Writing
 
 - `plain-words` removes filler and makes general prose clear and specific.
-- `govuk-style` applies GOV.UK and GDS house style when requested.
 - `writing-for-agents` provides the design principles used to write predictable agent instructions.
 
 ## Main implementation flow

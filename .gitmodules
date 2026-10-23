@@ -7,12 +7,6 @@
 [submodule "taste-skill"]
 	path = vendor/taste-skill
 	url = https://github.com/Leonxlnx/taste-skill.git
-[submodule "last30days-skill"]
-	path = vendor/last30days-skill
-	url = https://github.com/mvanhorn/last30days-skill
-[submodule "crit"]
-	path = vendor/crit
-	url = https://github.com/tomasz-tomczyk/crit.git
 [submodule "vercel-agent-skills"]
 	path = vendor/vercel-agent-skills
 	url = https://github.com/vercel-labs/agent-skills.git

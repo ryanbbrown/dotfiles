@@ -21,7 +21,7 @@ Read [`references/interface-checklist.md`](references/interface-checklist.md) be
 
 - Use `agent-browser` for browser navigation, interactions, screenshots, reproduction, and black-box evidence. This skill supplies the interface-quality rubric; it does not replace behavior testing.
 - Use `vercel-react-best-practices` for React and Next.js performance. This skill owns rendered quality, not framework performance architecture.
-- Use `plain-words` for broader prose, or `govuk-style` when explicitly requested. This skill owns labels, controls, state messages, and flow microcopy only.
+- Use `plain-words` for broader prose. This skill owns labels, controls, state messages, and flow microcopy only.
 - Follow host or product contracts first, including BB plugin tokens and components.
 
 ## Review output
