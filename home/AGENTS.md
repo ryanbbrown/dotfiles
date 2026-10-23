@@ -13,6 +13,7 @@
 - Do not preserve backward compatibility unless the user requests it or the project declares a compatibility requirement. Remove obsolete paths instead of adding compatibility layers, fallbacks, or migrations.
 - Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
 - Use dependencies already in the project before writing a new implementation or adding a package. Check their documentation and types before assuming they lack a needed capability.
+- Keep tracing, logging, and eval-result recording (for example Logfire, MLflow, LangSmith) at the project's defaults. Turn one off or redirect it only when the user asks.
 
 ## Tests
 
