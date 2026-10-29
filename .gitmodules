@@ -13,3 +13,6 @@
 [submodule "agent-browser"]
 	path = vendor/agent-browser
 	url = https://github.com/vercel-labs/agent-browser.git
+[submodule "vendor/pstack-claude"]
+	path = vendor/pstack-claude
+	url = https://github.com/michael-denyer/pstack-claude

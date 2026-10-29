@@ -10,6 +10,7 @@ submodules=(
   "vendor/agent-browser"
   "vendor/mattpocock-skills"
   "vendor/drawio-mcp"
+  "vendor/pstack-claude"
   "vendor/taste-skill"
   "vendor/vercel-agent-skills"
 )
