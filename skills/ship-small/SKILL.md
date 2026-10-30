@@ -47,8 +47,8 @@ Run this only when the change affects UI. Bring the app up with the repository's
 
 ## Push
 
-Push only on the user's word. Open the PR ready for review and report its link. When the task has a Linear ticket and you made a combined video, attach it to the ticket, and link the ticket in the PR body for the video, since Linear file URLs expire.
+Push only on the user's word. Open the PR ready for review and report its link. When you made a combined video, attach it to the task's Linear ticket yourself, creating the ticket when there is none, and link the ticket in the PR body for the video, since Linear file URLs expire.
 
 ## Complete
 
-Report the result, the code review rounds and their findings, the final test pass table, and a link to the combined video or the screenshot if one was made.
+Report the result, the code review rounds and their findings, the final test pass table, and the Linear ticket that holds the combined video or screenshot, never a file path.
