@@ -8,5 +8,27 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6.1-sol",
   "lastChangelogVersion": "0.87.1",
-  "theme": "dark"
+  "theme": "dark",
+  "compaction": {
+    "modelOverrides": {
+      "anthropic/claude-opus-5-5": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-sonnet-5": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-sonnet-5-5": {
+        "reserveTokens": 600000
+      },
+      "openai-codex/gpt-6.1-sol": {
+        "reserveTokens": 100000
+      }
+    }
+  },
+  "httpIdleTimeoutMs": 60000,
+  "retry": {
+    "maxRetries": 10,
+    "baseDelayMs": 2000,
+    "maxAgentDelayMs": 60000
+  }
 }
