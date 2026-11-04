@@ -43,7 +43,7 @@ Run the `final-test-pass` skill on the branch. An unexpected failure stops for t
 
 ## Browser verification
 
-Run this only when the change affects UI. Bring the app up with the repository's own commands. Record the changed flow as the Recording section of the `browser-verify` skill describes, then build the combined video as its Combined video section describes; for a static visual change, take only its screenshot. Skip the rest of that skill. Run `agent-browser close --all` when done. Done when the capture shows the change working.
+Run this only when the change affects UI. Bring the app up with the repository's own commands. Record the changed flow and build the combined video as the repository's `browser-verify` skill describes; for a static visual change, take only its screenshot. Skip the rest of that skill. Run `agent-browser close --all` when done. Done when the capture shows the change working.
 
 ## Push
 
