@@ -10,7 +10,7 @@ fail() {
   exit 1
 }
 
-grep -F 'Use `bb terminal-job` only when' "$repo_root/home/AGENTS.md" >/dev/null ||
+grep -F 'Use the terminal-jobs skill for each command that can run more than 60 seconds' "$repo_root/home/AGENTS.md" >/dev/null ||
   fail "shared instructions do not define when to use Terminal Jobs"
 grep -F 'bb terminal-job run' "$repo_root/skills/review-panel/SKILL.md" >/dev/null ||
   fail "review-panel does not use the Terminal Jobs launch path"

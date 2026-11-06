@@ -46,7 +46,7 @@
 - After absorbing a child's result, archive the safe idle leaf without asking. Retain it when it has live descendants, asynchronous work, a pending decision, likely review or fix follow-up, a running process, or unique or unintegrated commits, artifacts, or workspace state.
 - Before reporting completion, reconcile every child: archive safe completed leaves and report each retained child with the reason.
 - Let child threads work after spawning. Do not poll or wait for them.
-- Use the terminal-jobs skill only for commands likely to run more than five minutes; use Bash otherwise.
+- Use the terminal-jobs skill for each command that can run more than 60 seconds (for example installs, env pulls, builds, stack setup, test suites, and commands that can wait for a login), so that Ryan can continue to talk to you; use Bash otherwise.
 
 ## Other
 
