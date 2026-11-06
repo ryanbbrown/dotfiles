@@ -62,7 +62,7 @@ If a rule needs a preference the user has not given, mark it **Proposed** or **D
 
 ## 6. Draft locally
 
-Start in `~/code/scratch/<project>/rules-spec.md` unless Ryan names a document. Keep evidence (code paths, commits, counts) in a separate notes file. Preserve the wording of rules Ryan approved; add or revise rules by ID.
+Start in `~/code/scratch/<slug>/rules-spec.md` unless Ryan names a document. Keep evidence (code paths, commits, counts) in a separate notes file in the same folder. Preserve the wording of rules Ryan approved; add or revise rules by ID.
 
 **Done when:** the file is saved and Ryan has a link. Report open questions without claiming the spec is approved.
 

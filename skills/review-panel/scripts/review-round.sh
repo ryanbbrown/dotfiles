@@ -154,9 +154,11 @@ repo="$(cd "$repo" && pwd -P)"
 repo_root="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || die "not a git repository: $repo"
 repo="$(cd "$repo_root" && pwd -P)"
 
+# A third argument of "anywhere" accepts a file outside the repository.
 resolve_repo_file() {
   local option="$1"
   local value="$2"
+  local scope="${3:-}"
   local candidate
   local directory
 
@@ -170,7 +172,7 @@ resolve_repo_file() {
   resolved_repo_file="$directory/$(basename "$candidate")"
   case "$resolved_repo_file" in
     "$repo"/*) ;;
-    *) die "$option file must be inside the repository: $resolved_repo_file" ;;
+    *) [ "$scope" = "anywhere" ] || die "$option file must be inside the repository: $resolved_repo_file" ;;
   esac
 }
 
@@ -183,7 +185,7 @@ case "$review_mode" in
     [ -z "$prompt_spec" ] || die "--prompt is only valid when --mode custom"
     [ -z "$plan_file" ] || die "--plan-file is only valid when --mode implementation"
     [ -z "$base_ref" ] || die "--base-ref is only valid when --mode implementation"
-    resolve_repo_file "target" "$target_file"
+    resolve_repo_file "target" "$target_file" anywhere
     target_file="$resolved_repo_file"
     review_target_file="$target_file"
     ;;
@@ -192,7 +194,7 @@ case "$review_mode" in
     [ -n "$prompt_spec" ] || die "--prompt is required when --mode custom"
     [ -z "$plan_file" ] || die "--plan-file is only valid when --mode implementation"
     [ -z "$base_ref" ] || die "--base-ref is only valid when --mode implementation"
-    resolve_repo_file "target" "$target_file"
+    resolve_repo_file "target" "$target_file" anywhere
     target_file="$resolved_repo_file"
     review_target_file="$target_file"
     case "$prompt_spec" in
@@ -220,7 +222,7 @@ case "$review_mode" in
       [ -n "$base_ref" ] || die "--base-ref is required when --mode implementation"
     fi
     if [ -n "$plan_file" ]; then
-      resolve_repo_file "plan" "$plan_file"
+      resolve_repo_file "plan" "$plan_file" anywhere
       plan_file="$resolved_repo_file"
       review_target_file="$plan_file"
     elif [ "$preflight_only" -eq 1 ]; then
@@ -497,7 +499,8 @@ diff_sha256=""
 create_snapshot() {
   local snapshot_index="$tmp_dir/snapshot.index"
   local snapshot_tree
-  local review_target_rel="${review_target_file#"$repo"/}"
+  local review_target_rel
+  local review_target_blob
   local review_prompt_rel=""
   local snapshot_prompt_file=""
   local pathspecs
@@ -520,7 +523,18 @@ create_snapshot() {
 
   GIT_INDEX_FILE="$snapshot_index" git -C "$repo" read-tree "$base_sha" || die "failed to initialize snapshot index"
   GIT_INDEX_FILE="$snapshot_index" git -C "$repo" add -A -- "${pathspecs[@]}" || die "failed to add worktree changes to snapshot"
-  GIT_INDEX_FILE="$snapshot_index" git -C "$repo" add -f -- "$review_target_rel" || die "failed to add review target to snapshot"
+  case "$review_target_file" in
+    "$repo"/*)
+      review_target_rel="${review_target_file#"$repo"/}"
+      GIT_INDEX_FILE="$snapshot_index" git -C "$repo" add -f -- "$review_target_rel" || die "failed to add review target to snapshot"
+      ;;
+    *)
+      # A target outside the repository, such as a plan in ~/code/scratch, goes into the snapshot under .review-target/.
+      review_target_rel=".review-target/$(basename "$review_target_file")"
+      review_target_blob="$(git -C "$repo" hash-object -w -- "$review_target_file")" || die "failed to store review target"
+      GIT_INDEX_FILE="$snapshot_index" git -C "$repo" update-index --add --cacheinfo "100644,$review_target_blob,$review_target_rel" || die "failed to add review target to snapshot"
+      ;;
+  esac
   if [ -n "$custom_prompt_file" ]; then
     review_prompt_rel="${custom_prompt_file#"$repo"/}"
     GIT_INDEX_FILE="$snapshot_index" git -C "$repo" add -f -- "$review_prompt_rel" || die "failed to add custom prompt to snapshot"

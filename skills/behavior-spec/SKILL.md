@@ -129,7 +129,7 @@ Keep source links, code paths, baseline commits, and coverage notes in a separat
 
 ## 5. Draft locally, then edit where review happens
 
-Start in `~/code/scratch/<project>-capabilities.md` unless Ryan names an existing document to edit. Keep evidence in a separate `<project>-capabilities-evidence.md` file. The Markdown draft is authoritative.
+Start in `~/code/scratch/<slug>/behavior-spec.md` unless Ryan names an existing document to edit. Keep evidence in a separate `behavior-spec-evidence.md` file in the same folder. The Markdown draft is authoritative.
 
 “Reply to comments” authorizes replies, not body edits. “Comments only” and “no changes” keep the document unchanged. Preserve the wording of user-approved changes instead of rewriting adjacent sections for style.
 

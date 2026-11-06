@@ -91,7 +91,7 @@ Skip this when the plan's "Test & verification plan" names no browser flows; its
 
 ### Write-path rehearsal
 
-Run this after the code review whenever the change affects a write path, as the `write-path-rehearsal` skill defines it, whether or not browser verification runs. Spawn one child with the same provider and model as the verifier; the brief is one line: read the `write-path-rehearsal` skill, rehearse the stack at `.plans/<slug>.md`, and write the report. A blocking finding goes to the writer as a fix round, then the rehearsal reruns its failed cases; three rounds is the cap.
+Run this after the code review whenever the change affects a write path, as the `write-path-rehearsal` skill defines it, whether or not browser verification runs. Spawn one child with the same provider and model as the verifier; the brief is one line: read the `write-path-rehearsal` skill, rehearse the stack at `~/code/scratch/<slug>/plan.md`, and write the report. A blocking finding goes to the writer as a fix round, then the rehearsal reruns its failed cases; three rounds is the cap.
 
 ## Push
 

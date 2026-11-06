@@ -24,7 +24,7 @@ bb terminal-job run \
   -- \
   ~/.claude/skills/review-panel/scripts/review-round-pi.sh \
   --feature "feature name" \
-  --plan-file .plans/<plan-slug>.md \
+  --plan-file ~/code/scratch/<slug>/plan.md \
   --base-ref <pre-implementation-sha>
 ```
 
@@ -35,7 +35,7 @@ Capture the base SHA before implementation starts. The implementation writer can
 For a plan review, use these review arguments and a title that ends in `-plan`:
 
 ```text
---feature "feature name" --mode plan --target-file .plans/<plan-slug>.md
+--feature "feature name" --mode plan --target-file ~/code/scratch/<slug>/plan.md
 ```
 
 For a custom review, use these review arguments:
@@ -73,9 +73,9 @@ It writes the same review artifacts. A round succeeds when both reviewers produc
 --repo PATH          Repository to review. Defaults to the current directory.
 --output-dir PATH    Review output root. Defaults to <repo>/.reviews.
 --mode MODE          Review mode: implementation, plan, or custom. Defaults to implementation.
---target-file PATH   File to review, relative to repo or absolute within it. Required for plan and custom modes.
+--target-file PATH   File to review, relative to repo or absolute. Required for plan and custom modes.
 --prompt TEXT|@PATH  Custom objective as inline text or an @-prefixed repository file. Required for custom mode.
---plan-file PATH     Existing implementation plan, relative to repo or absolute within it. Required for implementation mode.
+--plan-file PATH     Existing implementation plan, relative to repo or absolute. Required for implementation mode.
 --base-ref REF       Git commit recorded before implementation. Required for implementation mode.
 --skip LIST          Comma-separated reviewers to skip: claude, sol. Repeatable.
                      Cannot skip both.

@@ -37,7 +37,7 @@ Do this:
    every new field/key the plan writes to a persisted store, name the code that
    reads it: data written with no consumer is a planning defect, not progress.
 
-Then write the plan to `.plans/<slug>.md` using Markdown `##` section headings.
+Then write the plan to `~/code/scratch/<slug>/plan.md`, in the same folder as the spec, using Markdown `##` section headings.
 **The plan must contain these exact sections:**
 
 - `## Goal` — one paragraph restating the feature and the acceptance criteria,

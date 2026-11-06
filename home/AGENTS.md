@@ -38,7 +38,7 @@
 - You run inside BB. Ryan sees only the last text message of each turn; earlier messages collapse. Put user-facing content only in that last message. If anything happens after your answer in the same turn (a steer, a child result, a tool call, an error), repeat the full answer in your final message.
 - Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - In Markdown file links, use absolute paths such as `/Users/<user>/...`; BB does not expand `~`.
-- Use BB child threads instead of in-process subagents. Spawn every child with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider claude-code --model "claude-opus-5-5[1m]" --reasoning-level medium --permission-mode full`. Use `--provider pi --model openai-codex/gpt-6.1-sol` only to fan out many read-only children at once, or for an adversarial review when a skill or the user names Sol or Astra (`openai-codex/gpt-6-astra`).
+- Use BB child threads instead of in-process subagents. Spawn every child with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium --permission-mode full`, unless the user or a skill names a different provider or model. Use `--provider pi --model openai-codex/gpt-6.1-sol` only to fan out many read-only children at once, or for an adversarial review when a skill or the user names Sol or Astra (`openai-codex/gpt-6-astra`).
 - A project's main checkout (for example `~/code/sandstone`) stays on `main`. Never commit, switch branches, or run `gt create` or `gt modify` in it. Before you change any file there, spawn a child with `--new-environment worktree` to make the change.
 - Make worktrees only through BB: `bb thread spawn --new-environment worktree`, with `--base-branch <ref>` for a pinned ref. Never run `git worktree add` yourself; a skill script that creates and removes its own temporary worktree is the exception.
 - Keep each child brief focused on the objective, relevant constraints, expected result, and validation. Return control after spawning; BB reports child blockers and completion to the parent.
@@ -55,6 +55,7 @@
 - Create branches and pull requests with the repository's documented branch and PR tooling; use `git` and `gh` when it documents none.
 - Never open a pull request as a draft or mark it draft unless I explicitly ask.
 - Write throwaway output that is not part of the repo, such as explanatory HTML, reports, and notes, to `~/code/scratch/`. Never write it inside a checkout.
+- Store specs and plans in `~/code/scratch/<slug>/`, so that they stay after BB removes a worktree: the spec as `rules-spec.md` or `behavior-spec.md`, and the plan as `plan.md`.
 - When you finish with `agent-browser`, run `agent-browser close --all` before you report completion. Old versions keep their daemon and headless Chrome running forever.
 - For CI and preview waits, use the repository's wait scripts and documented stop rules when available. Never write a polling loop for a deployment.
 - After any push that opens or updates a pull request, run the `pr-review-loop` skill before you report the PR as done, whether or not a skill such as `ship` ran.
