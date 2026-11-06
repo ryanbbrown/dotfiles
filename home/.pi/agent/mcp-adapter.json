@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "projectServers": "allow"
+  },
+  "mcpServers": {
+    "playwright": { "disabled": true },
+    "github": { "disabled": true },
+    "vercel": { "disabled": true },
+    "pylon": { "disabled": true },
+    "raindrop": { "disabled": true },
+    "figma-local": { "disabled": true },
+    "postgres": { "disabled": true },
+    "memory": { "disabled": true },
+    "graphite": { "disabled": true },
+    "sandstone-api": { "disabled": true }
+  }
+}
