@@ -64,8 +64,6 @@ write_local_workflow() {
   cat <<'EOF_WORKFLOW'
 ## Local Agent Workflow
 
-- Use `.plans/` for implementation plans. Plans should be named with implementation-order prefixes like `01-auth.md`, `02-billing.md`, and `03-dashboard.md`.
-- Keep `.plans/` available for review while working, but remove it before merging upstream if the target repo should not receive local planning artifacts.
 - Use `.reviews/` for multi-agent review outputs.
 - Use `.html/` for generated HTML artifacts when visual explanation is useful.
 - Treat `.reviews/`, `.html/`, `.archive/`, `CLAUDE.local.md`, and `AGENTS.override.md` as local-only files.
@@ -139,8 +137,8 @@ EOF_NO_SOURCE
   } > "$target"
 }
 
-mkdir -p .plans .reviews .html .archive
-touch .plans/.gitkeep .html/.gitkeep
+mkdir -p .reviews .html .archive
+touch .html/.gitkeep
 
 ensure_excluded "CLAUDE.local.md"
 ensure_excluded "AGENTS.override.md"

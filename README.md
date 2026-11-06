@@ -191,7 +191,6 @@ Run `adapt-repo` inside an existing repository. It adds local agent instructions
 
 Both workflows use these directories:
 
-- `.plans/` for ordered implementation plans
 - `.reviews/` for independent review reports
 - `.html/` for useful visual artifacts
 - `.archive/` for retired local material
