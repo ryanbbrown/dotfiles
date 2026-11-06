@@ -57,6 +57,7 @@
 - Write throwaway output that is not part of the repo, such as explanatory HTML, reports, and notes, to `~/code/scratch/`. Never write it inside a checkout.
 - Store specs and plans in `~/code/scratch/<slug>/`, so that they stay after BB removes a worktree: the spec as `rules-spec.md` or `behavior-spec.md`, and the plan as `plan.md`.
 - When you finish with `agent-browser`, run `agent-browser close --all` before you report completion. Old versions keep their daemon and headless Chrome running forever.
+- If `agent-browser` Chrome fails with "No usable sandbox!", put `{"args": "--no-sandbox"}` in `~/.agent-browser/config.json` and try again.
 - For CI and preview waits, use the repository's wait scripts and documented stop rules when available. Never write a polling loop for a deployment.
 - After any push that opens or updates a pull request, run the `pr-review-loop` skill before you report the PR as done, whether or not a skill such as `ship` ran.
 - Pin waits to the current PR head SHA, use a wall-clock deadline, and fail immediately when the status command or parser fails.
