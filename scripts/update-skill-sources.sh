@@ -16,7 +16,6 @@ submodules=(
 )
 
 generated_paths=(
-  "skills/agent-browser"
   "skills/drawio"
 )
 
@@ -100,12 +99,10 @@ for submodule in "${submodules[@]}"; do
   git submodule update --remote "$submodule" || die "failed to update $submodule"
 done
 
-for skill in agent-browser drawio; do
-  if [ -x "scripts/generate-$skill-skill.sh" ]; then
-    log "GENERATE $skill skill"
-    "scripts/generate-$skill-skill.sh" || die "failed to generate $skill skill"
-  fi
-done
+if [ -x scripts/generate-drawio-skill.sh ]; then
+  log "GENERATE drawio skill"
+  scripts/generate-drawio-skill.sh || die "failed to generate drawio skill"
+fi
 
 changed=()
 for submodule in "${submodules[@]}"; do

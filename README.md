@@ -151,7 +151,7 @@ Run:
 $HOME/.dotfiles/scripts/update-skill-sources.sh
 ```
 
-The script updates known submodules and rebuilds generated wrappers. It currently regenerates the `agent-browser` and `drawio` skills.
+The script updates known submodules and rebuilds generated wrappers. It currently regenerates the `drawio` skill.
 
 Pass `--commit` to commit known source changes. Pass `--push` to commit and push them from `main`.
 
