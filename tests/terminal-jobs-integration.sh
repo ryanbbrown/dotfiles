@@ -24,7 +24,7 @@ runner="$test_root/home/.local/bin/terminal-job-runner"
 [ ! -L "$runner" ] || fail "link-home still manages the external Terminal Jobs runner"
 grep -Fxq "external runner" "$runner" || fail "link-home changed the external Terminal Jobs runner"
 [ ! -e "$runner.pre-dotfiles" ] || fail "link-home backed up the external Terminal Jobs runner"
-[ -L "$test_root/home/.local/bin/papercut" ] || fail "link-home did not install a managed command"
+[ -L "$test_root/home/.local/bin/sync-bb-personal" ] || fail "link-home did not install a managed command"
 
 command -v rg >/dev/null 2>&1 || fail "rg is required for direct-terminal inventory"
 direct_terminal_pattern='(^|["[:space:]])bb["[:space:]]+terminal["[:space:]]+create|terminal_'"create"

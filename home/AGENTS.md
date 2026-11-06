@@ -55,7 +55,6 @@
 - Create branches and pull requests with the repository's documented branch and PR tooling; use `git` and `gh` when it documents none.
 - Never open a pull request as a draft or mark it draft unless I explicitly ask.
 - Write throwaway output that is not part of the repo, such as explanatory HTML, reports, and notes, to `~/code/scratch/`. Never write it inside a checkout.
-- Log friction with `papercut "what you were doing; what got in the way"` only when it comes from the shared development workflow: BB and its CLI or plugins, dotfiles skills and commands, hooks, sandboxes, or provider tooling. Test: would this happen in any repository? Never log a problem that belongs to one project or its code; project instructions are updated later from thread analysis.
 - When you finish with `agent-browser`, run `agent-browser close --all` before you report completion. Old versions keep their daemon and headless Chrome running forever.
 - For CI and preview waits, use the repository's wait scripts and documented stop rules when available. Never write a polling loop for a deployment.
 - After any push that opens or updates a pull request, run the `pr-review-loop` skill before you report the PR as done, whether or not a skill such as `ship` ran.

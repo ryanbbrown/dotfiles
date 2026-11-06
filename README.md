@@ -14,7 +14,7 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 - `skills/` contains the skills exposed to all three coding agents.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
-- `bin/` contains small shared commands, including `papercut` and `sync-bb-personal`.
+- `bin/` contains small shared commands, including `sync-bb-personal`.
 - `tests/` contains checks for shared commands and installation behavior.
 
 Each entry under `skills/` is one of:
@@ -75,7 +75,6 @@ Pi
   ~/.pi/agent/mcp.json
 
 Other
-  ~/.local/bin/papercut
   ~/.local/bin/sync-bb-personal
   ~/Desktop/install-bb-personal.command
 ```
@@ -208,7 +207,6 @@ Claude Code, Codex, and Pi receive the same global instructions from `home/AGENT
 - Do not preserve backward compatibility unless the project requires it.
 - Use existing dependencies before adding code or packages.
 - Write concise prose in active voice.
-- Record small workflow problems with `papercut`.
 
 ### Pi
 
