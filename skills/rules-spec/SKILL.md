@@ -41,26 +41,39 @@ Main: free shipping starts at $75, measured before discounts.
 
 A rule with several cases uses bullets under the bold line, one case and its result per bullet. A rule that replaces several old mechanisms lists what each one becomes.
 
-Keep implementation out: no file paths, function names, or which module changes. Names the user sees or sets (config keys, labels, metric names) belong in rules.
+Keep code structure out of rules: no file paths, function names, or which module changes. Names the user sees or sets (config keys, labels, metric names) belong in rules. Stored and wire names belong in Technical decisions (step 4).
 
 If a rule needs a preference the user has not given, mark it **Proposed** or **Decision needed** at the rule and add the question to Open questions with the rule ID.
 
 **Done when:** every decision in scope has exactly one rule, each rule has a Main line, and no two rules contradict.
 
-## 4. Close the document
+## 4. Record the technical decisions
+
+A rule says what the system decides. A technical decision says how the change is built. A rules spec is usually the only document Ryan reviews before the plan, so the key technical decisions go in it.
+
+After the rules, add a **Technical decisions** section. Number entries `T1`, `T2`, … and give each the rule shape: bold line with the choice, 1–3 lines with the reason and the rejected alternative, and a Main line.
+
+Raise only a choice with more than one reasonable answer that Ryan should align on: the rejected alternative is one someone could reasonably pick. Typical places: stored data (names, types, constraints), removing old fields and converting rows, the deploy order of migration and code, API and wire contracts, and where a decision is computed when the place changes who sees the result. Leave plumbing to the plan: renaming a field through its callers, passing a value through, or any change with one obvious way to do it.
+
+Mark an unsettled choice **Proposed** or **Decision needed** and add it to Open questions.
+
+**Done when:** each choice that has real alternatives and is hard to change later has one T entry, and the section has no plumbing entries.
+
+## 5. Close the document
 
 - **Does not change:** a short list of nearby behavior the reader might expect to move.
 - **Later:** decisions deliberately deferred, one line each, so they are not mistaken for gaps.
-- **Open questions:** each with the rule ID it blocks.
+- **Open questions:** each with the rule or T ID it blocks.
 
-## 5. Check it
+## 6. Check it
 
 - Can a reader who knows the product, not the code, say whether each rule is right?
 - Does each rule settle its edge cases, or name them as open?
 - Is every term in a rule defined in Terms, and used with one meaning?
 - Does every Main line match the baseline? Verify; do not recall.
+- Does each T entry name a real alternative, and is a key choice missing?
 
-## 6. Draft locally
+## 7. Draft locally
 
 Start in `~/code/scratch/<slug>/rules-spec.md` unless Ryan names a document. Keep evidence (code paths, commits, counts) in a separate notes file in the same folder. Preserve the wording of rules Ryan approved; add or revise rules by ID.
 
@@ -68,4 +81,4 @@ Start in `~/code/scratch/<slug>/rules-spec.md` unless Ryan names a document. Kee
 
 ## From rules to implementation
 
-Agreed rules are the acceptance criteria. A plan maps every rule ID to the steps that deliver it, and code review checks each branch against the rules it claims.
+Agreed rules and technical decisions are the acceptance criteria. A plan maps every rule and T ID to the steps that deliver it, and code review checks each branch against the IDs it claims.
