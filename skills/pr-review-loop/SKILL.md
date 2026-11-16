@@ -1,6 +1,6 @@
 ---
 name: pr-review-loop
-description: After a push that opens or updates pull requests, wait for CI and the review bots on the current heads, then fix or answer every failing check and every open review thread. Use after every such push, whether or not the ship skill ran, and before you tell the user a PR is done.
+description: After a push that opens or updates pull requests, wait for the review bots and fix or answer every open review thread, then wait for CI on the final heads and fix or answer every failing check. Use after every such push, whether or not the ship skill ran, and before you tell the user a PR is done.
 ---
 
 # PR review loop
@@ -19,7 +19,9 @@ List every PR whose head the push created or changed, in bottom-to-top order for
 
 ## Wait
 
-Use the repository's CI and preview wait scripts and documented stop rules when available. Pin each wait to the current head SHA. Wait for the review bots to post on that head before you read threads; a bot that has not finished is not a clean review. When the repository has no PR bots, wait only for checks.
+Wait for the review bots first, and act on their findings as soon as they post. Do not wait for CI before you act on them: the bots usually finish before CI, and a fix push starts CI again on the new head. Wait for CI only on a head that the bots have reviewed and that you will not push a fix to. A check that has already failed can go into the same fix round as the bot findings.
+
+Pin each wait to the current head SHA. Wait for the review bots to post on that head before you read threads; a bot that has not finished is not a clean review. For CI, use the repository's CI and preview wait scripts and documented stop rules when available. When the repository has no PR bots, wait only for checks.
 
 After the wait, read each PR body. Bots that add a footer can save an old copy of the body over your edit. When your text is gone, write it again and keep the bots' text below it.
 
