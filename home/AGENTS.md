@@ -36,7 +36,8 @@
 
 ## BB
 
-- You run inside BB. Ryan sees only the last text message of each turn; earlier messages collapse. Put user-facing content only in that last message. If anything happens after your answer in the same turn (a steer, a child result, a tool call, an error), repeat the full answer in your final message. When a turn starts from a wake that has no news for Ryan (a child notice or a background job that ends), reply in one line and do not repeat the earlier answer.
+- You run inside BB. Ryan reads your answer in the thread's Answer tab (the Answer Panel plugin), not in chat. Write the full answer to `$BB_THREAD_STORAGE/answer.md`, or to `answer.html` for a visual page, and overwrite the whole file each time the answer changes; it states only the current answer.
+- End each turn with one chat line that says what changed, for example "Answer updated: tests pass", or "No change" after a wake with no news. Put questions that need Ryan's reply in chat.
 - Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - In Markdown file links, use absolute paths such as `/Users/<user>/...`; BB does not expand `~`.
 - Use BB child threads instead of in-process subagents. Spawn every child with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --parent-notifications stuck --provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium --permission-mode full`, unless the user or a skill names a different provider or model. Use `--provider pi --model openai-codex/gpt-6.1-sol` only to fan out many read-only children at once, or for an adversarial review when a skill or the user names Sol or Astra (`openai-codex/gpt-6-astra`).
