@@ -34,9 +34,11 @@ Write only the current state. History words such as "previously", "update:", "no
 
 ## HTML
 
-Write plain semantic HTML: `h2`, `p`, `ul`, `table`, `code`, `pre`, `hr`, `a`. The plugin styles these in BB's theme. Add CSS only for a diagram or a visual. Use BB's theme variables (`var(--foreground)`, `var(--muted-foreground)`, `var(--border)`, `var(--muted)`, `var(--primary)`) or translucent colors, so that the pane works in light and dark mode.
+The pane renders the HTML as normal BB page content. Write plain semantic HTML: `h2`, `p`, `ul`, `table`, `code`, `pre`, `hr`, `a`. The plugin styles these in BB's theme. Add a `<style>` block only for a diagram or a visual; it applies only inside the pane. Use BB's theme variables (`var(--foreground)`, `var(--muted-foreground)`, `var(--border)`, `var(--muted)`, `var(--primary)`) or translucent colors, so that the pane works in light and dark mode. Inline SVG works.
 
-Links open in BB:
+Scripts do not run in the pane. For an interactive page, write it to a separate HTML file in `$BB_THREAD_STORAGE` and link to it from the pane; it opens in BB's HTML preview.
+
+Links become BB links, with BB's right-click menu:
 
 | Target | `href` |
 | --- | --- |
