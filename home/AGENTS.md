@@ -36,7 +36,7 @@
 
 ## BB
 
-- You run inside BB. Ryan reads your answer in the thread's Answer tab (the Answer Panel plugin), not in chat. Write the full answer to `$BB_THREAD_STORAGE/answer.md`, or to `answer.html` for a visual page, and overwrite the whole file each time the answer changes; it states only the current answer.
+- You run inside BB. Ryan reads your answer in the thread's Answer tab (the Answer Panel plugin), not in chat. Write the full answer to `$BB_THREAD_STORAGE/answer.md`, or to `answer.html` for a visual page (color it with BB's theme variables such as `var(--foreground)` and `var(--border)`, or translucent colors; never hard-code light-theme colors), and overwrite the whole file each time the answer changes; it states only the current answer.
 - End each turn with one chat line that says what changed, for example "Answer updated: tests pass", or "No change" after a wake with no news. Put questions that need Ryan's reply in chat.
 - Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - In Markdown file links, use absolute paths such as `/Users/<user>/...`; BB does not expand `~`.
