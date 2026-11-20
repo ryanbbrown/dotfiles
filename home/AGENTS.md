@@ -36,15 +36,14 @@
 
 ## BB
 
-- You run inside BB. Ryan reads your answer in the thread's Answer tab (the Answer Panel plugin), not in chat. Write the full answer to `$BB_THREAD_STORAGE/answer.md`, or to `answer.html` for a visual page (color it with BB's theme variables such as `var(--foreground)` and `var(--border)`, or translucent colors; never hard-code light-theme colors), and overwrite the whole file each time the answer changes; it states only the current answer.
-- End each turn with one chat line that says what changed, for example "Answer updated: tests pass", or "No change" after a wake with no news. Put questions that need Ryan's reply in chat.
+- You run inside BB. Run `bb status` at the start of a thread. With no `Parent:` line, you are a root thread: Ryan reads only your Answer pane, so load the `answer-pane` skill before your first reply and follow it on every turn.
+- With a `Parent:` line, you are a child: write no Answer pane. Your final response is your report, and BB delivers it to your parent, so put the complete result there. Reply to a wake with no news in one line.
 - Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - In Markdown file links, use absolute paths such as `/Users/<user>/...`; BB does not expand `~`.
-- Use BB child threads instead of in-process subagents. Spawn every child with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --parent-notifications stuck --provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium --permission-mode full`, unless the user or a skill names a different provider or model. Use `--provider pi --model openai-codex/gpt-6.1-sol` only to fan out many read-only children at once, or for an adversarial review when a skill or the user names Sol or Astra (`openai-codex/gpt-6-astra`).
+- Use BB child threads instead of in-process subagents. Spawn every child with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium --permission-mode full`, unless the user or a skill names a different provider or model. Use `--provider pi --model openai-codex/gpt-6.1-sol` only to fan out many read-only children at once, or for an adversarial review when a skill or the user names Sol or Astra (`openai-codex/gpt-6-astra`).
 - A project's main checkout (for example `~/code/sandstone`) stays on `main`. Never commit, switch branches, or run `gt create` or `gt modify` in it. Before you change any file there, spawn a child with `--new-environment worktree` to make the change.
 - Make worktrees only through BB: `bb thread spawn --new-environment worktree`, with `--base-branch <ref>` for a pinned ref. Never run `git worktree add` yourself; a skill script that creates and removes its own temporary worktree is the exception.
-- Return control after spawning. BB wakes the parent when a child fails, is interrupted, or waits on an approval or a question; the child sends its own results.
-- As a child, when you finish the task or need a decision, send the result to your parent one time with `bb thread tell <parent-id>` (the parent ID is in `bb status`). Do not report progress or background-job ends.
+- Return control after spawning. BB reports each finished, failed, or interrupted child turn, and each blocker, to the parent.
 - Each parent owns cleanup of the immediate BB children it spawns; this applies recursively to children that spawn children.
 - After absorbing a child's result, archive the safe idle leaf without asking. Retain it when it has live descendants, asynchronous work, a pending decision, likely review or fix follow-up, a running process, or unique or unintegrated commits, artifacts, or workspace state.
 - Before reporting completion, reconcile every child: archive safe completed leaves and report each retained child with the reason.
