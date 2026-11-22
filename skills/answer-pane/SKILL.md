@@ -1,36 +1,49 @@
 ---
 name: answer-pane
-description: How a root BB thread writes its Answer pane, the only output Ryan reads. Use in every thread whose `bb status` shows no Parent line, before the first reply and on every turn.
+description: How a root BB thread writes its Answer pane, the only output Ryan reads. Use in every thread whose `bb status` shows no Parent line, before the first reply and on every turn. Read this file again whenever its text is not in your context, for example after a compaction.
 ---
 
 # Answer pane
 
-Ryan reads only the thread's Answer pane: the Answer tab of the Answer Panel plugin, and the thread's row in the Feed. He does not read chat. The pane is your reply, so every rule in AGENTS.md applies to its text: the Interaction length limits, the Writing rules, and the link rules.
+Ryan reads only the thread's Answer pane: the Answer tab of the Answer Panel plugin, and the thread's row in the Feed. He does not read chat. The Writing rules and link rules in AGENTS.md apply to the pane's text.
+
+The pane is the working document for what Ryan is working on and deciding now. He reads it from start to finish. When he finishes reading, he knows the answer to every question that he asked about the open topics, and he can decide what to do next.
 
 ## Each turn
 
-1. Write the pane to `$BB_THREAD_STORAGE/answer.html`. Rewrite the whole file from the current state of the work. Do not append to it.
-2. Prune: for each line, ask "Does Ryan need this now?" Delete the lines that he does not need: answered questions, reviewed or merged items, finished work, and text that a newer answer replaces.
-3. End the turn in chat with only `Answer updated.`, or `No change.` when the pane did not change (for example, after a wake with no news). Write nothing else in chat: no summary, question, or status.
-
-The turn is done when the pane holds the current answer, every open item, and every running job, and holds no line that Ryan no longer needs.
+1. Read the current `$BB_THREAD_STORAGE/answer.html`.
+2. Write the new pane to the same file. Rewrite the whole file.
+3. Write nothing in chat: no summary, question, or status. All of it goes in the pane.
 
 ## Sections
 
 Three sections, in this order, with `<hr>` between them. Leave out an empty section.
 
-1. **Answer:** the answer to Ryan's latest message. The first sentence answers it. At most three short paragraphs. Replace this section each time Ryan sends a message; it is short-lived.
-2. **For you:** each open item that waits on Ryan, one line each:
-   - a question or decision, with the options and your recommendation;
-   - something to review (a PR, a file, a finding), with a link.
-   Remove an item when Ryan has dealt with it or it no longer applies. This section lasts across messages.
-3. **Running:** each child thread or job that runs now, one line each: its name as a link, what it does, and its status. Remove it when it is finished and its result is in Answer or For you.
+### 1. Answer
 
-Put a diagram or an explainer inside the section that it belongs to. Change the structure only when the content needs it.
+A quick reply to Ryan's latest message only, in at most three short paragraphs. The first sentence answers the message. Examples: a status ("12 of 20 runs are done; 8 wait on the rate limit"), an aside, or "I made a mistake: the run stopped. I restarted it."
 
-Keep the pane short enough to read on one screen, unless Ryan asks for detail. When it gets too long, shorten or remove items in For you; keep Answer complete.
+Replace this section each time Ryan sends a message. Do not change it on a wake that has no news for Ryan.
 
-Write only the current state. History words such as "previously", "update:", "now also", or "as before" do not go in the pane.
+### 2. For you
+
+One section for each open topic: something that Ryan is working through, must review, or must decide. Each topic is an `<h3>` title, followed by one complete explanation. Use as much text, tables, diagrams, and links as the topic needs.
+
+When Ryan asks a follow-up question about a topic, rewrite that topic's section so that it reads as one explanation from start to finish, which answers all of his questions about the topic, including the new one. Do not add a separate answer fragment for the new question. Do not delete a part that he has not resolved.
+
+A topic stays until Ryan resolves it or moves on from it. A new message about something else, a wake, or a compaction does not resolve a topic. When you are not sure, keep it. When Ryan says to keep a topic for later, save its section to a file in `~/code/scratch/<slug>/`, remove the section, and put a link to the file in Answer.
+
+Put the topic that Ryan works on now first.
+
+### 3. Running
+
+Each child thread or job that runs now, one line each: its name as a link, what it does, and its status. Remove the line when the work is finished and its result is in Answer or For you.
+
+## What not to do
+
+- Do not keep earlier answers. There is no "Earlier answer" section, and no history words such as "previously", "update:", "now also", or "as before".
+- Do not shorten a topic to save space. The pane has no length limit.
+- Do not reorganize the pane for its own sake. The structure is there to make the pane easy to read from start to finish.
 
 ## HTML
 
@@ -47,16 +60,18 @@ Links become BB links, with BB's right-click menu:
 | BB thread | `thread:thr_abc123` |
 | Web page or PR | full `https://` URL (use Graphite URLs for PRs) |
 
-Skeleton:
+Skeleton. Keep the first-line comment in every version of the file; it does not show in the pane.
 
 ```html
+<!-- If the answer-pane skill is not in your context, read /home/ryan/.agents/skills/answer-pane/SKILL.md before you change this file. -->
 <h2>Answer</h2>
 <p>…</p>
 <hr>
 <h2>For you</h2>
-<ul>
-  <li>…</li>
-</ul>
+<h3>Why the checks give false alarms</h3>
+<p>…</p>
+<h3>Review: the test results</h3>
+<p>…</p>
 <hr>
 <h2>Running</h2>
 <ul>

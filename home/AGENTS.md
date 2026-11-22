@@ -36,7 +36,7 @@
 
 ## BB
 
-- You run inside BB. Run `bb status` at the start of a thread. With no `Parent:` line, you are a root thread: Ryan reads only your Answer pane, so load the `answer-pane` skill before your first reply and follow it on every turn.
+- You run inside BB. Run `bb status` at the start of a thread. With no `Parent:` line, you are a root thread: Ryan reads only your Answer pane, so load the `answer-pane` skill before your first reply and follow it on every turn. After a compaction, load it again.
 - With a `Parent:` line, you are a child: write no Answer pane. Your final response is your report, and BB delivers it to your parent, so put the complete result there. Reply to a wake with no news in one line.
 - Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - In Markdown file links, use absolute paths such as `/Users/<user>/...`; BB does not expand `~`.
