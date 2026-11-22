@@ -73,6 +73,8 @@ Codex
 Pi
   ~/.pi/agent/settings.json
   ~/.pi/agent/mcp.json
+  ~/.pi/agent/mcp-adapter.json
+  ~/.pi/agent/models.json
 
 Other
   ~/.local/bin/sync-bb-personal
@@ -244,6 +246,14 @@ The repository tracks it in `home/.pi/agent/mcp.json`, and the installer links t
 Codex stores hook trust and any MCP servers in its untracked `~/.codex/config.toml`. Add `context7` and `grep` there if Codex needs them.
 
 Pi uses `pi-mcp-adapter` to search cached tool metadata. It starts an MCP server only when the agent needs it.
+
+`home/.pi/agent/mcp-adapter.json` lets BB's headless Pi sessions start servers from a project's `.mcp.json` and turns off the Sandstone servers that are not needed. Claude Code's equivalent list is `disabledMcpjsonServers` in `home/.claude/settings.json`.
+
+`home/.pi/agent/models.json` adds models that Pi's built-in catalog does not have yet, such as `google-vertex/gemini-4-neon`. Vertex AI also needs a project and location. Store them in the untracked `~/.pi/agent/auth.json`, because that file also holds login tokens:
+
+```json
+"google-vertex": { "type": "api_key", "env": { "GOOGLE_CLOUD_PROJECT": "sandstone-dev-473706", "GOOGLE_CLOUD_LOCATION": "global" } }
+```
 
 An agent may expose its own built-in MCP servers. This repository does not configure or manage those servers.
 

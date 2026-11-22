@@ -71,5 +71,6 @@
   "autoCompactWindow": 400000,
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
   "preferredNotifChannel": "terminal_bell"
 }
