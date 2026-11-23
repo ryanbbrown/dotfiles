@@ -290,12 +290,9 @@ function createStream(internals: Internals) {
 				timestamp: Date.now(),
 			};
 			try {
-				if (options?.fetch && options.fetch !== globalThis.fetch) {
-					throw new Error("Custom fetch is not supported by the Google Vertex adapter");
-				}
 				const apiKey = resolveApiKey(options);
 				const client = apiKey
-					? createClientWithApiKey(model, apiKey, options?.headers, options?.identity)
+					? createClientWithApiKey(model, apiKey, options?.headers, options?.identity, options?.fetch)
 					: createClient(
 							model,
 							resolveProject(options),
@@ -303,6 +300,7 @@ function createStream(internals: Internals) {
 							options?.headers,
 							options?.env,
 							options?.identity,
+							options?.fetch,
 						);
 				let params: any = buildParams(model, normalizedContext, options);
 				const nextParams = await options?.onPayload?.(params, model);
@@ -530,6 +528,7 @@ function createStream(internals: Internals) {
 		optionsHeaders: unknown,
 		providerEnv: unknown,
 		identity: unknown,
+		fetch: unknown,
 	) {
 		const keyFilename = env.getProviderEnvValue("GOOGLE_APPLICATION_CREDENTIALS", providerEnv as any);
 		return withVertexTimeouts(new genai.GoogleGenAI({
@@ -538,16 +537,22 @@ function createStream(internals: Internals) {
 			location,
 			apiVersion: API_VERSION,
 			...(keyFilename ? { googleAuthOptions: { keyFilename } } : {}),
-			httpOptions: buildHttpOptions(model, optionsHeaders, identity),
+			httpOptions: buildHttpOptions(model, optionsHeaders, identity, fetch),
 		}));
 	}
 
-	function createClientWithApiKey(model: Model<Api>, apiKey: string, optionsHeaders: unknown, identity: unknown) {
+	function createClientWithApiKey(
+		model: Model<Api>,
+		apiKey: string,
+		optionsHeaders: unknown,
+		identity: unknown,
+		fetch: unknown,
+	) {
 		return withVertexTimeouts(new genai.GoogleGenAI({
 			vertexai: true,
 			apiKey,
 			apiVersion: API_VERSION,
-			httpOptions: buildHttpOptions(model, optionsHeaders, identity),
+			httpOptions: buildHttpOptions(model, optionsHeaders, identity, fetch),
 		}));
 	}
 
@@ -569,8 +574,8 @@ function createStream(internals: Internals) {
 		return client;
 	}
 
-	function buildHttpOptions(model: Model<Api>, optionsHeaders: unknown, identity: unknown) {
-		const httpOptions: Record<string, unknown> = {};
+	function buildHttpOptions(model: Model<Api>, optionsHeaders: unknown, identity: unknown, fetch: unknown) {
+		const httpOptions: Record<string, unknown> = { fetch: fetch ?? globalThis.fetch };
 		const baseUrl = resolveCustomBaseUrl(model.baseUrl);
 		if (baseUrl) {
 			httpOptions.baseUrl = baseUrl;
@@ -587,7 +592,7 @@ function createStream(internals: Internals) {
 		if (requestHeaders) {
 			httpOptions.headers = requestHeaders;
 		}
-		return Object.keys(httpOptions).length > 0 ? httpOptions : undefined;
+		return httpOptions;
 	}
 
 	function resolveProject(options?: VertexOptions): string {
@@ -640,6 +645,8 @@ function createStream(internals: Internals) {
 					},
 				},
 			}),
+			// Matches pi-ai: the SDK's automatic continuation is off, so a CONTINUATION finish ends the turn as "length".
+			automaticContinuation: false,
 		};
 		if (options.thinking?.enabled && model.reasoning) {
 			const thinkingConfig: Record<string, unknown> = { includeThoughts: true };

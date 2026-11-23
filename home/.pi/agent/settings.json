@@ -2,7 +2,7 @@
   "packages": [
     "npm:pi-mcp-adapter",
     "npm:pi-web-access",
-    "git:github.com/ryanbbrown/pi-openai-server-compaction@17e48ddc19fbb43ffb1dc42109e7e0e117b0092a"
+    "npm:pi-posthorse"
   ],
   "defaultThinkingLevel": "high",
   "defaultProvider": "openai-codex",
@@ -33,8 +33,7 @@
   },
   "extensionChangelogVersions": {
     "{\"source\":\"npm:pi-mcp-adapter\",\"scope\":\"user\"}": "7.0.1",
-    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0",
-    "{\"source\":\"git:github.com/ryanbbrown/pi-openai-server-compaction@17e48ddc19fbb43ffb1dc42109e7e0e117b0092a\",\"scope\":\"user\"}": "0.1.0"
+    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0"
   },
   "extensions": [
     "-builtin:mcp"

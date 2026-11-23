@@ -212,7 +212,7 @@ Claude Code, Codex, and Pi receive the same global instructions from `home/AGENT
 
 ### Pi
 
-Install Pi with `npm install -g @earendil-works/pi-coding-agent`. The older `@mariozechner/pi-coding-agent` package is frozen at 0.73.1 and cannot load the extensions below.
+Install Pi with `npm install -g @earendil-works/pi-coding-agent`. Use Pi 1.6.0 or later and Node.js 24.22.3 or later, because `pi-posthorse` requires them. The older `@mariozechner/pi-coding-agent` package is frozen at 0.73.1 and cannot load the extensions below.
 
 Pi defaults to `openai-codex/gpt-6.1-sol` with high reasoning.
 
@@ -222,14 +222,14 @@ The tracked Pi settings install these packages:
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)                           | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt.                               |
 | [`pi-web-access`](https://github.com/nicobailon/pi-web-access)                             | Adds web search, source checks, page extraction, repository fetching, and video analysis.                    |
-| [`pi-openai-server-compaction`](https://github.com/ryanbbrown/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
+| [`pi-posthorse`](https://github.com/fitchmultz/pi-posthorse)                               | Replaces Pi's summary compaction with a no-summary rollover to a fresh context, plus task notes and history search. |
 
 `home/.pi/agent/extensions/` holds Pi extensions that Pi discovers automatically:
 
-- `google-vertex-stream-args.ts` replaces the `google-vertex` stream so that Vertex streams Gemini tool-call arguments (`streamFunctionCallArguments`). Without it, Vertex sends no bytes while the model writes a large tool call, and the request fails when the silence exceeds `httpIdleTimeoutMs`. The file is a port of pi-ai's `dist/api/google-vertex.js` that loads pi-ai's helpers and `@google/genai` from the installed Pi. After a Pi update, compare it with the new `google-vertex.js`. The extension also gives each Vertex request undici `headersTimeout` and `bodyTimeout` of 120 s (`VERTEX_HTTP_TIMEOUT_MS`), because Vertex sends no headers until the first chunk and Gemini can think silently for more than 60 s. Other providers keep `httpIdleTimeoutMs`. For a `MALFORMED_FUNCTION_CALL` stop reason, the extension appends `(please retry your request)` to the error message so Pi's built-in retry loop retries it while keeping `rawStopReason` unchanged.
+- `google-vertex-stream-args.ts` replaces the `google-vertex` stream so that Vertex streams Gemini tool-call arguments (`streamFunctionCallArguments`). Without it, Vertex sends no bytes while the model writes a large tool call, and the request fails when the silence exceeds `httpIdleTimeoutMs`. The file is a port of pi-ai 1.6.0's `dist/api/google-vertex.js` that loads pi-ai's helpers and `@google/genai` from the installed Pi. After a Pi update, compare it with the new `google-vertex.js`. The extension also gives each Vertex request undici `headersTimeout` and `bodyTimeout` of 120 s (`VERTEX_HTTP_TIMEOUT_MS`), because Vertex sends no headers until the first chunk and Gemini can think silently for more than 60 s. Other providers keep `httpIdleTimeoutMs`. For a `MALFORMED_FUNCTION_CALL` stop reason, the extension appends `(please retry your request)` to the error message so Pi's built-in retry loop retries it while keeping `rawStopReason` unchanged.
 - `bash-default-timeout.ts` sets the `bash` tool's `timeout` to 120 s (`DEFAULT_TIMEOUT_SECONDS`) when the model gives none, and keeps a timeout that the model gives. When the timeout stops a command, it adds text to the result that tells the model to run a narrower command or to use a BB terminal job.
 
-The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
+`pi-posthorse` has no settings of its own. It uses Pi's `compaction` settings: each `compaction.modelOverrides` entry's `reserveTokens` sets where rollover occurs. For example, the 600,000-token reserve on the Claude models makes rollover occur at about 400,000 tokens of their 1M-token context. Do not install a second extension that handles compaction, because the two compete for each rollover.
 
 ### Claude Code and Codex
 
