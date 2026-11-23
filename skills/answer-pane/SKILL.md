@@ -35,7 +35,7 @@ Each topic heading has a Done button. Ryan uses it to remove a topic from the pa
 
 Remove a topic yourself only when Ryan's message acts on it: for example, he answers its question, makes its decision, or approves its review. Otherwise, keep the topic, and Ryan uses the Done button. A new message about something else, a wake, or a compaction does not remove a topic. When you are not sure, keep it. When Ryan says to keep a topic for later, save its section to a file in `~/code/scratch/<slug>/`, remove the section, and put a link to the file in Answer.
 
-A message that starts with `[Answer pane] Ryan marked the topic` means that Ryan removed that topic with the Done button. Do not add it back. Do not change Answer. Change nothing else, but remove a Running line for a child that served only that topic.
+Before you write the pane, read `$BB_THREAD_STORAGE/answer-done.json` if it exists. It is a JSON array of the headings of topics that Ryan removed with the Done button. Leave out each topic whose heading it lists, and do not add it back. Do not use a listed heading for a new topic. On the next turn, remove a Running line for a child that served only a removed topic.
 
 Put the topic that Ryan works on now first.
 
