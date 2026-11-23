@@ -103,6 +103,7 @@ clean_legacy_codex_skill_links() {
 [ -f "$home_source/.pi/agent/mcp.json" ] || die "missing $home_source/.pi/agent/mcp.json"
 [ -f "$home_source/.pi/agent/mcp-adapter.json" ] || die "missing $home_source/.pi/agent/mcp-adapter.json"
 [ -f "$home_source/.pi/agent/models.json" ] || die "missing $home_source/.pi/agent/models.json"
+[ -d "$home_source/.pi/agent/extensions" ] || die "missing $home_source/.pi/agent/extensions"
 [ -f "$home_source/.config/git/ignore" ] || die "missing $home_source/.config/git/ignore"
 
 if [ "$repo_root" != "$HOME/.dotfiles" ]; then
@@ -121,6 +122,7 @@ create_symlink "$home_source/.pi/agent/settings.json" "$HOME/.pi/agent/settings.
 create_symlink "$home_source/.pi/agent/mcp.json" "$HOME/.pi/agent/mcp.json"
 create_symlink "$home_source/.pi/agent/mcp-adapter.json" "$HOME/.pi/agent/mcp-adapter.json"
 create_symlink "$home_source/.pi/agent/models.json" "$HOME/.pi/agent/models.json"
+create_symlink "$home_source/.pi/agent/extensions" "$HOME/.pi/agent/extensions"
 create_symlink "$home_source/.config/git/ignore" "$HOME/.config/git/ignore"
 install_cursor_rule "$home_source/AGENTS.md" "$HOME/.cursor/rules/agents.mdc"
 
