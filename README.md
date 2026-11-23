@@ -75,6 +75,7 @@ Pi
   ~/.pi/agent/mcp.json
   ~/.pi/agent/mcp-adapter.json
   ~/.pi/agent/models.json
+  ~/.pi/agent/extensions
 
 Other
   ~/.local/bin/sync-bb-personal
@@ -222,6 +223,10 @@ The tracked Pi settings install these packages:
 | [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)                           | Discovers MCP tools on demand and keeps large tool catalogs out of the prompt.                               |
 | [`pi-web-access`](https://github.com/nicobailon/pi-web-access)                             | Adds web search, source checks, page extraction, repository fetching, and video analysis.                    |
 | [`pi-openai-server-compaction`](https://github.com/ryanbbrown/pi-openai-server-compaction) | Preserves more old context through OpenAI server compaction, with higher token and downstream context costs. |
+
+`home/.pi/agent/extensions/` holds Pi extensions that Pi discovers automatically:
+
+- `google-vertex-stream-args.ts` replaces the `google-vertex` stream so that Vertex streams Gemini tool-call arguments (`streamFunctionCallArguments`). Without it, Vertex sends no bytes while the model writes a large tool call, and the request fails when the silence exceeds `httpIdleTimeoutMs`. The file is a port of pi-ai's `dist/api/google-vertex.js` that loads pi-ai's helpers and `@google/genai` from the installed Pi. After a Pi update, compare it with the new `google-vertex.js`.
 
 The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
 
