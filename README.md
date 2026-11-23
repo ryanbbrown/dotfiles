@@ -227,6 +227,7 @@ The tracked Pi settings install these packages:
 `home/.pi/agent/extensions/` holds Pi extensions that Pi discovers automatically:
 
 - `google-vertex-stream-args.ts` replaces the `google-vertex` stream so that Vertex streams Gemini tool-call arguments (`streamFunctionCallArguments`). Without it, Vertex sends no bytes while the model writes a large tool call, and the request fails when the silence exceeds `httpIdleTimeoutMs`. The file is a port of pi-ai's `dist/api/google-vertex.js` that loads pi-ai's helpers and `@google/genai` from the installed Pi. After a Pi update, compare it with the new `google-vertex.js`. The extension also gives each Vertex request undici `headersTimeout` and `bodyTimeout` of 120 s (`VERTEX_HTTP_TIMEOUT_MS`), because Vertex sends no headers until the first chunk and Gemini can think silently for more than 60 s. Other providers keep `httpIdleTimeoutMs`.
+- `bash-default-timeout.ts` sets the `bash` tool's `timeout` to 120 s (`DEFAULT_TIMEOUT_SECONDS`) when the model gives none, and keeps a timeout that the model gives. When the timeout stops a command, it adds text to the result that tells the model to run a narrower command or to use a BB terminal job.
 
 The compaction extension declares support for Pi 0.80.x. Its smoke test and runtime load pass on Pi 0.84.2, but its typecheck fails on widened provider header types.
 
