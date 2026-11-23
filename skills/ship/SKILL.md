@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Plan and implement a task from an approved plan, with cross-model plan review, per-branch Opus 5.5 and GPT-6.1 Sol code reviews through the `code-review` skill, browser verification, and a bot-review fix loop after push. Use only when the user explicitly requests the ship skill.
+description: Plan and implement a task from an approved plan, with a cross-model plan review, a per-branch GPT-6.1 Sol code review through the `code-review` skill, browser verification, and a bot-review fix loop after push. Use only when the user explicitly requests the ship skill.
 ---
 
 # Ship
@@ -11,9 +11,9 @@ Invoke as:
 /ship <task or approved plan>
 ```
 
-The plan gets a cross-model review unless the user asks to skip it.
+The plan gets one cross-model review unless the user asks to skip it.
 
-Each PR in the plan's `## PR split` section is one branch. Every branch gets Opus 5.5 and GPT-6.1 Sol code reviews in parallel before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the stack environment is the only implementation writer for a stack.
+Each PR in the plan's `## PR split` section is one branch. Every branch gets a GPT-6.1 Sol code review before the push, and the repository's PR bots review after it. The main agent owns planning, decisions, finding verification, synthesis, and final validation. One BB child thread in the stack environment is the only implementation writer for a stack.
 
 ## Tools
 
@@ -31,21 +31,13 @@ Use an existing approved plan without recreating or reopening it. Otherwise insp
 
 The `write-plan` skill ends by posting the plan's `## PR split`, `## Out of scope`, and `## Open questions` sections and waiting. Wait for the user's approval of those three sections before any plan review or implementation, unless the user said at the start to skip this approval. An open question that names a spec scenario or rule blocks until the user answers it.
 
-Unless the user asked to skip the plan review, spawn read-only reviewer children outside your own model family, so the plan's author never reviews its own plan. Read your own model from `PI_PROVIDER` and `PI_MODEL` (or from your system context when they are unset). Always pass `--project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --reasoning-level medium --permission-mode full`:
-
-- When you are a Gemini model (or neither Claude nor GPT), spawn both reviewers in parallel:
-  - `--model anthropic/claude-opus-5-5`, writing to `.reviews/plans/<slug>/<slug>-opus-v<N>.md`
-  - `--model openai-codex/gpt-6-astra`, writing to `.reviews/plans/<slug>/<slug>-astra-v<N>.md`
-- When you are a Claude model, spawn `--model openai-codex/gpt-6-astra`, writing to `.reviews/plans/<slug>/<slug>-astra-v<N>.md`.
-- When you are a GPT model, spawn `--model anthropic/claude-opus-5-5`, writing to `.reviews/plans/<slug>/<slug>-opus-v<N>.md`.
-
-Each brief names the plan path and that reviewer's report path (starting at `v1`), and contains these terms, verbatim:
+Unless the user asked to skip the plan review, spawn one read-only reviewer child from the other model family, so the plan's author never reviews its own plan. Read your own model from `PI_PROVIDER` and `PI_MODEL` (or from your system context when they are unset). When you are a Claude model, spawn with `--provider pi --model openai-codex/gpt-6-astra --reasoning-level medium`; when you are a GPT model, spawn with `--provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium`. Always add `--project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --permission-mode full`. The brief names the plan path and the report path `.reviews/plans/<slug>/<slug>-review.md`, and contains these terms, verbatim:
 
 ```text
 You are a read-only plan reviewer. Read the plan, the spec it names (behavior spec or rules spec), and the code it touches. Do not edit files, run builds or tests, or create files other than the report. Do not read .reviews/ or earlier review rounds. Review at two levels. Strategy: is this the right approach? Name every bad decision: a wrong design, a missing or unneeded piece, a simpler approach the existing code supports, a change from main that the spec does not ask for, or a PR split that will be hard to ship. Validity: find where the plan is wrong about the code, where a spec scenario or rule is not delivered by the steps mapped to it or is narrowed outside "Out of scope", and where the plan would break an existing behaviour. Do not propose defensive mechanisms (retries, locks, fallbacks, and similar) unless you cite an observed failure. Write the report with these headings, in order: ## Verdict (pass or changes requested), ## Findings (each with file evidence), ## Open questions. Your final message is the report path.
 ```
 
-Return control after spawning; BB reports each child's completion. When every spawned reviewer finishes, verify each finding against the code and revise the plan directly for the ones that hold. You own the plan, so the plan is the record; do not write a synthesis file. Post one short message: accepted findings by reviewer and number, and each rejected finding with its reason. The review is complete when every spawned reviewer has a valid verdict and its required revisions are resolved; a missing or unparseable report is rerun once with a fresh child of that model. There is no second round by default. When the review changed the PR split, Out of scope, or an acceptance criteria mapping, post the changed sections and wait for approval again; the user may also ask for another round, which runs the same way with fresh children and the next `v<N>` report path.
+Return control after spawning; BB reports the child's completion. When the report lands, verify each finding against the code and revise the plan directly for the ones that hold. You own the plan, so the plan is the record; do not write a synthesis file. Post one short message: accepted findings by number, and each rejected finding with its reason. The review is complete when the report has a valid verdict and its required revisions are resolved; a missing or unparseable report is rerun once with a fresh child. There is no second round by default. When the review changed the PR split, Out of scope, or an acceptance criteria mapping, post the changed sections and wait for approval again; the user may also ask for another round, which runs the same way with a fresh child and a `-v2` report.
 
 Accept a finding only after you verify it against the code. A finding that proposes a retry, fallback, lock, fence, checkpoint, resume path, sweep, timeout, validation layer, or compatibility path is rejected or deferred unless it cites an observed failure, a measured requirement, or a user requirement. Reviewers are adversarial by design; your verification is the filter. This rule also governs the bot-review synthesis below.
 
@@ -53,7 +45,7 @@ Accept a finding only after you verify it against the code. A finding that propo
 
 Require a clean worktree and record the pre-implementation Git SHA after the plan is settled.
 
-The stack environment is this thread's environment when it is a BB worktree; otherwise it is a new BB worktree that the writer creates. Spawn the writer with `bb thread spawn --project "$BB_PROJECT_ID" <stack environment flag> --parent-self --provider pi --model google-vertex/gemini-4-neon --reasoning-level high --permission-mode full`. `<stack environment flag>` is `--environment "$BB_ENVIRONMENT_ID"` or `--new-environment worktree`. The writer brief contains the absolute plan path, the branch name prefix, and these standing terms, verbatim, with `<branch command>` replaced by the Branch command from Tools:
+The stack environment is this thread's environment when it is a BB worktree; otherwise it is a new BB worktree that the writer creates. Spawn the writer with `bb thread spawn --project "$BB_PROJECT_ID" <stack environment flag> --parent-self --provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium --permission-mode full`. `<stack environment flag>` is `--environment "$BB_ENVIRONMENT_ID"` or `--new-environment worktree`. The writer brief contains the absolute plan path, the branch name prefix, and these standing terms, verbatim, with `<branch command>` replaced by the Branch command from Tools:
 
 ```text
 Scope: build what the plan's steps and the spec scenarios or rules they map to need, including work no step names (a config entry, a caller), and nothing else. The plan's "Out of scope" section is binding. Do not add defensive mechanisms (a lock, revision fence, retry, sweep, fallback, cache) that no scenario or rule needs. If a scenario or rule cannot be met as planned, or meeting it needs a decision the plan and spec do not settle, stop and ask. Same rule for every fix round.
@@ -63,18 +55,13 @@ Setup failures: at the first setup failure (a service, build, migration, login, 
 Git: one branch per PR in the plan's "PR split" section, in merge order. Create each with `<branch command>` on top of the previous branch, commit that PR's steps there, and run each step's "Verify" line and the plan's "Test & verification plan" commands that apply before you start the next branch. No push, no PR.
 ```
 
-Return control after spawning. BB reports the child's blockers and completion to this thread; do not poll or wait. Continue the same child with `bb thread tell <id> "..." --reasoning-level high --mode auto` until every step and its verification are complete. One writer builds the whole stack: each fix low in the stack restacks everything above it, so two writers would rebase over each other. Start a fresh writer for a new stack, or when the current one has accumulated its own design ideas; context is not worth drift.
+Return control after spawning. BB reports the child's blockers and completion to this thread; do not poll or wait. Continue the same child with `bb thread tell <id> "..." --reasoning-level medium --mode auto` until every step and its verification are complete. One writer builds the whole stack: each fix low in the stack restacks everything above it, so two writers would rebase over each other. Start a fresh writer for a new stack, or when the current one has accumulated its own design ideas; context is not worth drift.
 
 ### Code review
 
-When the writer reports the build complete, review every branch before browser verification or push. For each branch, spawn two read-only reviewers in parallel, each with `bb thread spawn --project "$BB_PROJECT_ID" --environment <stack environment ID> --parent-self --provider pi --model <model> --reasoning-level medium --permission-mode full`:
+When the writer reports the build complete, review every branch before browser verification or push. Spawn one read-only reviewer per branch, in parallel, with `bb thread spawn --project "$BB_PROJECT_ID" --environment <stack environment ID> --parent-self --provider pi --model openai-codex/gpt-6.1-sol --reasoning-level medium --permission-mode full`. The brief is short: read the `code-review` skill; review branch B against parent P, the plan at its absolute path, and the spec at <location>; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. From round 2 on, the brief also carries the previous round's findings, each marked accepted with its fix commit or rejected with the reason.
 
-- `anthropic/claude-opus-5-5`, writing to `.reviews/code/<slug>/<branch>-opus-v<N>.md`
-- `openai-codex/gpt-6.1-sol`, writing to `.reviews/code/<slug>/<branch>-sol-v<N>.md`
-
-Each brief is short: read the `code-review` skill; review branch B against parent P, the plan at its absolute path, and the spec at <location>; write the report to that reviewer's path above. From round 2 on, the brief also carries the previous round's findings for that branch, each marked accepted with its fix commit or rejected with the reason.
-
-Return control. When every report lands, verify each finding against the code and apply the `decide` skill: fix what falls inside the plan and spec by sending the writer one fix round, grouped by branch, bottom of the stack first; raise a finding that needs a preference the plan and spec did not settle. A round is clean when all reports confirm zero P0 and zero P1; accepted P2 and P3 findings ride along in a fix round that happens anyway and are otherwise left to the PR bots. After a fix round, rerun both reviewers with fresh children on every branch the round changed. Stop at a clean round, or after three rounds, when the open P0 and P1 findings go to the user.
+Return control. When the reports land, verify each finding against the code and apply the `decide` skill: fix what falls inside the plan and spec by sending the writer one fix round, grouped by branch, bottom of the stack first; raise a finding that needs a preference the plan and spec did not settle. A round is clean when it confirms zero P0 and zero P1; accepted P2 and P3 findings ride along in a fix round that happens anyway and are otherwise left to the PR bots. After a fix round, rerun the reviewer with a fresh child on every branch the round changed. Stop at a clean round, or after three rounds, when the open P0 and P1 findings go to the user.
 
 ### Final test pass
 

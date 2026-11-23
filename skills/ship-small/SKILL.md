@@ -1,6 +1,6 @@
 ---
 name: ship-small
-description: Build a small, low-risk change on one branch, with parallel Opus 5.5 and GPT-6.1 Sol code reviews, the final test pass, and browser verification for UI changes. The light version of `ship`.
+description: Build a small, low-risk change on one branch, with one GPT-6.1 Sol code review, the final test pass, and browser verification for UI changes. The light version of `ship`.
 disable-model-invocation: true
 ---
 
@@ -33,14 +33,9 @@ Done when none of these apply, or you have stopped for the user.
 
 ## Code review
 
-Spawn two read-only reviewers in parallel, each with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --model <model> --reasoning-level medium --permission-mode full`:
+Spawn one read-only reviewer with `bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider pi --model openai-codex/gpt-6.1-sol --reasoning-level medium --permission-mode full`. The brief: read the `code-review` skill; review branch B against parent P; there is no plan or spec, so the task statement below is the acceptance criteria; write the report to `.reviews/code/<slug>/<branch>-v<N>.md`. Paste the task statement into the brief.
 
-- `anthropic/claude-opus-5-5`, writing to `.reviews/code/<slug>/<branch>-opus-v<N>.md`
-- `openai-codex/gpt-6.1-sol`, writing to `.reviews/code/<slug>/<branch>-sol-v<N>.md`
-
-Each brief: read the `code-review` skill; review branch B against parent P; there is no plan or spec, so the task statement below is the acceptance criteria; write the report to that reviewer's path above. Paste the task statement into the brief. From round 2 on, the brief also carries the previous round's findings, each marked accepted with its fix commit or rejected with the reason.
-
-Return control. When both reports land, verify each finding against the code and apply the `decide` skill. Fix the accepted P0 and P1 findings and rerun both reviewers with fresh children. Stop at a clean round (zero P0 and zero P1 across both reports), or after two rounds, when the open findings go to the user.
+Return control. When the report lands, verify each finding against the code and apply the `decide` skill. Fix the accepted P0 and P1 findings and rerun the review with a fresh child. Stop at a clean round (zero P0 and zero P1), or after two rounds, when the open findings go to the user.
 
 ## Final test pass
 
