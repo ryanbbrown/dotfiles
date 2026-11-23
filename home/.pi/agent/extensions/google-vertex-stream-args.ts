@@ -11,6 +11,9 @@
  *
  * Vertex sends no headers until the first chunk, and Gemini can think silently for more than 60 s, so
  * Vertex requests get their own undici timeouts instead of `httpIdleTimeoutMs`.
+ *
+ * Pi's `isRetryableAssistantError` does not include Google's `MALFORMED_FUNCTION_CALL` finish reason,
+ * so this extension formats that error with a retryable phrase to use Pi's built-in retry loop.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -467,9 +470,13 @@ function createStream(internals: Internals) {
 					throw new Error("Google Vertex stream ended without a finish reason");
 				}
 				if (output.stopReason === "aborted" || output.stopReason === "error") {
-					const errorMessage = output.rawStopReason
-						? `Provider stopped with: ${output.rawStopReason}`
-						: "An unknown error occurred";
+					// Pi's retry allowlist omits MALFORMED_FUNCTION_CALL; the suffix lets Pi's built-in retry loop handle it.
+					const errorMessage =
+						output.rawStopReason === "MALFORMED_FUNCTION_CALL"
+							? "Provider stopped with: MALFORMED_FUNCTION_CALL (please retry your request)"
+							: output.rawStopReason
+								? `Provider stopped with: ${output.rawStopReason}`
+								: "An unknown error occurred";
 					throw new Error(errorMessage);
 				}
 				stream.push({ type: "done", reason: output.stopReason, message: output });
