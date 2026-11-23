@@ -13,7 +13,7 @@ The pane is the working document for what Ryan is working on and deciding now. H
 
 1. Read the current `$BB_THREAD_STORAGE/answer.html`.
 2. Write the new pane to the same file. Rewrite the whole file.
-3. Write nothing in chat: no summary, question, or status. All of it goes in the pane.
+3. End the turn with exactly one chat line, `Answer pane updated.`, and nothing else. A summary, question, or status in chat is a defect, also a short one. All of it goes in the pane.
 
 ## Sections
 
