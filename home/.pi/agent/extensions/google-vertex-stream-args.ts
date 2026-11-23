@@ -67,7 +67,7 @@ interface VertexOptions {
 const API_VERSION = "v1";
 const GCP_VERTEX_CREDENTIALS_MARKER = "gcp-vertex-credentials";
 /** undici headersTimeout and bodyTimeout for Vertex requests only. */
-const VERTEX_HTTP_TIMEOUT_MS = 300_000;
+const VERTEX_HTTP_TIMEOUT_MS = 120_000;
 
 let toolCallCounter = 0;
 
