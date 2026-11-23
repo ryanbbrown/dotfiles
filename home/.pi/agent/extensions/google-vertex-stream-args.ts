@@ -8,6 +8,9 @@
  * `dist/api/google-vertex.js` that requests streamed arguments and assembles `partialArgs`.
  * It loads pi-ai's internal helpers and `@google/genai` from the running Pi installation, so they
  * match Pi's version.
+ *
+ * Vertex sends no headers until the first chunk, and Gemini can think silently for more than 60 s, so
+ * Vertex requests get their own undici timeouts instead of `httpIdleTimeoutMs`.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -40,6 +43,7 @@ type Headers = typeof import("@earendil-works/pi-ai/utils/headers");
 type ProviderEnv = typeof import("@earendil-works/pi-ai/utils/provider-env");
 type SanitizeUnicode = typeof import("@earendil-works/pi-ai/utils/sanitize-unicode");
 type GenAI = typeof import("@google/genai");
+type Undici = typeof import("undici");
 
 interface Internals {
 	shared: GoogleShared;
@@ -49,6 +53,7 @@ interface Internals {
 	env: ProviderEnv;
 	unicode: SanitizeUnicode;
 	genai: GenAI;
+	undici: Undici;
 }
 
 interface VertexOptions {
@@ -61,6 +66,8 @@ interface VertexOptions {
 
 const API_VERSION = "v1";
 const GCP_VERTEX_CREDENTIALS_MARKER = "gcp-vertex-credentials";
+/** undici headersTimeout and bodyTimeout for Vertex requests only. */
+const VERTEX_HTTP_TIMEOUT_MS = 120_000;
 
 let toolCallCounter = 0;
 
@@ -77,7 +84,8 @@ async function loadInternals(): Promise<Internals> {
 	const genaiDir = findPackageDir(piAiDir, "@google/genai");
 	const genaiEntry = JSON.parse(readFileSync(join(genaiDir, "package.json"), "utf8")).exports["."].node.import;
 	const load = (dir: string, file: string) => import(pathToFileURL(join(dir, file)).href);
-	const [shared, simple, errors, headers, env, unicode, genai] = await Promise.all([
+	const undiciDir = findPackageDir(getPackageDir(), "undici");
+	const [shared, simple, errors, headers, env, unicode, genai, undici] = await Promise.all([
 		load(piAiDir, "dist/api/google-shared.js"),
 		load(piAiDir, "dist/api/simple-options.js"),
 		load(piAiDir, "dist/utils/error-body.js"),
@@ -85,8 +93,9 @@ async function loadInternals(): Promise<Internals> {
 		load(piAiDir, "dist/utils/provider-env.js"),
 		load(piAiDir, "dist/utils/sanitize-unicode.js"),
 		load(genaiDir, genaiEntry),
+		load(undiciDir, "index.js"),
 	]);
-	return { shared, simple, errors, headers, env, unicode, genai };
+	return { shared, simple, errors, headers, env, unicode, genai, undici };
 }
 
 type PathSegment = string | number;
@@ -254,7 +263,7 @@ class PartialArgsAssembler {
 }
 
 function createStream(internals: Internals) {
-	const { shared, errors, headers, env, unicode, genai } = internals;
+	const { shared, errors, headers, env, unicode, genai, undici } = internals;
 
 	const stream = (model: Model<Api>, context: TranscriptContext, options?: VertexOptions): AssistantMessageEventStream => {
 		const stream = createAssistantMessageEventStream();
@@ -516,23 +525,41 @@ function createStream(internals: Internals) {
 		identity: unknown,
 	) {
 		const keyFilename = env.getProviderEnvValue("GOOGLE_APPLICATION_CREDENTIALS", providerEnv as any);
-		return new genai.GoogleGenAI({
+		return withVertexTimeouts(new genai.GoogleGenAI({
 			vertexai: true,
 			project,
 			location,
 			apiVersion: API_VERSION,
 			...(keyFilename ? { googleAuthOptions: { keyFilename } } : {}),
 			httpOptions: buildHttpOptions(model, optionsHeaders, identity),
-		});
+		}));
 	}
 
 	function createClientWithApiKey(model: Model<Api>, apiKey: string, optionsHeaders: unknown, identity: unknown) {
-		return new genai.GoogleGenAI({
+		return withVertexTimeouts(new genai.GoogleGenAI({
 			vertexai: true,
 			apiKey,
 			apiVersion: API_VERSION,
 			httpOptions: buildHttpOptions(model, optionsHeaders, identity),
+		}));
+	}
+
+	/**
+	 * Adds a `dispatcher` to each fetch that this client makes. @google/genai copies the RequestInit from
+	 * `includeExtraHttpOptionsToRequestInit` into `fetch`, and has no public option for a dispatcher.
+	 */
+	function withVertexTimeouts(client: InstanceType<GenAI["GoogleGenAI"]>) {
+		const apiClient = (client as any).apiClient;
+		const includeExtra = apiClient.includeExtraHttpOptionsToRequestInit.bind(apiClient);
+		apiClient.includeExtraHttpOptionsToRequestInit = async (...args: unknown[]) => ({
+			...(await includeExtra(...args)),
+			// Pi's global dispatcher keeps its proxy and connection settings; only the timeouts change.
+			dispatcher: undici.getGlobalDispatcher().compose(
+				(dispatch) => (opts, handler) =>
+					dispatch({ ...opts, headersTimeout: VERTEX_HTTP_TIMEOUT_MS, bodyTimeout: VERTEX_HTTP_TIMEOUT_MS }, handler),
+			),
 		});
+		return client;
 	}
 
 	function buildHttpOptions(model: Model<Api>, optionsHeaders: unknown, identity: unknown) {
