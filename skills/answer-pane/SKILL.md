@@ -31,7 +31,11 @@ One section for each open topic: something that Ryan is working through, must re
 
 When Ryan asks a follow-up question about a topic, rewrite that topic's section so that it reads as one explanation from start to finish, which answers all of his questions about the topic, including the new one. Do not add a separate answer fragment for the new question. Do not delete a part that he has not resolved.
 
-A topic stays until Ryan resolves it or moves on from it. A new message about something else, a wake, or a compaction does not resolve a topic. When you are not sure, keep it. When Ryan says to keep a topic for later, save its section to a file in `~/code/scratch/<slug>/`, remove the section, and put a link to the file in Answer.
+Each topic heading has a Done button. Ryan uses it to remove a topic from the pane.
+
+Remove a topic yourself only when Ryan's message acts on it: for example, he answers its question, makes its decision, or approves its review. Otherwise, keep the topic, and Ryan uses the Done button. A new message about something else, a wake, or a compaction does not remove a topic. When you are not sure, keep it. When Ryan says to keep a topic for later, save its section to a file in `~/code/scratch/<slug>/`, remove the section, and put a link to the file in Answer.
+
+A message that starts with `[Answer pane] Ryan marked the topic` means that Ryan removed that topic with the Done button. Do not add it back. Do not change Answer. Change nothing else, but remove a Running line for a child that served only that topic.
 
 Put the topic that Ryan works on now first.
 
