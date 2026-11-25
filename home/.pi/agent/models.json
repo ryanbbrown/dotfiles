@@ -75,6 +75,9 @@
             "high": "high",
             "xhigh": null,
             "max": null
+          },
+          "headers": {
+            "X-Vertex-AI-LLM-Shared-Request-Type": "priority"
           }
         }
       ]
