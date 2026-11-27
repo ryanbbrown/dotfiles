@@ -11,7 +11,34 @@
   "theme": "dark",
   "compaction": {
     "modelOverrides": {
+      "anthropic/claude-fable-5": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-fable-5-1": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-fable-5-2": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-haiku-5-5": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-opus-4-6": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-opus-4-7": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-opus-4-8": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-opus-5": {
+        "reserveTokens": 600000
+      },
       "anthropic/claude-opus-5-5": {
+        "reserveTokens": 600000
+      },
+      "anthropic/claude-sonnet-4-6": {
         "reserveTokens": 600000
       },
       "anthropic/claude-sonnet-5": {
@@ -20,7 +47,61 @@
       "anthropic/claude-sonnet-5-5": {
         "reserveTokens": 600000
       },
+      "google-vertex/gemini-2.5-flash": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-2.5-flash-lite": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-2.5-pro": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3-flash-preview": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.1-flash-lite": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.1-pro-preview": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.1-pro-preview-customtools": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.5-flash": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.5-flash-lite": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.6-flash": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.7-flash": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-3.8-flash": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-4-argon": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-4-carbon": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-4-hydrogen": {
+        "reserveTokens": 648576
+      },
+      "google-vertex/gemini-4-neon": {
+        "reserveTokens": 648576
+      },
       "openai-codex/gpt-6.1-sol": {
+        "reserveTokens": 100000
+      },
+      "openai-codex/gpt-6.1-terra": {
+        "reserveTokens": 100000
+      },
+      "openai-codex/gpt-6.2-sol": {
         "reserveTokens": 100000
       }
     }
