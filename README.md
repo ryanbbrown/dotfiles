@@ -14,7 +14,7 @@ The repository does not track credentials, sessions, caches, trust decisions, or
 - `skills/` contains the skills exposed to all three coding agents.
 - `vendor/` contains complete upstream repositories as Git submodules.
 - `scripts/` contains installation, project setup, and source update commands.
-- `bin/` contains small shared commands, including `sync-bb-personal`.
+- `bin/` contains small shared commands.
 - `tests/` contains checks for shared commands and installation behavior.
 
 Each entry under `skills/` is one of:
@@ -78,7 +78,6 @@ Pi
   ~/.pi/agent/extensions
 
 Other
-  ~/.local/bin/sync-bb-personal
   ~/Desktop/install-bb-personal.command
 ```
 
@@ -112,39 +111,6 @@ scripts/install-bb-claude-wrapper.sh
 ```
 
 The script links `~/.local/bin/claude-bb`, adds a systemd drop-in that sets `BB_CLAUDE_CODE_EXECUTABLE` for `bb.service`, and restarts the service. BB and Claude Code updates keep both. Do not run it on the Mac.
-
-### Sync the bb personal branch
-
-Run on demand from anywhere:
-
-```bash
-sync-bb-personal
-```
-
-The command works on `~/code/bb`. Pass `--repo PATH` to use another checkout.
-
-What it does, in order:
-
-1. Checks that the `personal` worktree is clean. It stops before fetching if it is not.
-2. Fetches `upstream` and advances local `main` with fast-forward-only semantics. It finds the `main` worktree with `git worktree list --porcelain`, so it works whether `main` is checked out or not. It stops if `main` is behind and its checkout is dirty, or if `main` has diverged.
-3. Merges `main` into `personal` inside a temporary worktree. The real checkout is never in a merge state.
-4. Lets Git merge and rerere replay whatever cached resolutions match. rerere runs with autoupdate, so replayed resolutions are staged.
-5. If textual conflicts remain, hands the merge to the installed Codex CLI once, non-interactively with full permission. Codex gets the unresolved set, merge base, and commit history of both sides.
-6. Codex resolves the conflicts, installs dependencies, and typechecks the changed packages and their dependants. It then runs focused tests for affected packages and real failures. Only after those checks pass does it run the nested complete repository graph, which is limited to one run.
-7. Commits the merge in the temporary worktree and runs the complete repository graph. A clean automatic merge that passes stays agent-free. All checks must pass unless the graph's sole failure is the exact known flaky `PromptBoxInternal` selection-reveal test with its upstream focus-before-spy order. In that one case, the command reruns only that test once and continues only if it passes.
-8. If a clean automatic merge has any other failure, multiple failures, or a failed PromptBox retry, launches Codex in the same temporary worktree. Codex gets the failed check log and output, plus the same merge base and branch history. Codex repairs and validates the merge before the script amends the merge commit and confirms the complete graph again.
-9. Rejects the merge if Git still reports an unresolved path, if any file the merge touched holds conflict markers, if Codex fails, or if the independent check and its permitted retry fail. Each Codex check writes its complete output to a temporary log and prints a short failed-task summary with the log path.
-10. Fast-forwards the real `personal` branch onto the tested merge, but only if `personal` is still at the commit where the merge started and is still clean.
-
-The command holds no opinion about which files conflict or what a conflict in them means, so it keeps working as the repository changes. A run that does not reach the end leaves the rerere cache exactly as it found it, so a resolution it could not verify is never replayed later. The temporary worktree and check logs are always removed. Nothing is ever pushed: the push URL of every remote is broken through the environment for the duration of the resolver, rather than by restricting what Codex may run.
-
-Run the checks:
-
-```bash
-tests/sync-bb-personal.sh
-```
-
-The tests build their own throwaway repositories and stub `codex` and `pnpm`. They verify the exact non-interactive, full-permission Codex invocation without starting a model call. They never touch the real bb checkout.
 
 ### Update upstream skill sources
 
@@ -214,7 +180,7 @@ Claude Code, Codex, and Pi receive the same global instructions from `home/AGENT
 
 Install Pi with `npm install -g @earendil-works/pi-coding-agent`. Use Pi 1.6.0 or later and Node.js 24.22.3 or later, because `pi-posthorse` requires them. The older `@mariozechner/pi-coding-agent` package is frozen at 0.73.1 and cannot load the extensions below.
 
-Pi defaults to `openai-codex/gpt-6.1-sol` with high reasoning.
+Pi defaults to `google-vertex/gemini-4-neon` with high reasoning.
 
 The tracked Pi settings install these packages:
 
