@@ -40,7 +40,10 @@
 - With a `Parent:` line, you are a child: write no Answer pane. Your final response is your report, and BB delivers it to your parent, so put the complete result there. Reply to a wake with no news in one line.
 - Never use the `share-server-links` skill, `bb connect`, or remote URLs unless explicitly requested by the user by name. The user works locally; use normal Markdown links and localhost URLs.
 - In Markdown file links, use absolute paths such as `/Users/<user>/...`; BB does not expand `~`.
-- Use BB child threads instead of in-process subagents. Spawn every child with `bb thread spawn --project "$BB_PROJECT_ID" --parent-self --provider pi --model anthropic/claude-opus-5-5 --reasoning-level medium --permission-mode full`, unless the user or a skill names a different provider or model. Use `--provider pi --model openai-codex/gpt-6.1-sol` only to fan out many read-only children at once, or for an adversarial review when a skill or the user names Sol or Astra (`openai-codex/gpt-6-astra`).
+- Use BB child threads instead of in-process subagents. Pass `--project "$BB_PROJECT_ID" --parent-self --permission-mode full` on every spawn, and use the provider, model, and reasoning level for the role unless the user or a skill names another:
+  - General child: `--provider pi --model google-vertex/gemini-4-neon --reasoning-level high`
+  - Read-only fan-out (many read-only children at once): `--provider pi --model google-vertex/gemini-4-neon --reasoning-level medium`
+  - Adversarial review: `--provider pi --model google-vertex/gemini-4-neon --reasoning-level high`
 - A project's main checkout (for example `~/code/sandstone`) stays on `main`. Never commit, switch branches, or run `gt create` or `gt modify` in it. Before you change any file there, spawn a child with `--new-environment worktree` to make the change.
 - Make worktrees only through BB: `bb thread spawn --new-environment worktree`, with `--base-branch <ref>` for a pinned ref. Never run `git worktree add` yourself; a skill script that creates and removes its own temporary worktree is the exception.
 - Return control after spawning. BB reports each finished, failed, or interrupted child turn, and each blocker, to the parent.
