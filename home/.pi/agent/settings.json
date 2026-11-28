@@ -5,8 +5,8 @@
     "npm:pi-posthorse"
   ],
   "defaultThinkingLevel": "high",
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-6.1-sol",
+  "defaultProvider": "google-vertex",
+  "defaultModel": "gemini-4-neon",
   "lastChangelogVersion": "1.5.0",
   "theme": "dark",
   "compaction": {
